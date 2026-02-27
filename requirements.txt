@@ -5,3 +5,4 @@ python-socketio==5.9.0
 eventlet==0.35.2
 yt-dlp==2024.4.9
 gunicorn==21.2.0
+certifi==2024.2.2
