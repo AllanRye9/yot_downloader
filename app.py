@@ -6,10 +6,11 @@ import time
 import uuid
 import shutil
 import json
-import glob
+import logging
 import certifi
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
+from functools import wraps
 
 from flask import (
     Flask,
@@ -18,24 +19,65 @@ from flask import (
     jsonify,
     send_from_directory,
     url_for,
-    Response
+    Response,
+    session
 )
-from flask_socketio import SocketIO, emit, join_room
+from flask_socketio import SocketIO, emit, join_room, disconnect
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
+
+# =========================================================
+# PRODUCTION CONFIGURATION
+# =========================================================
+
+class Config:
+    """Production configuration"""
+    SECRET_KEY = os.environ.get("SECRET_KEY", os.urandom(24).hex())
+    MAX_CONTENT_LENGTH = 100 * 1024 * 1024  # 100MB max upload
+    DOWNLOAD_FOLDER = "downloads"
+    TEMPLATES_FOLDER = "templates"
+    STATIC_FOLDER = "static"
+    MAX_DOWNLOADS_PER_IP = 5
+    MAX_CONCURRENT_DOWNLOADS = 3
+    DOWNLOAD_TIMEOUT = 3600  # 1 hour
+    CLEANUP_INTERVAL = 3600  # 1 hour
+    FILE_RETENTION_HOURS = 24
+    SESSION_TYPE = 'filesystem'
+    PERMANENT_SESSION_LIFETIME = timedelta(hours=1)
 
 # =========================================================
 # PATH SETUP
 # =========================================================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
-STATIC_DIR = os.path.join(BASE_DIR, "static")
-DOWNLOAD_FOLDER = os.path.join(BASE_DIR, "downloads")
+ROOT_DIR = BASE_DIR  # Assuming app.py is in root
 
-# Create directories if they don't exist
+# Handle case where app.py is in api/ subdirectory
+if os.path.basename(BASE_DIR) == "api":
+    ROOT_DIR = os.path.dirname(BASE_DIR)
+
+TEMPLATES_DIR = os.path.join(ROOT_DIR, Config.TEMPLATES_FOLDER)
+STATIC_DIR = os.path.join(ROOT_DIR, Config.STATIC_FOLDER)
+DOWNLOAD_FOLDER = os.path.join(ROOT_DIR, Config.DOWNLOAD_FOLDER)
+
+# Create directories
 os.makedirs(TEMPLATES_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
+
+# =========================================================
+# LOGGING SETUP
+# =========================================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(os.path.join(ROOT_DIR, 'app.log'))
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # =========================================================
 # FLASK APP INITIALIZATION
@@ -43,34 +85,82 @@ os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 app = Flask(__name__, 
             template_folder=TEMPLATES_DIR,
-            static_folder=STATIC_DIR)
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "railway-deployment-key")
-app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB max upload
-app.config["DOWNLOAD_FOLDER"] = DOWNLOAD_FOLDER
+            static_folder=STATIC_DIR,
+            static_url_path='/static')
 
-# Enable CORS for Railway
-CORS(app)
+app.config.from_object(Config)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
-# SocketIO setup for real-time updates
+# Enable CORS with production settings
+CORS(app, resources={
+    r"/*": {
+        "origins": os.environ.get("ALLOWED_ORIGINS", "*").split(","),
+        "methods": ["GET", "POST", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+})
+
+# Socket.IO with production settings
 socketio = SocketIO(
     app,
-    cors_allowed_origins="*",
+    cors_allowed_origins=os.environ.get("ALLOWED_ORIGINS", "*").split(","),
     async_mode='eventlet',
-    logger=True,
-    engineio_logger=True,
+    logger=True if os.environ.get("FLASK_DEBUG") else False,
+    engineio_logger=True if os.environ.get("FLASK_DEBUG") else False,
     ping_timeout=60,
-    ping_interval=25
+    ping_interval=25,
+    max_http_buffer_size=1e8,
+    manage_session=False
 )
 
 # =========================================================
-# GLOBAL STATE
+# GLOBAL STATE WITH THREAD SAFETY
 # =========================================================
 
+from threading import Lock
+
+downloads_lock = Lock()
 downloads = {}  # download_id -> metadata
 active_threads = {}  # download_id -> thread
+ip_download_count = {}  # ip -> count
 
 # =========================================================
-# CHECK DEPENDENCIES
+# SSL CERTIFICATE FIX
+# =========================================================
+
+os.environ['SSL_CERT_FILE'] = certifi.where()
+os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
+
+# =========================================================
+# RATE LIMITING DECORATOR
+# =========================================================
+
+def rate_limit(max_per_ip=Config.MAX_DOWNLOADS_PER_IP):
+    """Rate limiting decorator"""
+    def decorator(f):
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            ip = request.remote_addr
+            with downloads_lock:
+                count = ip_download_count.get(ip, 0)
+                if count >= max_per_ip:
+                    return jsonify({
+                        "error": f"Rate limit exceeded. Maximum {max_per_ip} concurrent downloads per IP."
+                    }), 429
+                ip_download_count[ip] = count + 1
+            
+            try:
+                return f(*args, **kwargs)
+            finally:
+                with downloads_lock:
+                    ip_download_count[ip] = ip_download_count.get(ip, 1) - 1
+                    if ip_download_count[ip] <= 0:
+                        ip_download_count.pop(ip, None)
+        return wrapped
+    return decorator
+
+# =========================================================
+# DEPENDENCY CHECKS
 # =========================================================
 
 def check_yt_dlp():
@@ -83,27 +173,27 @@ def check_yt_dlp():
             timeout=5
         )
         if result.returncode == 0:
-            print(f"✅ yt-dlp version: {result.stdout.strip()}")
+            logger.info(f"✅ yt-dlp version: {result.stdout.strip()}")
             return True
         else:
-            print("❌ yt-dlp not found")
+            logger.error("❌ yt-dlp not found")
             return False
     except Exception as e:
-        print(f"❌ Error checking yt-dlp: {e}")
+        logger.error(f"❌ Error checking yt-dlp: {e}")
         return False
 
 def check_ffmpeg():
-    """Check if ffmpeg is installed (needed for format conversion)"""
+    """Check if ffmpeg is installed"""
     ffmpeg_path = shutil.which('ffmpeg')
     if ffmpeg_path:
-        print(f"✅ ffmpeg found at: {ffmpeg_path}")
+        logger.info(f"✅ ffmpeg found at: {ffmpeg_path}")
         return True
     else:
-        print("⚠️ ffmpeg not found - some formats may not work")
+        logger.warning("⚠️ ffmpeg not found - some formats may not work")
         return False
 
 # =========================================================
-# HELPERS
+# HELPER FUNCTIONS
 # =========================================================
 
 def safe_filename(name: str) -> str:
@@ -127,7 +217,7 @@ def format_size(size_bytes):
     return f"{size_bytes:.2f} {size_names[i]}"
 
 def get_ssl_env() -> dict:
-    """Return a copy of the current environment with SSL certificate vars set."""
+    """Return environment with SSL certificate vars"""
     env = os.environ.copy()
     env["SSL_CERT_FILE"] = certifi.where()
     env["REQUESTS_CA_BUNDLE"] = certifi.where()
@@ -143,11 +233,13 @@ def get_video_info(url: str) -> dict:
             "--no-playlist",
             "--dump-json",
             "--no-check-certificate",
+            "--extractor-args", "youtube:player_client=android,web",
+            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             url,
         ]
         
         env = get_ssl_env()
-
+        
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -173,7 +265,7 @@ def get_video_info(url: str) -> dict:
                     "format_note": f.get("format_note", "")
                 }
                 for f in info.get("formats", [])
-                if f.get("vcodec") != "none"  # Video formats only
+                if f.get("vcodec") != "none"
             ],
             "audio_formats": [
                 {
@@ -196,40 +288,47 @@ def get_video_info(url: str) -> dict:
 
 def parse_progress(line):
     """Parse progress from yt-dlp output"""
-    # Look for percentage
     import re
+    
+    # Percentage
     percent_match = re.search(r'(\d+(?:\.\d+)?)%', line)
     percent = float(percent_match.group(1)) if percent_match else 0
     
-    # Look for speed
+    # Speed
     speed_match = re.search(r'at\s+([\d.]+[KMG]?i?B/s)', line)
     speed = speed_match.group(1) if speed_match else ""
     
-    # Look for ETA
+    # ETA
     eta_match = re.search(r'ETA\s+(\d+:\d+)', line)
     eta = eta_match.group(1) if eta_match else ""
+    
+    # Size
+    size_match = re.search(r'of\s+~?([\d.]+[KMG]?i?B)', line)
+    size = size_match.group(1) if size_match else ""
     
     return {
         "percent": percent,
         "speed": speed,
         "eta": eta,
+        "size": size,
         "raw": line
     }
 
 # =========================================================
-# DOWNLOAD WORKER (THREAD)
+# DOWNLOAD WORKER
 # =========================================================
 
 def download_worker(download_id, url, output_template, format_spec, cookies_file=None):
     """Background thread for downloading"""
     
-    # Build command
     cmd = [
         sys.executable,
         "-m",
         "yt_dlp",
         "--no-playlist",
         "--no-check-certificate",
+        "--extractor-args", "youtube:player_client=android,web",
+        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "--newline",
         "--progress",
         "-o",
@@ -239,26 +338,28 @@ def download_worker(download_id, url, output_template, format_spec, cookies_file
         url,
     ]
 
-    # Add cookies if provided
+    # Handle cookies
+    temp_cookies_path = None
     if cookies_file and cookies_file.strip():
-        # Check if it's a file path or cookie string
         if os.path.exists(cookies_file):
             cmd.extend(["--cookies", cookies_file])
         else:
-            # Assume it's a cookies string, write to temp file
-            cookies_path = os.path.join('/tmp', f'cookies_{download_id}.txt')
-            with open(cookies_path, 'w') as f:
-                f.write(cookies_file)
-            cmd.extend(["--cookies", cookies_path])
+            temp_cookies_path = os.path.join('/tmp', f'cookies_{download_id}.txt')
+            try:
+                with open(temp_cookies_path, 'w') as f:
+                    f.write(cookies_file)
+                cmd.extend(["--cookies", temp_cookies_path])
+            except Exception as e:
+                logger.error(f"Failed to write cookies: {e}")
 
-    # Add ffmpeg if available for post-processing
+    # Add ffmpeg if available
     ffmpeg_path = shutil.which('ffmpeg')
     if ffmpeg_path:
         cmd.extend(["--ffmpeg-location", ffmpeg_path])
 
-    downloads[download_id]["status"] = "downloading"
-    downloads[download_id]["start_time"] = time.time()
-    downloads[download_id]["cmd"] = " ".join(cmd)
+    with downloads_lock:
+        downloads[download_id]["status"] = "downloading"
+        downloads[download_id]["start_time"] = time.time()
 
     proc_env = get_ssl_env()
 
@@ -278,44 +379,55 @@ def download_worker(download_id, url, output_template, format_spec, cookies_file
             if not line:
                 continue
 
-            # Parse progress
             progress = parse_progress(line)
             
-            # Update download info
-            downloads[download_id]["percent"] = progress["percent"]
-            downloads[download_id]["last_line"] = line
-            downloads[download_id]["speed"] = progress["speed"]
-            downloads[download_id]["eta"] = progress["eta"]
-
-            # Emit progress via socketio
-            socketio.emit(
-                "progress",
-                {
-                    "id": download_id,
-                    "line": line,
+            with downloads_lock:
+                downloads[download_id].update({
                     "percent": progress["percent"],
+                    "last_line": line,
                     "speed": progress["speed"],
-                    "eta": progress["eta"]
-                },
-                room=download_id,
-            )
+                    "eta": progress["eta"],
+                    "size": progress["size"]
+                })
+
+            # Emit progress
+            try:
+                socketio.emit(
+                    "progress",
+                    {
+                        "id": download_id,
+                        "line": line,
+                        "percent": progress["percent"],
+                        "speed": progress["speed"],
+                        "eta": progress["eta"],
+                        "size": progress["size"]
+                    },
+                    room=download_id,
+                )
+            except Exception as e:
+                logger.error(f"Socket emit error: {e}")
 
         process.wait()
 
         if process.returncode == 0:
-            downloads[download_id]["status"] = "completed"
-            downloads[download_id]["end_time"] = time.time()
-            downloads[download_id]["percent"] = 100
+            with downloads_lock:
+                downloads[download_id].update({
+                    "status": "completed",
+                    "end_time": time.time(),
+                    "percent": 100
+                })
 
-            # Find downloaded file
-            base_name = os.path.splitext(os.path.basename(output_template))[0]
-            for file in os.listdir(DOWNLOAD_FOLDER):
-                if file.startswith(base_name):
-                    file_path = os.path.join(DOWNLOAD_FOLDER, file)
-                    downloads[download_id]["filename"] = file
-                    downloads[download_id]["file_size"] = os.path.getsize(file_path)
-                    downloads[download_id]["file_size_hr"] = format_size(os.path.getsize(file_path))
-                    break
+                # Find downloaded file
+                base_name = os.path.splitext(os.path.basename(output_template))[0]
+                for file in os.listdir(DOWNLOAD_FOLDER):
+                    if file.startswith(base_name):
+                        file_path = os.path.join(DOWNLOAD_FOLDER, file)
+                        downloads[download_id].update({
+                            "filename": file,
+                            "file_size": os.path.getsize(file_path),
+                            "file_size_hr": format_size(os.path.getsize(file_path))
+                        })
+                        break
 
             socketio.emit("completed", {
                 "id": download_id,
@@ -323,34 +435,43 @@ def download_worker(download_id, url, output_template, format_spec, cookies_file
                 "title": downloads[download_id].get("title")
             }, room=download_id)
             socketio.emit("files_updated", broadcast=True)
+            
         else:
-            downloads[download_id]["status"] = "failed"
-            downloads[download_id]["error"] = f"Process exited with code {process.returncode}"
+            with downloads_lock:
+                downloads[download_id].update({
+                    "status": "failed",
+                    "error": f"Process exited with code {process.returncode}"
+                })
+            
             socketio.emit("failed", {
                 "id": download_id,
                 "error": downloads[download_id]["error"]
             }, room=download_id)
 
     except Exception as e:
-        downloads[download_id]["status"] = "failed"
-        downloads[download_id]["error"] = str(e)
+        logger.error(f"Download worker error: {e}")
+        with downloads_lock:
+            downloads[download_id].update({
+                "status": "failed",
+                "error": str(e)
+            })
+        
         socketio.emit("failed", {
             "id": download_id,
             "error": str(e)
         }, room=download_id)
     
     finally:
-        # Clean up thread reference
-        if download_id in active_threads:
-            del active_threads[download_id]
+        # Cleanup
+        with downloads_lock:
+            if download_id in active_threads:
+                del active_threads[download_id]
         
-        # Clean up temp cookies
-        try:
-            cookies_path = os.path.join('/tmp', f'cookies_{download_id}.txt')
-            if os.path.exists(cookies_path):
-                os.remove(cookies_path)
-        except:
-            pass
+        if temp_cookies_path and os.path.exists(temp_cookies_path):
+            try:
+                os.remove(temp_cookies_path)
+            except:
+                pass
 
 # =========================================================
 # ROUTES
@@ -359,9 +480,23 @@ def download_worker(download_id, url, output_template, format_spec, cookies_file
 @app.route("/")
 def index():
     """Main page"""
-    return render_template("index.html")
+    try:
+        return render_template("index.html")
+    except Exception as e:
+        logger.error(f"Template error: {e}")
+        return jsonify({"error": "Template not found"}), 500
+
+@app.route("/health")
+def health():
+    """Health check endpoint"""
+    return jsonify({
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "version": "1.0.0"
+    })
 
 @app.route("/start_download", methods=["POST"])
+@rate_limit()
 def start_download():
     """Start a download"""
     url = request.form.get("url")
@@ -371,37 +506,44 @@ def start_download():
     if not url:
         return jsonify({"error": "URL is required"}), 400
     
+    # Check concurrent downloads
+    with downloads_lock:
+        active_count = sum(1 for d in downloads.values() 
+                          if d["status"] in ("queued", "downloading"))
+        if active_count >= Config.MAX_CONCURRENT_DOWNLOADS:
+            return jsonify({
+                "error": f"Maximum concurrent downloads reached ({Config.MAX_CONCURRENT_DOWNLOADS})"
+            }), 429
+    
     download_id = str(uuid.uuid4())
     
-    # Get video info first
+    # Get video info
     info = get_video_info(url)
     if info and "error" not in info:
         title = info.get("title", f"video_{download_id[:8]}")
     else:
         title = f"video_{download_id[:8]}"
+        if info and "error" in info:
+            logger.warning(f"Info error for {url}: {info['error']}")
     
     safe_title = safe_filename(title)
-    
-    # Create output template
-    output_template = os.path.join(
-        DOWNLOAD_FOLDER, 
-        f"{safe_title}.%(ext)s"
-    )
+    output_template = os.path.join(DOWNLOAD_FOLDER, f"{safe_title}.%(ext)s")
     
     # Store download info
-    downloads[download_id] = {
-        "id": download_id,
-        "url": url,
-        "title": title,
-        "safe_title": safe_title,
-        "status": "queued",
-        "percent": 0,
-        "output_template": output_template,
-        "format": format_spec,
-        "created_at": time.time(),
-        "filename": None,
-        "info": info if info and "error" not in info else None
-    }
+    with downloads_lock:
+        downloads[download_id] = {
+            "id": download_id,
+            "url": url,
+            "title": title,
+            "safe_title": safe_title,
+            "status": "queued",
+            "percent": 0,
+            "output_template": output_template,
+            "format": format_spec,
+            "created_at": time.time(),
+            "filename": None,
+            "ip": request.remote_addr
+        }
     
     # Start download thread
     thread = threading.Thread(
@@ -410,7 +552,9 @@ def start_download():
         daemon=True,
     )
     thread.start()
-    active_threads[download_id] = thread
+    
+    with downloads_lock:
+        active_threads[download_id] = thread
     
     return jsonify({
         "download_id": download_id,
@@ -421,8 +565,22 @@ def start_download():
 @app.route("/status/<download_id>")
 def get_status(download_id):
     """Get download status"""
-    download = downloads.get(download_id, {})
-    return jsonify(download)
+    with downloads_lock:
+        download = downloads.get(download_id, {})
+        # Don't send internal data
+        safe_download = {
+            "id": download.get("id"),
+            "title": download.get("title"),
+            "status": download.get("status"),
+            "percent": download.get("percent"),
+            "speed": download.get("speed"),
+            "eta": download.get("eta"),
+            "size": download.get("size"),
+            "filename": download.get("filename"),
+            "file_size_hr": download.get("file_size_hr"),
+            "error": download.get("error")
+        }
+    return jsonify(safe_download)
 
 @app.route("/files")
 def list_files():
@@ -443,45 +601,44 @@ def list_files():
                 })
         files.sort(key=lambda f: f["modified"], reverse=True)
     except Exception as e:
-        print(f"Error listing files: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error listing files: {e}")
+        return jsonify({"error": "Failed to list files"}), 500
     
     return jsonify(files)
-
-@app.route("/active_downloads")
-def active_downloads():
-    """Get active downloads count"""
-    count = sum(
-        1
-        for d in downloads.values()
-        if d["status"] in ("queued", "downloading")
-    )
-    return jsonify({"count": count})
 
 @app.route("/downloads/<path:filename>")
 def download_file(filename):
     """Serve downloaded file"""
     try:
-        return send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True)
+        return send_from_directory(
+            DOWNLOAD_FOLDER, 
+            filename, 
+            as_attachment=True,
+            download_name=filename
+        )
     except Exception as e:
-        return jsonify({"error": str(e)}), 404
+        logger.error(f"Download error: {e}")
+        return jsonify({"error": "File not found"}), 404
 
 @app.route("/delete/<path:filename>", methods=["DELETE"])
 def delete_file(filename):
     """Delete a downloaded file"""
     try:
         filepath = os.path.join(DOWNLOAD_FOLDER, filename)
-        # Security: prevent directory traversal
+        
+        # Security check
         if not os.path.abspath(filepath).startswith(os.path.abspath(DOWNLOAD_FOLDER)):
             return jsonify({"error": "Invalid filename"}), 400
         
         if os.path.exists(filepath) and os.path.isfile(filepath):
             os.remove(filepath)
             socketio.emit("files_updated", broadcast=True)
+            logger.info(f"Deleted file: {filename}")
             return jsonify({"success": True})
         else:
             return jsonify({"error": "File not found"}), 404
     except Exception as e:
+        logger.error(f"Delete error: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/stats")
@@ -497,25 +654,33 @@ def get_stats():
                 total_size += size
                 files.append(name)
         
+        with downloads_lock:
+            active_count = sum(1 for d in downloads.values() 
+                              if d["status"] in ("queued", "downloading"))
+        
         return jsonify({
-            "count": len(files),
+            "file_count": len(files),
             "total_size": total_size,
             "total_size_hr": format_size(total_size),
-            "active_downloads": sum(1 for d in downloads.values() if d["status"] in ("queued", "downloading"))
+            "active_downloads": active_count,
+            "max_concurrent": Config.MAX_CONCURRENT_DOWNLOADS
         })
     except Exception as e:
+        logger.error(f"Stats error: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/cancel/<download_id>", methods=["POST"])
 def cancel_download(download_id):
     """Cancel an ongoing download"""
-    if download_id in downloads:
-        if downloads[download_id]["status"] in ("queued", "downloading"):
-            downloads[download_id]["status"] = "cancelled"
-            socketio.emit("cancelled", {"id": download_id}, room=download_id)
-            return jsonify({"success": True, "status": "cancelled"})
+    with downloads_lock:
+        if download_id in downloads:
+            if downloads[download_id]["status"] in ("queued", "downloading"):
+                downloads[download_id]["status"] = "cancelled"
+                socketio.emit("cancelled", {"id": download_id}, room=download_id)
+                logger.info(f"Cancelled download: {download_id}")
+                return jsonify({"success": True})
     
-    return jsonify({"error": "Download not found or cannot be cancelled"}), 404
+    return jsonify({"error": "Download not found"}), 404
 
 # =========================================================
 # SOCKET.IO EVENTS
@@ -524,12 +689,12 @@ def cancel_download(download_id):
 @socketio.on("connect")
 def on_connect():
     """Handle client connection"""
-    print(f"Client connected: {request.sid}")
+    logger.info(f"Client connected: {request.sid}")
 
 @socketio.on("disconnect")
 def on_disconnect():
     """Handle client disconnection"""
-    print(f"Client disconnected: {request.sid}")
+    logger.info(f"Client disconnected: {request.sid}")
 
 @socketio.on("subscribe")
 def on_subscribe(data):
@@ -538,48 +703,68 @@ def on_subscribe(data):
     if download_id:
         join_room(download_id)
         emit("subscribed", {"id": download_id})
+        logger.info(f"Client {request.sid} subscribed to {download_id}")
 
 # =========================================================
 # CLEANUP THREAD
 # =========================================================
 
-def cleanup_old_files(max_age_hours=24):
-    """Clean up files older than max_age_hours"""
+def cleanup_old_files():
+    """Clean up files older than retention period"""
     try:
         current_time = time.time()
+        cutoff = current_time - (Config.FILE_RETENTION_HOURS * 3600)
+        
         for filename in os.listdir(DOWNLOAD_FOLDER):
             filepath = os.path.join(DOWNLOAD_FOLDER, filename)
             if os.path.isfile(filepath):
-                file_age = current_time - os.path.getmtime(filepath)
-                if file_age > max_age_hours * 3600:
+                mtime = os.path.getmtime(filepath)
+                if mtime < cutoff:
                     os.remove(filepath)
-                    print(f"Cleaned up old file: {filename}")
+                    logger.info(f"Cleaned up old file: {filename}")
     except Exception as e:
-        print(f"Error during cleanup: {e}")
+        logger.error(f"Cleanup error: {e}")
 
 def cleanup_thread():
     """Background thread for cleanup"""
     while True:
-        time.sleep(3600)  # Run every hour
+        time.sleep(Config.CLEANUP_INTERVAL)
         cleanup_old_files()
+        
+        # Clean up old download records
+        with downloads_lock:
+            current_time = time.time()
+            to_delete = []
+            for did, d in downloads.items():
+                if d["status"] in ("completed", "failed", "cancelled"):
+                    if current_time - d.get("end_time", current_time) > 3600:
+                        to_delete.append(did)
+            for did in to_delete:
+                del downloads[did]
 
 # =========================================================
 # INITIALIZATION
 # =========================================================
 
-# Check dependencies on startup
-print("=" * 50)
-print("🚀 Starting YouTube Downloader on Railway")
-print("=" * 50)
+logger.info("=" * 50)
+logger.info("🚀 Starting YouTube Downloader (Production)")
+logger.info("=" * 50)
+
+# Check dependencies
 check_yt_dlp()
 check_ffmpeg()
-print(f"📁 Download folder: {DOWNLOAD_FOLDER}")
-print(f"📁 Templates folder: {TEMPLATES_DIR}")
-print("=" * 50)
+
+# Log paths
+logger.info(f"📁 Root directory: {ROOT_DIR}")
+logger.info(f"📁 Templates directory: {TEMPLATES_DIR}")
+logger.info(f"📁 Downloads directory: {DOWNLOAD_FOLDER}")
+logger.info(f"📁 Template exists: {os.path.exists(os.path.join(TEMPLATES_DIR, 'index.html'))}")
 
 # Start cleanup thread
 cleanup_thread = threading.Thread(target=cleanup_thread, daemon=True)
 cleanup_thread.start()
+
+logger.info("=" * 50)
 
 # =========================================================
 # ERROR HANDLERS
@@ -591,6 +776,7 @@ def not_found_error(error):
 
 @app.errorhandler(500)
 def internal_error(error):
+    logger.error(f"Internal error: {error}")
     return jsonify({"error": "Internal server error"}), 500
 
 # =========================================================
@@ -601,8 +787,8 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     debug = os.environ.get("FLASK_DEBUG", "False").lower() == "true"
     
-    print(f"🌐 Starting server on port {port}")
-    print(f"🐛 Debug mode: {debug}")
+    logger.info(f"🌐 Starting server on port {port}")
+    logger.info(f"🐛 Debug mode: {debug}")
     
     socketio.run(
         app,
