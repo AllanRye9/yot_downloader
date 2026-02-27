@@ -16,6 +16,11 @@ COPY . .
 # Railway injects PORT at runtime; default to 5000 for local use
 ENV PORT=5000
 
+# Point Python's SSL and requests libraries at the system CA bundle
+# so yt-dlp subprocesses can verify TLS connections successfully.
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+
 EXPOSE 5000
 
 CMD ["sh", "-c", "gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT api.app:app"]

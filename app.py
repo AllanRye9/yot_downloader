@@ -7,6 +7,7 @@ import uuid
 import shutil
 import json
 import glob
+import certifi
 from pathlib import Path
 from datetime import datetime
 
@@ -125,6 +126,13 @@ def format_size(size_bytes):
         i += 1
     return f"{size_bytes:.2f} {size_names[i]}"
 
+def get_ssl_env() -> dict:
+    """Return a copy of the current environment with SSL certificate vars set."""
+    env = os.environ.copy()
+    env["SSL_CERT_FILE"] = certifi.where()
+    env["REQUESTS_CA_BUNDLE"] = certifi.where()
+    return env
+
 def get_video_info(url: str) -> dict:
     """Get video information without downloading"""
     try:
@@ -138,12 +146,15 @@ def get_video_info(url: str) -> dict:
             url,
         ]
         
+        env = get_ssl_env()
+
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             check=True,
             timeout=30,
+            env=env,
         )
         
         info = json.loads(result.stdout)
@@ -249,6 +260,8 @@ def download_worker(download_id, url, output_template, format_spec, cookies_file
     downloads[download_id]["start_time"] = time.time()
     downloads[download_id]["cmd"] = " ".join(cmd)
 
+    proc_env = get_ssl_env()
+
     try:
         process = subprocess.Popen(
             cmd,
@@ -256,7 +269,8 @@ def download_worker(download_id, url, output_template, format_spec, cookies_file
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
-            universal_newlines=True
+            universal_newlines=True,
+            env=proc_env,
         )
 
         for line in iter(process.stdout.readline, ""):
