@@ -2,6 +2,6 @@ Flask==2.3.3
 Flask-SocketIO==5.3.4
 Flask-CORS==4.0.0
 python-socketio==5.9.0
-eventlet==0.33.3
+eventlet==0.35.2
 yt-dlp==2024.4.9
 gunicorn==21.2.0

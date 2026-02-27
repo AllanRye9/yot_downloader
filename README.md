@@ -15,7 +15,7 @@ A simple, fast, and self-hosted web application for downloading videos from YouT
 ## Prerequisites
 | Requirement | Version |
 |-------------|---------|
-| Python | 3.8 + |
+| Python | 3.11 + |
 | [yt-dlp](https://github.com/yt-dlp/yt-dlp) | latest recommended |
 | ffmpeg *(optional)* | for merging video + audio streams |
 ---
@@ -28,15 +28,12 @@ cd yot_downloader
 python -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
 # 3. Install Python dependencies
-pip install flask flask-socketio
-# 4. Install yt-dlp
-pip install yt-dlp
-# or: sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && sudo chmod a+rx /usr/local/bin/yt-dlp
+pip install -r requirements.txt
 ```
 ---
 ## Usage
 ```bash
-python video.py
+python app.py
 ```
 The server starts at **http://127.0.0.1:5000** by default.
 1. Open the URL in your browser.
@@ -56,10 +53,15 @@ The server starts at **http://127.0.0.1:5000** by default.
 ## Project Structure
 ```
 yot_downloader/
-├── video.py            # Flask application & download logic
+├── app.py              # Flask application & download logic (local entry point)
+├── api/
+│   └── app.py          # Flask application & download logic (Docker/Railway entry point)
 ├── templates/
 │   └── index.html      # Single-page frontend (HTML + CSS + JS)
 ├── downloads/          # Created automatically; stores downloaded files
+├── requirements.txt    # Python dependencies
+├── Dockerfile          # Docker build definition (uses Python 3.12)
+├── nixpacks.toml       # Railway Nixpacks build config (uses Python 3.11)
 └── README.md
 ```
 ---
@@ -84,9 +86,9 @@ yot_downloader/
 ## Configuration
 | Variable | Location | Default | Description |
 |----------|----------|---------|-------------|
-| `SECRET_KEY` | `video.py` | `'thisisjustthestart'` | Flask session secret – **change in production** |
-| `DOWNLOAD_FOLDER` | `video.py` | `'downloads'` | Directory where files are saved |
-| `cors_allowed_origins` | `video.py` | `"*"` | Restrict in production to your domain |
+| `SECRET_KEY` | `app.py` | `'railway-deployment-key'` | Flask session secret – **change in production** |
+| `DOWNLOAD_FOLDER` | `app.py` | `'downloads'` | Directory where files are saved |
+| `cors_allowed_origins` | `app.py` | `"*"` | Restrict in production to your domain |
 ---
 ## Tech Stack
 - **Backend** – Python, Flask, Flask-SocketIO
