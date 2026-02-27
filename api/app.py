@@ -27,9 +27,10 @@ from flask_cors import CORS
 # =========================================================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
-STATIC_DIR = os.path.join(BASE_DIR, "static")
-DOWNLOAD_FOLDER = os.path.join(BASE_DIR, "downloads")
+ROOT_DIR = os.path.dirname(BASE_DIR)
+TEMPLATES_DIR = os.path.join(ROOT_DIR, "templates")
+STATIC_DIR = os.path.join(ROOT_DIR, "static")
+DOWNLOAD_FOLDER = os.path.join(ROOT_DIR, "downloads")
 
 # Create directories if they don't exist
 os.makedirs(TEMPLATES_DIR, exist_ok=True)
