@@ -18,4 +18,4 @@ ENV PORT=5000
 
 EXPOSE 5000
 
-CMD ["sh", "-c", "python api/app.py"]
+CMD ["sh", "-c", "gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT api.app:app"]
