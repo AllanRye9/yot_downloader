@@ -19,10 +19,8 @@ from flask import (
     jsonify,
     send_from_directory,
     url_for,
-    Response,
-    session
 )
-from flask_socketio import SocketIO, emit, join_room, disconnect
+from flask_socketio import SocketIO, emit, join_room
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -117,12 +115,12 @@ socketio = SocketIO(
 # GLOBAL STATE WITH THREAD SAFETY
 # =========================================================
 
-from threading import Lock
+from threading import Lock, RLock
 
-downloads_lock = Lock()
-downloads = {}  # download_id -> metadata
-active_threads = {}  # download_id -> thread
-ip_download_count = {}  # ip -> count
+downloads_lock = RLock()  # Reentrant lock for nested access
+downloads = {}            # download_id -> metadata
+active_threads = {}       # download_id -> thread
+ip_download_count = {}    # ip -> count
 
 # =========================================================
 # SSL CERTIFICATE FIX
@@ -224,17 +222,21 @@ def get_ssl_env() -> dict:
     return env
 
 def get_video_info(url: str) -> dict:
-    """Get video information without downloading"""
+    """Get video information without downloading, with anti-bot measures"""
     try:
         cmd = [
             sys.executable,
             "-m",
             "yt_dlp",
-            "--no-playlist",
             "--dump-json",
-            "--no-check-certificate",
             "--extractor-args", "youtube:player_client=android,web",
-            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "--extractor-retries", "5",
+            "--retries", "5",
+            "--sleep-requests", "1",
+            "--sleep-interval", "5",
+            "--max-sleep-interval", "10",
+            "--no-playlist",
             url,
         ]
         
@@ -282,7 +284,10 @@ def get_video_info(url: str) -> dict:
     except subprocess.TimeoutExpired:
         return {"error": "Request timeout"}
     except subprocess.CalledProcessError as e:
-        return {"error": f"yt-dlp error: {e.stderr}"}
+        error_msg = f"yt-dlp error: {e.stderr}"
+        if "Sign in to confirm you're not a bot" in e.stderr:
+            error_msg = "YouTube requires authentication. Please provide cookies from a logged-in session."
+        return {"error": error_msg}
     except Exception as e:
         return {"error": str(e)}
 
@@ -319,7 +324,7 @@ def parse_progress(line):
 # =========================================================
 
 def download_worker(download_id, url, output_template, format_spec, cookies_file=None):
-    """Background thread for downloading"""
+    """Background thread for downloading with improved error capture"""
     
     cmd = [
         sys.executable,
@@ -328,7 +333,12 @@ def download_worker(download_id, url, output_template, format_spec, cookies_file
         "--no-playlist",
         "--no-check-certificate",
         "--extractor-args", "youtube:player_client=android,web",
-        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "--extractor-retries", "5",
+        "--retries", "5",
+        "--sleep-requests", "1",
+        "--sleep-interval", "5",
+        "--max-sleep-interval", "10",
         "--newline",
         "--progress",
         "-o",
@@ -362,6 +372,7 @@ def download_worker(download_id, url, output_template, format_spec, cookies_file
         downloads[download_id]["start_time"] = time.time()
 
     proc_env = get_ssl_env()
+    output_lines = []  # keep last 20 lines for error diagnosis
 
     try:
         process = subprocess.Popen(
@@ -378,6 +389,11 @@ def download_worker(download_id, url, output_template, format_spec, cookies_file
             line = line.strip()
             if not line:
                 continue
+
+            # Store rolling window of output
+            output_lines.append(line)
+            if len(output_lines) > 20:
+                output_lines.pop(0)
 
             progress = parse_progress(line)
             
@@ -437,28 +453,35 @@ def download_worker(download_id, url, output_template, format_spec, cookies_file
             socketio.emit("files_updated", broadcast=True)
             
         else:
+            # Extract meaningful error from output lines
+            error_msg = f"Process exited with code {process.returncode}"
+            for line in reversed(output_lines):
+                if "ERROR:" in line or "Sign in" in line or "bot" in line.lower():
+                    error_msg = line
+                    break
             with downloads_lock:
                 downloads[download_id].update({
                     "status": "failed",
-                    "error": f"Process exited with code {process.returncode}"
+                    "error": error_msg
                 })
             
             socketio.emit("failed", {
                 "id": download_id,
-                "error": downloads[download_id]["error"]
+                "error": error_msg
             }, room=download_id)
 
     except Exception as e:
         logger.error(f"Download worker error: {e}")
+        error_msg = str(e)
         with downloads_lock:
             downloads[download_id].update({
                 "status": "failed",
-                "error": str(e)
+                "error": error_msg
             })
         
         socketio.emit("failed", {
             "id": download_id,
-            "error": str(e)
+            "error": error_msg
         }, room=download_id)
     
     finally:
@@ -498,7 +521,7 @@ def health():
 @app.route("/start_download", methods=["POST"])
 @rate_limit()
 def start_download():
-    """Start a download"""
+    """Start a download with better error feedback"""
     url = request.form.get("url")
     format_spec = request.form.get("format", "best")
     cookies = request.form.get("cookies", "")
@@ -517,7 +540,7 @@ def start_download():
     
     download_id = str(uuid.uuid4())
     
-    # Get video info
+    # Get video info (may contain error, but we still allow download attempt)
     info = get_video_info(url)
     if info and "error" not in info:
         title = info.get("title", f"video_{download_id[:8]}")
@@ -542,7 +565,8 @@ def start_download():
             "format": format_spec,
             "created_at": time.time(),
             "filename": None,
-            "ip": request.remote_addr
+            "ip": request.remote_addr,
+            "info_error": info.get("error") if info and "error" in info else None
         }
     
     # Start download thread
@@ -559,7 +583,8 @@ def start_download():
     return jsonify({
         "download_id": download_id,
         "title": title,
-        "status": "queued"
+        "status": "queued",
+        "warning": info.get("error") if info and "error" in info else None
     })
 
 @app.route("/status/<download_id>")
@@ -747,7 +772,7 @@ def cleanup_thread():
 # =========================================================
 
 logger.info("=" * 50)
-logger.info("🚀 Starting YouTube Downloader (Production)")
+logger.info("🚀 Starting Video Downloader (Production)")
 logger.info("=" * 50)
 
 # Check dependencies

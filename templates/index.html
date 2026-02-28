@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Downloader</title>
+    <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Socket.IO client -->
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         * {
@@ -28,7 +30,7 @@
             padding: 20px;
         }
 
-        /* Compact stats badge */
+        /* Stats badge */
         .stats-badge {
             position: fixed;
             top: 20px;
@@ -57,7 +59,7 @@
             opacity: 0.9;
         }
 
-        /* Toast notification */
+        /* Toast notifications */
         .toast-container {
             position: fixed;
             bottom: 20px;
@@ -108,13 +110,7 @@
             to { opacity: 0; }
         }
 
-        /* Main content adjustment for fixed badge */
-        .main-content {
-            margin-left: 0;
-            padding-top: 20px;
-        }
-
-        /* Card Styles (unchanged) */
+        /* Card styles */
         .card {
             background: white;
             border-radius: 8px;
@@ -139,7 +135,7 @@
             padding: 20px;
         }
 
-        /* Form Styles */
+        /* Form */
         .form-group {
             margin-bottom: 15px;
         }
@@ -224,7 +220,7 @@
             font-size: 0.9rem;
         }
 
-        /* File List (unchanged) */
+        /* File list */
         .file-list {
             list-style: none;
         }
@@ -282,7 +278,7 @@
             background: #2980b9;
         }
 
-        /* Ad Placeholder */
+        /* Ad placeholder (optional) */
         .ad-placeholder {
             background: #ecf0f1;
             border: 2px dashed #95a5a6;
@@ -319,11 +315,6 @@
             opacity: 0.5;
         }
 
-        @keyframes slideDown {
-            from { opacity: 0; transform: translateY(-20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
         @keyframes slideUp {
             from { opacity: 0; transform: translateY(20px); }
             to { opacity: 1; transform: translateY(0); }
@@ -336,7 +327,7 @@
     </style>
 </head>
 <body>
-    <!-- Compact stats badge -->
+    <!-- Stats badge -->
     <div class="stats-badge" id="stats-badge" title="Total videos / Total size">
         <span id="badge-count">0</span>
         <small id="badge-size">0 MB</small>
@@ -346,15 +337,14 @@
     <div class="toast-container" id="toast-container"></div>
 
     <div class="container">
-        <!-- Header (simplified) -->
         <header style="text-align: center; margin-bottom: 20px;">
             <h1><i class="fas fa-download"></i> Video Downloader</h1>
             <p class="subtitle">Fast and easy video downloading</p>
         </header>
 
-        <!-- Main Grid -->
+        <!-- Main grid: 2 columns -->
         <div class="main-grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
-            <!-- Download Form Card -->
+            <!-- Download Form -->
             <div class="card">
                 <div class="card-header">
                     <i class="fas fa-link"></i> Download Video
@@ -372,8 +362,8 @@
                                 <input type="text" id="format" value="best" placeholder="best, bestvideo+bestaudio">
                             </div>
                             <div class="form-group">
-                                <label for="cookies"><i class="fas fa-key"></i> Cookies</label>
-                                <input type="text" id="cookies" placeholder="path/to/cookies.txt">
+                                <label for="cookies"><i class="fas fa-key"></i> Cookies (file path or content)</label>
+                                <input type="text" id="cookies" placeholder="path/to/cookies.txt or paste Netscape cookies">
                             </div>
                         </div>
 
@@ -384,7 +374,7 @@
                 </div>
             </div>
 
-            <!-- Ad & Tips Sidebar -->
+            <!-- Tips & Ads -->
             <div>
                 <div class="card">
                     <div class="card-header">
@@ -395,18 +385,19 @@
                             <div>
                                 <div style="font-size: 2rem; margin-bottom: 10px;">📢</div>
                                 <p style="font-weight: 600; margin-bottom: 8px;">Advertisement Space</p>
-                                <p style="font-size: 0.9rem;">Your ad here (970×90)</p>
+                                <p style="font-size: 0.9rem;">Your ad here</p>
                             </div>
                         </div>
                         <div class="tip-box">
-                            <strong>💡 Tip:</strong> Use format "best" for best quality or "mp3" for audio only
+                            <strong>💡 Tip:</strong> Use format "best" for best quality or "mp3" for audio only.<br>
+                            If you get a bot error, provide cookies from a logged‑in browser session.
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Files Section -->
+        <!-- Downloaded Files -->
         <div class="card">
             <div class="card-header" style="justify-content: space-between;">
                 <div>
@@ -426,7 +417,7 @@
             </div>
         </div>
 
-        <!-- Bottom Ad -->
+        <!-- Bottom ad -->
         <div style="margin-top: 30px; text-align: center;">
             <div class="ad-placeholder" style="min-height: 90px;">
                 Advertisement (970×90)
@@ -435,18 +426,11 @@
     </div>
 
     <script>
-        // ---------- Sound Generator using Web Audio API ----------
+        // ---------- Sound Generator ----------
         function beep(frequency, duration, volume = 0.2) {
             try {
                 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                // Resume if suspended (due to autoplay policy)
-                if (audioContext.state === 'suspended') {
-                    audioContext.resume().then(() => play());
-                } else {
-                    play();
-                }
-
-                function play() {
+                const play = () => {
                     const oscillator = audioContext.createOscillator();
                     const gainNode = audioContext.createGain();
                     oscillator.connect(gainNode);
@@ -456,16 +440,28 @@
                     gainNode.gain.value = volume;
                     oscillator.start();
                     oscillator.stop(audioContext.currentTime + duration / 1000);
+                };
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume().then(play).catch(e => console.warn('AudioContext resume failed:', e));
+                } else {
+                    play();
                 }
             } catch (e) {
-                console.log('Web Audio API not supported or blocked');
+                console.warn('Web Audio API not supported or blocked:', e);
             }
         }
 
-        // ----------------------------------------------------------
+        // ---------- Global State ----------
+        const socket = io({
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000
+        });
 
-        const socket = io();
-        let currentDownloadId = null;
+        // Track active downloads (supports multiple)
+        const activeDownloads = new Map(); // downloadId -> { title, percent, ... }
+
+        // Stats
         let downloadCount = parseInt(localStorage.getItem('downloadCount')) || 0;
         let downloadedToday = parseInt(localStorage.getItem('downloadedToday')) || 0;
         let lastDownloadDate = localStorage.getItem('lastDownloadDate') || new Date().toDateString();
@@ -478,23 +474,84 @@
         // Update badge on load
         updateStatsBadge();
 
-        // Socket event listeners
+        // ---------- Toast ----------
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `
+                <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}"></i>
+                <span>${message}</span>
+            `;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.animation = 'fadeOut 0.3s ease-out forwards';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // ---------- Socket Events ----------
+        socket.on('connect', () => {
+            console.log('Socket connected – refreshing files');
+            loadFiles(false);
+            updateStatsBadge();
+            // Re-subscribe to active downloads after reconnect
+            activeDownloads.forEach((_, id) => {
+                socket.emit('subscribe', { download_id: id });
+            });
+        });
+
+        socket.on('progress', (data) => {
+            if (!data || !data.id) return;
+            if (activeDownloads.has(data.id)) {
+                const dl = activeDownloads.get(data.id);
+                dl.percent = data.percent;
+                dl.speed = data.speed;
+                dl.eta = data.eta;
+                activeDownloads.set(data.id, dl);
+                // Optionally update a progress bar if you add one later
+            }
+        });
+
         socket.on('completed', (data) => {
-            if (data.id === currentDownloadId) {
+            if (!data || !data.id) {
+                console.warn('Malformed completed event', data);
+                return;
+            }
+            if (activeDownloads.has(data.id)) {
                 downloadCount++;
                 downloadedToday++;
                 localStorage.setItem('downloadCount', downloadCount);
                 localStorage.setItem('downloadedToday', downloadedToday);
                 updateStatsBadge();
                 showToast('✅ Download completed!', 'success');
-                beep(880, 300, 0.2); // Higher pitch for success
+                beep(880, 300, 0.2);
+                activeDownloads.delete(data.id);
+                // Refresh file list to show new file
+                loadFiles(true);
             }
         });
 
         socket.on('failed', (data) => {
-            if (data.id === currentDownloadId) {
-                showToast('❌ Download failed', 'error');
-                beep(220, 400, 0.2); // Low buzz for failure
+            if (!data || !data.id) {
+                console.warn('Malformed failed event', data);
+                return;
+            }
+            if (activeDownloads.has(data.id)) {
+                // Use the error message from server, or a default
+                const errorMsg = data.error || 'Download failed';
+                showToast(`❌ ${errorMsg}`, 'error');
+                beep(220, 400, 0.2);
+                activeDownloads.delete(data.id);
+            }
+        });
+
+        socket.on('cancelled', (data) => {
+            if (!data || !data.id) return;
+            if (activeDownloads.has(data.id)) {
+                showToast('Download cancelled', 'info');
+                activeDownloads.delete(data.id);
             }
         });
 
@@ -502,17 +559,9 @@
             console.log('Files updated – reloading list');
             loadFiles(true);
             updateStatsBadge();
-            // Optionally play a sound for new files added by others?
-            // We'll rely on completed event for our own downloads
         });
 
-        socket.on('connect', () => {
-            console.log('Socket reconnected – refreshing files');
-            loadFiles(false);
-            updateStatsBadge();
-        });
-
-        // Handle download form
+        // ---------- Download Form ----------
         document.getElementById('download-form').addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -536,22 +585,34 @@
                 });
                 const data = await response.json();
 
-                currentDownloadId = data.download_id;
-                socket.emit('subscribe', { download_id: currentDownloadId });
+                if (response.ok && data.download_id) {
+                    const downloadId = data.download_id;
+                    activeDownloads.set(downloadId, {
+                        title: data.title || 'Unknown',
+                        status: 'queued',
+                        percent: 0
+                    });
+                    socket.emit('subscribe', { download_id: downloadId });
 
-                showToast('Download started in background', 'info');
-                beep(440, 200, 0.2); // Short beep for start
-
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Start Download';
+                    // Show any warning from server (e.g., info error)
+                    if (data.warning) {
+                        showToast(`⚠️ ${data.warning}`, 'info');
+                    } else {
+                        showToast('Download started in background', 'info');
+                    }
+                    beep(440, 200, 0.2);
+                } else {
+                    throw new Error(data.error || 'Failed to start download');
+                }
             } catch (err) {
                 showToast('Error: ' + err.message, 'error');
+            } finally {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Start Download';
             }
         });
 
-        // Update the compact stats badge
+        // ---------- Stats Badge Update ----------
         async function updateStatsBadge() {
             document.getElementById('badge-count').textContent = downloadCount;
 
@@ -567,7 +628,7 @@
             }
         }
 
-        // Load file list
+        // ---------- Load File List ----------
         async function loadFiles(animate = false) {
             const fileList = document.getElementById('file-list');
 
@@ -608,25 +669,7 @@
             }
         }
 
-        // Toast notification
-        function showToast(message, type = 'info') {
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
-            toast.className = `toast ${type}`;
-            toast.innerHTML = `
-                <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}"></i>
-                <span>${message}</span>
-            `;
-            container.appendChild(toast);
-
-            // Auto remove after 3 seconds
-            setTimeout(() => {
-                toast.style.animation = 'fadeOut 0.3s ease-out forwards';
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
-        }
-
-        // Initial load
+        // ---------- Initial Load ----------
         loadFiles(true);
     </script>
 </body>

@@ -1,0 +1,117 @@
+2026-02-28 18:35:19,121 - __main__ - INFO - ==================================================
+2026-02-28 18:35:19,121 - __main__ - INFO - 🚀 Starting YouTube Downloader (Production)
+2026-02-28 18:35:19,121 - __main__ - INFO - ==================================================
+2026-02-28 18:35:19,876 - __main__ - INFO - ✅ yt-dlp version: 2024.04.09
+2026-02-28 18:35:19,877 - __main__ - WARNING - ⚠️ ffmpeg not found - some formats may not work
+2026-02-28 18:35:19,877 - __main__ - INFO - 📁 Root directory: /workspaces/yot_downloader
+2026-02-28 18:35:19,877 - __main__ - INFO - 📁 Templates directory: /workspaces/yot_downloader/templates
+2026-02-28 18:35:19,877 - __main__ - INFO - 📁 Downloads directory: /workspaces/yot_downloader/downloads
+2026-02-28 18:35:19,877 - __main__ - INFO - 📁 Template exists: True
+2026-02-28 18:35:19,877 - __main__ - INFO - ==================================================
+2026-02-28 18:35:19,878 - __main__ - INFO - 🌐 Starting server on port 5000
+2026-02-28 18:35:19,878 - __main__ - INFO - 🐛 Debug mode: False
+2026-02-28 18:39:44,869 - api.app - INFO - ==================================================
+2026-02-28 18:39:44,869 - api.app - INFO - 🚀 Starting YouTube Downloader (Production)
+2026-02-28 18:39:44,869 - api.app - INFO - ==================================================
+2026-02-28 18:39:45,149 - api.app - INFO - ✅ yt-dlp version: 2024.04.09
+2026-02-28 18:39:45,150 - api.app - WARNING - ⚠️ ffmpeg not found - some formats may not work
+2026-02-28 18:39:45,150 - api.app - INFO - 📁 Root directory: /workspaces/yot_downloader
+2026-02-28 18:39:45,150 - api.app - INFO - 📁 Templates directory: /workspaces/yot_downloader/templates
+2026-02-28 18:39:45,150 - api.app - INFO - 📁 Downloads directory: /workspaces/yot_downloader/downloads
+2026-02-28 18:39:45,150 - api.app - INFO - 📁 Template exists: True
+2026-02-28 18:39:45,151 - api.app - INFO - ==================================================
+2026-02-28 18:39:59,609 - api.app - INFO - Client connected: AT21g4yJzRGvG4A8AAAB
+2026-02-28 18:40:55,998 - api.app - INFO - ==================================================
+2026-02-28 18:40:55,998 - api.app - INFO - 🚀 Starting YouTube Downloader (Production)
+2026-02-28 18:40:55,998 - api.app - INFO - ==================================================
+2026-02-28 18:40:56,282 - api.app - INFO - ✅ yt-dlp version: 2024.04.09
+2026-02-28 18:40:56,282 - api.app - WARNING - ⚠️ ffmpeg not found - some formats may not work
+2026-02-28 18:40:56,282 - api.app - INFO - 📁 Root directory: /workspaces/yot_downloader
+2026-02-28 18:40:56,283 - api.app - INFO - 📁 Templates directory: /workspaces/yot_downloader/templates
+2026-02-28 18:40:56,283 - api.app - INFO - 📁 Downloads directory: /workspaces/yot_downloader/downloads
+2026-02-28 18:40:56,283 - api.app - INFO - 📁 Template exists: True
+2026-02-28 18:40:56,283 - api.app - INFO - ==================================================
+2026-02-28 18:40:57,735 - api.app - WARNING - Info error for https://www.youtube.com/watch?v=wy5Y0k8B59o&pp=ugUEEgJlbg%3D%3D: yt-dlp error: WARNING: [youtube] Unable to download webpage: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000)
+WARNING: [youtube] [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000). Retrying (1/3)...
+WARNING: [youtube] [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000). Retrying (2/3)...
+WARNING: [youtube] [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000). Retrying (3/3)...
+WARNING: [youtube] Unable to download API page: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000) (caused by CertificateVerifyError('[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000)')); please report this issue on  https://github.com/yt-dlp/yt-dlp/issues?q= , filling out the appropriate issue template. Confirm you are on the latest version using  yt-dlp -U
+WARNING: [youtube] Unable to download webpage: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000)
+WARNING: [youtube] [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000). Retrying (1/3)...
+WARNING: [youtube] [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000). Retrying (2/3)...
+WARNING: [youtube] [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000). Retrying (3/3)...
+WARNING: [youtube] Unable to download API page: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000) (caused by CertificateVerifyError('[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000)')); please report this issue on  https://github.com/yt-dlp/yt-dlp/issues?q= , filling out the appropriate issue template. Confirm you are on the latest version using  yt-dlp -U
+ERROR: [youtube] wy5Y0k8B59o: Failed to extract any player response; please report this issue on  https://github.com/yt-dlp/yt-dlp/issues?q= , filling out the appropriate issue template. Confirm you are on the latest version using  yt-dlp -U
+
+2026-02-28 18:40:57,736 - engineio.server - ERROR - Invalid session 2hQiWiz9R95NZSzVAAAA (further occurrences of this error will be logged with level INFO)
+2026-02-28 18:40:58,420 - api.app - INFO - Client connected: wJglGCAcQeYCmNuQAAAB
+2026-02-28 18:41:54,130 - api.app - INFO - ==================================================
+2026-02-28 18:41:54,131 - api.app - INFO - 🚀 Starting YouTube Downloader (Production)
+2026-02-28 18:41:54,131 - api.app - INFO - ==================================================
+2026-02-28 18:41:54,395 - api.app - INFO - ✅ yt-dlp version: 2024.04.09
+2026-02-28 18:41:54,395 - api.app - WARNING - ⚠️ ffmpeg not found - some formats may not work
+2026-02-28 18:41:54,395 - api.app - INFO - 📁 Root directory: /workspaces/yot_downloader
+2026-02-28 18:41:54,395 - api.app - INFO - 📁 Templates directory: /workspaces/yot_downloader/templates
+2026-02-28 18:41:54,395 - api.app - INFO - 📁 Downloads directory: /workspaces/yot_downloader/downloads
+2026-02-28 18:41:54,396 - api.app - INFO - 📁 Template exists: True
+2026-02-28 18:41:54,396 - api.app - INFO - ==================================================
+2026-02-28 18:41:54,944 - api.app - WARNING - Info error for https://youtu.be/7imjAnjBCKY: yt-dlp error: WARNING: [youtube] Unable to download webpage: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000)
+WARNING: [youtube] [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000). Retrying (1/3)...
+WARNING: [youtube] [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000). Retrying (2/3)...
+WARNING: [youtube] [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000). Retrying (3/3)...
+WARNING: [youtube] Unable to download API page: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000) (caused by CertificateVerifyError('[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000)')); please report this issue on  https://github.com/yt-dlp/yt-dlp/issues?q= , filling out the appropriate issue template. Confirm you are on the latest version using  yt-dlp -U
+WARNING: [youtube] Unable to download webpage: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000)
+WARNING: [youtube] [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000). Retrying (1/3)...
+WARNING: [youtube] [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000). Retrying (2/3)...
+WARNING: [youtube] [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000). Retrying (3/3)...
+WARNING: [youtube] Unable to download API page: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000) (caused by CertificateVerifyError('[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000)')); please report this issue on  https://github.com/yt-dlp/yt-dlp/issues?q= , filling out the appropriate issue template. Confirm you are on the latest version using  yt-dlp -U
+ERROR: [youtube] 7imjAnjBCKY: Failed to extract any player response; please report this issue on  https://github.com/yt-dlp/yt-dlp/issues?q= , filling out the appropriate issue template. Confirm you are on the latest version using  yt-dlp -U
+
+2026-02-28 18:41:54,946 - engineio.server - ERROR - Invalid session 12bcGE8Pe4V4ZYEXAAAA (further occurrences of this error will be logged with level INFO)
+2026-02-28 18:41:56,052 - api.app - INFO - Client connected: WhD4NdJOShLBMOdoAAAB
+2026-02-28 19:25:07,099 - api.app - INFO - ==================================================
+2026-02-28 19:25:07,099 - api.app - INFO - 🚀 Starting YouTube Downloader (Production)
+2026-02-28 19:25:07,099 - api.app - INFO - ==================================================
+2026-02-28 19:25:08,600 - api.app - INFO - ✅ yt-dlp version: 2024.04.09
+2026-02-28 19:25:08,606 - api.app - WARNING - ⚠️ ffmpeg not found - some formats may not work
+2026-02-28 19:25:08,606 - api.app - INFO - 📁 Root directory: /workspaces/yot_downloader
+2026-02-28 19:25:08,607 - api.app - INFO - 📁 Templates directory: /workspaces/yot_downloader/templates
+2026-02-28 19:25:08,607 - api.app - INFO - 📁 Downloads directory: /workspaces/yot_downloader/downloads
+2026-02-28 19:25:08,607 - api.app - INFO - 📁 Template exists: True
+2026-02-28 19:25:08,607 - api.app - INFO - ==================================================
+2026-02-28 19:25:19,016 - api.app - INFO - Client connected: qHUfoOMikcXDm0OcAAAB
+2026-02-28 19:25:25,456 - api.app - WARNING - Info error for https://www.youtube.com/shorts/KurWZ-iv2sU?feature=share: yt-dlp error: ERROR: [youtube] KurWZ-iv2sU: Sign in to confirm you’re not a bot. This helps protect our community. Learn more
+
+2026-02-28 19:25:25,617 - api.app - INFO - Client qHUfoOMikcXDm0OcAAAB subscribed to b3391581-dd9e-42d3-9b2c-2173e2ec611c
+2026-02-28 19:25:50,877 - api.app - WARNING - Info error for https://www.youtube.com/shorts/KurWZ-iv2sU?feature=share: yt-dlp error: WARNING: [youtube] YouTube said: ERROR - Precondition check failed.
+WARNING: [youtube] HTTP Error 400: Bad Request. Retrying (1/3)...
+ERROR: [youtube] KurWZ-iv2sU: Sign in to confirm you’re not a bot. This helps protect our community. Learn more
+
+2026-02-28 19:25:51,031 - api.app - INFO - Client qHUfoOMikcXDm0OcAAAB subscribed to 5a230666-13b5-4f34-bc75-74ede22ba629
+2026-02-28 19:27:15,922 - api.app - INFO - Client disconnected: qHUfoOMikcXDm0OcAAAB
+2026-02-28 19:27:18,797 - api.app - INFO - Client connected: WB2APJOAbRKEW1GlAAAD
+2026-02-28 19:49:19,633 - api.app - INFO - ==================================================
+2026-02-28 19:49:19,634 - api.app - INFO - 🚀 Starting Video Downloader (Production)
+2026-02-28 19:49:19,634 - api.app - INFO - ==================================================
+2026-02-28 19:49:20,235 - api.app - INFO - ✅ yt-dlp version: 2024.04.09
+2026-02-28 19:49:20,235 - api.app - WARNING - ⚠️ ffmpeg not found - some formats may not work
+2026-02-28 19:49:20,235 - api.app - INFO - 📁 Root directory: /workspaces/yot_downloader
+2026-02-28 19:49:20,236 - api.app - INFO - 📁 Templates directory: /workspaces/yot_downloader/templates
+2026-02-28 19:49:20,236 - api.app - INFO - 📁 Downloads directory: /workspaces/yot_downloader/downloads
+2026-02-28 19:49:20,236 - api.app - INFO - 📁 Template exists: True
+2026-02-28 19:49:20,236 - api.app - INFO - ==================================================
+2026-02-28 19:49:28,793 - api.app - INFO - Client connected: bZwfr__UQaWu5d6RAAAB
+2026-02-28 19:49:35,639 - api.app - WARNING - Info error for https://www.youtube.com/watch?v=wy5Y0k8B59o&pp=ugUEEgJlbg%3D%3D: yt-dlp error: ERROR: [youtube] wy5Y0k8B59o: Sign in to confirm you’re not a bot. This helps protect our community. Learn more
+
+2026-02-28 19:49:35,825 - api.app - INFO - Client bZwfr__UQaWu5d6RAAAB subscribed to 691c58e6-2350-4b0b-9600-f1fffdb84267
+2026-02-28 19:49:50,923 - api.app - WARNING - Info error for https://youtu.be/iSju36iLcr4: yt-dlp error: ERROR: [youtube] iSju36iLcr4: Sign in to confirm you’re not a bot. This helps protect our community. Learn more
+
+2026-02-28 19:49:51,091 - api.app - INFO - Client bZwfr__UQaWu5d6RAAAB subscribed to b1017f7d-a763-4e4a-9452-5c3abaf90e80
+2026-02-28 19:50:00,429 - api.app - WARNING - Info error for https://youtu.be/iSju36iLcr4: yt-dlp error: WARNING: [youtube] YouTube said: ERROR - Precondition check failed.
+WARNING: [youtube] HTTP Error 400: Bad Request. Retrying (1/5)...
+ERROR: [youtube] iSju36iLcr4: Sign in to confirm you’re not a bot. This helps protect our community. Learn more
+
+2026-02-28 19:50:00,606 - api.app - INFO - Client bZwfr__UQaWu5d6RAAAB subscribed to 402f93a2-44d2-4ef2-a4f2-dfc1a33c5685
+2026-02-28 19:50:08,654 - api.app - WARNING - Info error for https://youtu.be/iSju36iLcr4: yt-dlp error: ERROR: [youtube] iSju36iLcr4: Sign in to confirm you’re not a bot. This helps protect our community. Learn more
+
+2026-02-28 19:50:08,817 - api.app - INFO - Client bZwfr__UQaWu5d6RAAAB subscribed to 8c77cbfa-fe12-4b94-99da-f2a250c3aa98
