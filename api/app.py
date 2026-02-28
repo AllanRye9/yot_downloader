@@ -8,6 +8,7 @@ import shutil
 import json
 import logging
 import certifi
+import yt_dlp
 from pathlib import Path
 from datetime import datetime, timedelta
 from functools import wraps
@@ -164,18 +165,8 @@ def rate_limit(max_per_ip=Config.MAX_DOWNLOADS_PER_IP):
 def check_yt_dlp():
     """Check if yt-dlp is installed and accessible"""
     try:
-        result = subprocess.run(
-            [sys.executable, "-m", "yt_dlp", "--version"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        if result.returncode == 0:
-            logger.info(f"✅ yt-dlp version: {result.stdout.strip()}")
-            return True
-        else:
-            logger.error("❌ yt-dlp not found")
-            return False
+        logger.info(f"✅ yt-dlp version: {yt_dlp.version.__version__}")
+        return True
     except Exception as e:
         logger.error(f"❌ Error checking yt-dlp: {e}")
         return False
@@ -221,38 +212,44 @@ def get_ssl_env() -> dict:
     env["REQUESTS_CA_BUNDLE"] = certifi.where()
     return env
 
+def format_speed(bytes_per_sec) -> str:
+    """Format bytes/s to a human-readable speed string"""
+    if bytes_per_sec is None or bytes_per_sec <= 0:
+        return ""
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if bytes_per_sec < 1024.0:
+            return f"{bytes_per_sec:.2f}{unit}/s"
+        bytes_per_sec /= 1024.0
+    return f"{bytes_per_sec:.2f}TiB/s"
+
+def format_eta(seconds) -> str:
+    """Format seconds to mm:ss ETA string"""
+    if seconds is None:
+        return ""
+    m, s = divmod(int(seconds), 60)
+    return f"{m}:{s:02d}"
+
 def get_video_info(url: str) -> dict:
-    """Get video information without downloading, with anti-bot measures"""
+    """Get video information without downloading, using the yt-dlp Python API"""
     try:
-        cmd = [
-            sys.executable,
-            "-m",
-            "yt_dlp",
-            "--dump-json",
-            "--extractor-args", "youtube:player_client=android,web",
-            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "--extractor-retries", "5",
-            "--retries", "5",
-            "--sleep-requests", "1",
-            "--sleep-interval", "5",
-            "--max-sleep-interval", "10",
-            "--no-playlist",
-            url,
-        ]
-        
-        env = get_ssl_env()
-        
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=30,
-            env=env,
-        )
-        
-        info = json.loads(result.stdout)
-        
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "noplaylist": True,
+            "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+            "extractor_retries": 5,
+            "retries": 5,
+            "sleep_requests": 1,
+            "sleep_interval": 5,
+            "max_sleep_interval": 10,
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+
         return {
             "title": info.get("title", "Unknown"),
             "duration": info.get("duration", 0),
@@ -281,215 +278,160 @@ def get_video_info(url: str) -> dict:
                 if f.get("acodec") != "none" and f.get("vcodec") == "none"
             ]
         }
-    except subprocess.TimeoutExpired:
-        return {"error": "Request timeout"}
-    except subprocess.CalledProcessError as e:
-        error_msg = f"yt-dlp error: {e.stderr}"
-        if "Sign in to confirm you're not a bot" in e.stderr:
+    except yt_dlp.utils.DownloadError as e:
+        error_msg = str(e)
+        if "Sign in to confirm you're not a bot" in error_msg:
             error_msg = "YouTube requires authentication. Please provide cookies from a logged-in session."
         return {"error": error_msg}
     except Exception as e:
         return {"error": str(e)}
-
-def parse_progress(line):
-    """Parse progress from yt-dlp output"""
-    import re
-    
-    # Percentage
-    percent_match = re.search(r'(\d+(?:\.\d+)?)%', line)
-    percent = float(percent_match.group(1)) if percent_match else 0
-    
-    # Speed
-    speed_match = re.search(r'at\s+([\d.]+[KMG]?i?B/s)', line)
-    speed = speed_match.group(1) if speed_match else ""
-    
-    # ETA
-    eta_match = re.search(r'ETA\s+(\d+:\d+)', line)
-    eta = eta_match.group(1) if eta_match else ""
-    
-    # Size
-    size_match = re.search(r'of\s+~?([\d.]+[KMG]?i?B)', line)
-    size = size_match.group(1) if size_match else ""
-    
-    return {
-        "percent": percent,
-        "speed": speed,
-        "eta": eta,
-        "size": size,
-        "raw": line
-    }
 
 # =========================================================
 # DOWNLOAD WORKER
 # =========================================================
 
 def download_worker(download_id, url, output_template, format_spec, cookies_file=None):
-    """Background thread for downloading with improved error capture"""
-    
-    cmd = [
-        sys.executable,
-        "-m",
-        "yt_dlp",
-        "--no-playlist",
-        "--no-check-certificate",
-        "--extractor-args", "youtube:player_client=android,web",
-        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "--extractor-retries", "5",
-        "--retries", "5",
-        "--sleep-requests", "1",
-        "--sleep-interval", "5",
-        "--max-sleep-interval", "10",
-        "--newline",
-        "--progress",
-        "-o",
-        output_template,
-        "-f",
-        format_spec,
-        url,
-    ]
+    """Background thread for downloading using the yt-dlp Python API"""
+
+    temp_cookies_path = None
+
+    def progress_hook(d):
+        if d["status"] != "downloading":
+            return
+
+        downloaded = d.get("downloaded_bytes") or 0
+        total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+        percent = (100.0 * downloaded / total) if total else 0
+        speed = format_speed(d.get("speed"))
+        eta = format_eta(d.get("eta"))
+        size = format_size(total) if total else ""
+
+        with downloads_lock:
+            downloads[download_id].update({
+                "percent": percent,
+                "speed": speed,
+                "eta": eta,
+                "size": size,
+            })
+
+        try:
+            socketio.emit(
+                "progress",
+                {
+                    "id": download_id,
+                    "line": "",
+                    "percent": percent,
+                    "speed": speed,
+                    "eta": eta,
+                    "size": size,
+                },
+                room=download_id,
+            )
+        except Exception as e:
+            logger.error(f"Socket emit error: {e}")
+
+    ydl_opts = {
+        "format": format_spec,
+        "outtmpl": output_template,
+        "noplaylist": True,
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        },
+        "extractor_retries": 5,
+        "retries": 5,
+        "sleep_requests": 1,
+        "sleep_interval": 5,
+        "max_sleep_interval": 10,
+        "progress_hooks": [progress_hook],
+        "quiet": True,
+        "no_warnings": True,
+    }
 
     # Handle cookies
-    temp_cookies_path = None
     if cookies_file and cookies_file.strip():
         if os.path.exists(cookies_file):
-            cmd.extend(["--cookies", cookies_file])
+            ydl_opts["cookiefile"] = cookies_file
         else:
             temp_cookies_path = os.path.join('/tmp', f'cookies_{download_id}.txt')
             try:
                 with open(temp_cookies_path, 'w') as f:
                     f.write(cookies_file)
-                cmd.extend(["--cookies", temp_cookies_path])
+                ydl_opts["cookiefile"] = temp_cookies_path
             except Exception as e:
                 logger.error(f"Failed to write cookies: {e}")
 
     # Add ffmpeg if available
     ffmpeg_path = shutil.which('ffmpeg')
     if ffmpeg_path:
-        cmd.extend(["--ffmpeg-location", ffmpeg_path])
+        ydl_opts["ffmpeg_location"] = ffmpeg_path
 
     with downloads_lock:
         downloads[download_id]["status"] = "downloading"
         downloads[download_id]["start_time"] = time.time()
 
-    proc_env = get_ssl_env()
-    output_lines = []  # keep last 20 lines for error diagnosis
-
     try:
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            universal_newlines=True,
-            env=proc_env,
-        )
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
 
-        for line in iter(process.stdout.readline, ""):
-            line = line.strip()
-            if not line:
-                continue
+        with downloads_lock:
+            downloads[download_id].update({
+                "status": "completed",
+                "end_time": time.time(),
+                "percent": 100
+            })
 
-            # Store rolling window of output
-            output_lines.append(line)
-            if len(output_lines) > 20:
-                output_lines.pop(0)
-
-            progress = parse_progress(line)
-            
-            with downloads_lock:
-                downloads[download_id].update({
-                    "percent": progress["percent"],
-                    "last_line": line,
-                    "speed": progress["speed"],
-                    "eta": progress["eta"],
-                    "size": progress["size"]
-                })
-
-            # Emit progress
-            try:
-                socketio.emit(
-                    "progress",
-                    {
-                        "id": download_id,
-                        "line": line,
-                        "percent": progress["percent"],
-                        "speed": progress["speed"],
-                        "eta": progress["eta"],
-                        "size": progress["size"]
-                    },
-                    room=download_id,
-                )
-            except Exception as e:
-                logger.error(f"Socket emit error: {e}")
-
-        process.wait()
-
-        if process.returncode == 0:
-            with downloads_lock:
-                downloads[download_id].update({
-                    "status": "completed",
-                    "end_time": time.time(),
-                    "percent": 100
-                })
-
-                # Find downloaded file
-                base_name = os.path.splitext(os.path.basename(output_template))[0]
-                for file in os.listdir(DOWNLOAD_FOLDER):
-                    if file.startswith(base_name):
-                        file_path = os.path.join(DOWNLOAD_FOLDER, file)
-                        downloads[download_id].update({
-                            "filename": file,
-                            "file_size": os.path.getsize(file_path),
-                            "file_size_hr": format_size(os.path.getsize(file_path))
-                        })
-                        break
-
-            socketio.emit("completed", {
-                "id": download_id,
-                "filename": downloads[download_id].get("filename"),
-                "title": downloads[download_id].get("title")
-            }, room=download_id)
-            socketio.emit("files_updated", broadcast=True)
-            
-        else:
-            # Extract meaningful error from output lines
-            error_msg = f"Process exited with code {process.returncode}"
-            for line in reversed(output_lines):
-                if "ERROR:" in line or "Sign in" in line or "bot" in line.lower():
-                    error_msg = line
+            # Find downloaded file
+            base_name = os.path.splitext(os.path.basename(output_template))[0]
+            for file in os.listdir(DOWNLOAD_FOLDER):
+                if file.startswith(base_name):
+                    file_path = os.path.join(DOWNLOAD_FOLDER, file)
+                    downloads[download_id].update({
+                        "filename": file,
+                        "file_size": os.path.getsize(file_path),
+                        "file_size_hr": format_size(os.path.getsize(file_path))
+                    })
                     break
-            with downloads_lock:
-                downloads[download_id].update({
-                    "status": "failed",
-                    "error": error_msg
-                })
-            
-            socketio.emit("failed", {
-                "id": download_id,
-                "error": error_msg
-            }, room=download_id)
 
-    except Exception as e:
-        logger.error(f"Download worker error: {e}")
+        socketio.emit("completed", {
+            "id": download_id,
+            "filename": downloads[download_id].get("filename"),
+            "title": downloads[download_id].get("title")
+        }, room=download_id)
+        socketio.emit("files_updated", broadcast=True)
+
+    except yt_dlp.utils.DownloadError as e:
         error_msg = str(e)
+        if "Sign in to confirm you're not a bot" in error_msg:
+            error_msg = "YouTube requires authentication. Please provide cookies from a logged-in session."
         with downloads_lock:
             downloads[download_id].update({
                 "status": "failed",
                 "error": error_msg
             })
-        
         socketio.emit("failed", {
             "id": download_id,
             "error": error_msg
         }, room=download_id)
-    
+
+    except Exception as e:
+        logger.error(f"Download worker error: {e}")
+        with downloads_lock:
+            downloads[download_id].update({
+                "status": "failed",
+                "error": str(e)
+            })
+        socketio.emit("failed", {
+            "id": download_id,
+            "error": str(e)
+        }, room=download_id)
+
     finally:
         # Cleanup
         with downloads_lock:
             if download_id in active_threads:
                 del active_threads[download_id]
-        
+
         if temp_cookies_path and os.path.exists(temp_cookies_path):
             try:
                 os.remove(temp_cookies_path)
