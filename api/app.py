@@ -694,6 +694,25 @@ def get_stats():
         logger.error(f"Stats error: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route("/active_downloads")
+def active_downloads_list():
+    """Return count and details of active/queued downloads"""
+    with downloads_lock:
+        active = [
+            {
+                "id": d["id"],
+                "title": d.get("title"),
+                "status": d["status"],
+                "percent": d.get("percent", 0),
+                "speed": d.get("speed", ""),
+                "eta": d.get("eta", ""),
+                "size": d.get("size", "")
+            }
+            for d in downloads.values()
+            if d["status"] in ("queued", "downloading")
+        ]
+    return jsonify({"count": len(active), "downloads": active})
+
 @app.route("/cancel/<download_id>", methods=["POST"])
 def cancel_download(download_id):
     """Cancel an ongoing download"""
@@ -819,6 +838,5 @@ if __name__ == "__main__":
         app,
         host="0.0.0.0",
         port=port,
-        debug=debug,
-        allow_unsafe_werkzeug=True
+        debug=debug
     )

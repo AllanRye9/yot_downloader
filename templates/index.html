@@ -3,17 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Downloader</title>
-    <!-- Font Awesome for icons -->
+    <title>YOT Downloader</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Socket.IO client -->
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -21,7 +15,6 @@
             color: #333;
             line-height: 1.6;
             min-height: 100vh;
-            position: relative;
         }
 
         .container {
@@ -30,7 +23,7 @@
             padding: 20px;
         }
 
-        /* Stats badge */
+        /* ── Stats badge ── */
         .stats-badge {
             position: fixed;
             top: 20px;
@@ -51,20 +44,15 @@
             cursor: pointer;
             transition: transform 0.2s;
         }
-        .stats-badge:hover {
-            transform: scale(1.05);
-        }
-        .stats-badge small {
-            font-size: 0.7rem;
-            opacity: 0.9;
-        }
+        .stats-badge:hover { transform: scale(1.05); }
+        .stats-badge small { font-size: 0.7rem; opacity: 0.9; }
 
-        /* Toast notifications */
+        /* ── Toast ── */
         .toast-container {
             position: fixed;
             bottom: 20px;
             right: 20px;
-            z-index: 1000;
+            z-index: 2000;
         }
         .toast {
             background: white;
@@ -77,258 +65,267 @@
             align-items: center;
             gap: 10px;
             animation: slideInRight 0.3s ease-out;
-            max-width: 300px;
+            max-width: 320px;
         }
-        .toast i {
-            color: #667eea;
-            font-size: 1.2rem;
-        }
-        .toast.success {
-            border-left-color: #10b981;
-        }
-        .toast.success i {
-            color: #10b981;
-        }
-        .toast.error {
-            border-left-color: #ef4444;
-        }
-        .toast.error i {
-            color: #ef4444;
-        }
+        .toast i { color: #667eea; font-size: 1.2rem; }
+        .toast.success { border-left-color: #10b981; }
+        .toast.success i { color: #10b981; }
+        .toast.error { border-left-color: #ef4444; }
+        .toast.error i { color: #ef4444; }
+        .toast.warning { border-left-color: #f59e0b; }
+        .toast.warning i { color: #f59e0b; }
+
         @keyframes slideInRight {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
+            from { transform: translateX(100%); opacity: 0; }
+            to   { transform: translateX(0);    opacity: 1; }
         }
         @keyframes fadeOut {
             from { opacity: 1; }
-            to { opacity: 0; }
+            to   { opacity: 0; }
         }
 
-        /* Card styles */
+        /* ── Card ── */
         .card {
             background: white;
-            border-radius: 8px;
+            border-radius: 10px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             overflow: hidden;
-            animation: slideUp 0.6s ease-out;
             margin-bottom: 20px;
+            animation: slideUp 0.5s ease-out;
         }
-
         .card-header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 20px;
-            font-size: 1.2rem;
+            padding: 16px 20px;
+            font-size: 1.1rem;
             font-weight: 600;
             display: flex;
             align-items: center;
             gap: 10px;
         }
+        .card-body { padding: 20px; }
 
-        .card-body {
-            padding: 20px;
-        }
-
-        /* Form */
-        .form-group {
-            margin-bottom: 15px;
-        }
-
+        /* ── Form ── */
+        .form-group { margin-bottom: 15px; }
         label {
             display: block;
             font-weight: 600;
             color: #2c3e50;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             font-size: 0.9rem;
         }
-
-        input {
+        input, select {
             width: 100%;
-            padding: 12px;
-            border: 2px solid #ecf0f1;
+            padding: 11px 14px;
+            border: 2px solid #e8ecf0;
             border-radius: 6px;
             font-family: inherit;
-            font-size: 1rem;
-            transition: border-color 0.3s ease;
+            font-size: 0.95rem;
+            transition: border-color 0.2s;
+            background: #fafafa;
         }
-
-        input:focus {
+        input:focus, select:focus {
             outline: none;
-            border-color: #3498db;
-            background: #f8f9fa;
+            border-color: #667eea;
+            background: #fff;
         }
-
         .form-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 15px;
         }
-
         @media (max-width: 600px) {
-            .form-row {
-                grid-template-columns: 1fr;
-            }
+            .form-row { grid-template-columns: 1fr; }
+            .main-grid { grid-template-columns: 1fr !important; }
+            .stats-badge { width: 56px; height: 56px; font-size: 1rem; top: 12px; left: 12px; }
         }
 
+        /* ── Buttons ── */
         button {
-            padding: 12px 24px;
+            padding: 11px 22px;
             border: none;
             border-radius: 6px;
-            font-size: 1rem;
+            font-size: 0.95rem;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
+            transition: all 0.25s;
+            display: inline-flex;
             align-items: center;
-            gap: 8px;
+            gap: 7px;
             justify-content: center;
         }
-
         .btn-primary {
             width: 100%;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(102, 126, 234, 0.45);
         }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .btn-secondary { background: #ecf0f1; color: #2c3e50; }
+        .btn-secondary:hover { background: #dde1e7; }
+        .btn-danger { background: #fee2e2; color: #dc2626; }
+        .btn-danger:hover { background: #fecaca; }
+        .btn-small { padding: 7px 14px; font-size: 0.85rem; }
 
-        .btn-primary:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
+        /* ── Spinner ── */
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.35);
+            border-top-color: #fff;
+            border-radius: 50%;
+            display: inline-block;
+            animation: spin 0.7s linear infinite;
+            flex-shrink: 0;
         }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-        .btn-secondary {
-            background: #ecf0f1;
+        /* ── Progress bars (active downloads) ── */
+        #active-section { display: none; }
+        .dl-card {
+            border: 1px solid #e8ecf0;
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 12px;
+            background: #fafbff;
+            animation: slideIn 0.3s ease-out;
+        }
+        .dl-card-title {
+            font-weight: 600;
             color: #2c3e50;
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
-
-        .btn-secondary:hover {
-            background: #d5dbdb;
+        .dl-card-title i { color: #667eea; margin-right: 6px; }
+        .progress-wrap {
+            background: #e8ecf0;
+            border-radius: 999px;
+            height: 10px;
+            overflow: hidden;
+            margin-bottom: 6px;
         }
-
-        .btn-small {
-            padding: 8px 16px;
-            font-size: 0.9rem;
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 999px;
+            transition: width 0.4s ease;
+            width: 0%;
         }
-
-        /* File list */
-        .file-list {
-            list-style: none;
+        .progress-fill.indeterminate {
+            width: 40%;
+            animation: indeterminate 1.4s ease-in-out infinite;
         }
+        @keyframes indeterminate {
+            0%   { transform: translateX(-100%); }
+            100% { transform: translateX(350%); }
+        }
+        .dl-meta { font-size: 0.8rem; color: #6b7280; display: flex; gap: 12px; flex-wrap: wrap; }
+        .dl-meta span { display: flex; align-items: center; gap: 4px; }
 
+        /* ── File list ── */
+        .file-list { list-style: none; }
         .file-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 12px;
-            border: 1px solid #ecf0f1;
-            border-radius: 6px;
+            padding: 12px 14px;
+            border: 1px solid #e8ecf0;
+            border-radius: 8px;
             margin-bottom: 8px;
-            transition: all 0.3s ease;
-            animation: slideIn 0.4s ease-out;
+            transition: all 0.2s;
+            animation: slideIn 0.35s ease-out;
         }
-
-        .file-item:hover {
-            background: #f8f9fa;
-            border-color: #3498db;
-            transform: translateX(4px);
-        }
-
-        .file-info {
-            flex: 1;
-        }
-
+        .file-item:hover { background: #f8f9ff; border-color: #c4cdf8; transform: translateX(3px); }
+        .file-info { flex: 1; min-width: 0; }
         .file-name {
             font-weight: 600;
             color: #2c3e50;
             word-break: break-all;
+            font-size: 0.95rem;
         }
-
-        .file-meta {
-            font-size: 0.85rem;
-            color: #7f8c8d;
-            margin-top: 4px;
-        }
-
-        .file-actions {
-            display: flex;
-            gap: 8px;
-            margin-left: 12px;
-        }
-
-        .btn-download {
-            padding: 8px 12px;
+        .file-meta { font-size: 0.82rem; color: #7f8c8d; margin-top: 2px; }
+        .file-actions { display: flex; gap: 8px; margin-left: 12px; flex-shrink: 0; }
+        .btn-file-dl {
+            padding: 7px 13px;
             background: #3498db;
             color: white;
-            font-size: 0.85rem;
+            font-size: 0.82rem;
+            font-weight: 600;
             text-decoration: none;
-            border-radius: 4px;
-        }
-
-        .btn-download:hover {
-            background: #2980b9;
-        }
-
-        /* Ad placeholder (optional) */
-        .ad-placeholder {
-            background: #ecf0f1;
-            border: 2px dashed #95a5a6;
-            border-radius: 8px;
-            padding: 20px;
-            text-align: center;
-            color: #7f8c8d;
-            min-height: 150px;
-            display: flex;
+            border-radius: 5px;
+            display: inline-flex;
             align-items: center;
-            justify-content: center;
-            font-weight: 500;
-            margin-bottom: 15px;
+            gap: 5px;
+            transition: background 0.2s;
         }
+        .btn-file-dl:hover { background: #2980b9; }
 
+        /* ── Tips card ── */
+        .format-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .format-table th, .format-table td {
+            padding: 7px 10px;
+            text-align: left;
+            border-bottom: 1px solid #e8ecf0;
+        }
+        .format-table th { background: #f1f3fb; font-weight: 600; color: #555; }
+        .format-table code {
+            background: #f1f3fb;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-size: 0.82rem;
+            color: #6d28d9;
+        }
         .tip-box {
-            background: #d6eaf8;
-            border-left: 4px solid #3498db;
-            padding: 12px;
+            background: #eff6ff;
+            border-left: 4px solid #3b82f6;
+            padding: 12px 14px;
             border-radius: 4px;
-            font-size: 0.9rem;
-            color: #1a5276;
+            font-size: 0.87rem;
+            color: #1e40af;
+            margin-top: 14px;
         }
 
+        /* ── Empty / status states ── */
         .empty-state {
             text-align: center;
-            color: #7f8c8d;
-            padding: 40px 20px;
+            color: #95a5a6;
+            padding: 36px 20px;
         }
+        .empty-state i { font-size: 2.2rem; margin-bottom: 10px; display: block; opacity: 0.45; }
 
-        .empty-state i {
-            font-size: 2rem;
-            margin-bottom: 10px;
-            opacity: 0.5;
+        /* ── Connection indicator ── */
+        #conn-dot {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #9ca3af;
+            margin-right: 6px;
+            vertical-align: middle;
+            transition: background 0.3s;
         }
+        #conn-dot.connected { background: #22c55e; }
+        #conn-dot.error { background: #ef4444; }
 
         @keyframes slideUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
+            from { opacity: 0; transform: translateY(18px); }
+            to   { opacity: 1; transform: translateY(0); }
         }
-
         @keyframes slideIn {
-            from { opacity: 0; transform: translateX(-10px); }
-            to { opacity: 1; transform: translateX(0); }
+            from { opacity: 0; transform: translateX(-8px); }
+            to   { opacity: 1; transform: translateX(0); }
         }
     </style>
 </head>
 <body>
     <!-- Stats badge -->
-    <div class="stats-badge" id="stats-badge" title="Total videos / Total size">
+    <div class="stats-badge" id="stats-badge" title="Files downloaded / Total size">
         <span id="badge-count">0</span>
         <small id="badge-size">0 MB</small>
     </div>
@@ -337,72 +334,94 @@
     <div class="toast-container" id="toast-container"></div>
 
     <div class="container">
-        <header style="text-align: center; margin-bottom: 20px;">
-            <h1><i class="fas fa-download"></i> Video Downloader</h1>
-            <p class="subtitle">Fast and easy video downloading</p>
+        <header style="text-align:center; margin-bottom:24px; padding-top:10px;">
+            <h1 style="font-size:2rem; font-weight:700; color:#1e293b;">
+                <i class="fas fa-download" style="color:#667eea;"></i> YOT Downloader
+            </h1>
+            <p style="color:#64748b; margin-top:4px;">
+                <span id="conn-dot"></span>
+                Powered by yt-dlp &mdash; download videos from YouTube and 1 000+ other sites
+            </p>
         </header>
 
-        <!-- Main grid: 2 columns -->
-        <div class="main-grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
-            <!-- Download Form -->
-            <div class="card">
-                <div class="card-header">
-                    <i class="fas fa-link"></i> Download Video
+        <!-- Main grid: left (form + active downloads) / right (tips) -->
+        <div class="main-grid" style="display:grid; grid-template-columns:2fr 1fr; gap:20px; align-items:start;">
+
+            <!-- Left column -->
+            <div>
+                <!-- Download form -->
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-link"></i> Download Video
+                    </div>
+                    <div class="card-body">
+                        <form id="download-form">
+                            <div class="form-group">
+                                <label for="url"><i class="fas fa-globe"></i> Video URL <span style="color:#ef4444;">*</span></label>
+                                <input type="url" id="url" required
+                                       placeholder="https://www.youtube.com/watch?v=…  or any supported URL">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="format"><i class="fas fa-sliders-h"></i> Format</label>
+                                    <input type="text" id="format" value="best"
+                                           placeholder="best, bestvideo+bestaudio, mp3…">
+                                </div>
+                                <div class="form-group">
+                                    <label for="cookies"><i class="fas fa-key"></i> Cookies <small style="font-weight:400;">(optional)</small></label>
+                                    <input type="text" id="cookies"
+                                           placeholder="path/to/cookies.txt or Netscape content">
+                                </div>
+                            </div>
+                            <button type="submit" id="download-btn" class="btn-primary">
+                                <i class="fas fa-cloud-download-alt"></i> Start Download
+                            </button>
+                        </form>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <form id="download-form">
-                        <div class="form-group">
-                            <label for="url"><i class="fas fa-globe"></i> Video URL *</label>
-                            <input type="url" id="url" required placeholder="https://www.youtube.com/watch?v=...">
-                        </div>
 
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label for="format"><i class="fas fa-cog"></i> Format</label>
-                                <input type="text" id="format" value="best" placeholder="best, bestvideo+bestaudio">
-                            </div>
-                            <div class="form-group">
-                                <label for="cookies"><i class="fas fa-key"></i> Cookies (file path or content)</label>
-                                <input type="text" id="cookies" placeholder="path/to/cookies.txt or paste Netscape cookies">
-                            </div>
-                        </div>
-
-                        <button type="submit" id="download-btn" class="btn-primary">
-                            <i class="fas fa-cloud-download-alt"></i> Start Download
-                        </button>
-                    </form>
+                <!-- Active downloads (hidden when empty) -->
+                <div class="card" id="active-section">
+                    <div class="card-header">
+                        <i class="fas fa-spinner fa-spin"></i> Active Downloads
+                    </div>
+                    <div class="card-body" id="active-body">
+                        <!-- populated by JS -->
+                    </div>
                 </div>
             </div>
 
-            <!-- Tips & Ads -->
-            <div>
-                <div class="card">
-                    <div class="card-header">
-                        <i class="fas fa-star"></i> Featured
-                    </div>
-                    <div class="card-body">
-                        <div class="ad-placeholder">
-                            <div>
-                                <div style="font-size: 2rem; margin-bottom: 10px;">📢</div>
-                                <p style="font-weight: 600; margin-bottom: 8px;">Advertisement Space</p>
-                                <p style="font-size: 0.9rem;">Your ad here</p>
-                            </div>
-                        </div>
-                        <div class="tip-box">
-                            <strong>💡 Tip:</strong> Use format "best" for best quality or "mp3" for audio only.<br>
-                            If you get a bot error, provide cookies from a logged‑in browser session.
-                        </div>
+            <!-- Right column: format tips -->
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-lightbulb"></i> Format Guide
+                </div>
+                <div class="card-body">
+                    <table class="format-table">
+                        <thead>
+                            <tr><th>Format string</th><th>Result</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td><code>best</code></td><td>Best single-file quality</td></tr>
+                            <tr><td><code>bestvideo+bestaudio</code></td><td>Best quality (needs ffmpeg)</td></tr>
+                            <tr><td><code>bestvideo[height&lt;=720]+bestaudio</code></td><td>Cap at 720 p</td></tr>
+                            <tr><td><code>bestvideo[height&lt;=480]+bestaudio</code></td><td>Cap at 480 p</td></tr>
+                            <tr><td><code>mp3</code></td><td>Audio only (needs ffmpeg)</td></tr>
+                            <tr><td><code>bestaudio</code></td><td>Best audio stream</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="tip-box">
+                        <strong>💡 Bot error?</strong> Export cookies from a logged-in browser
+                        (use the <em>Get cookies.txt</em> extension) and paste the file path above.
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Downloaded Files -->
+        <!-- Downloaded files -->
         <div class="card">
-            <div class="card-header" style="justify-content: space-between;">
-                <div>
-                    <i class="fas fa-list"></i> Downloaded Videos
-                </div>
+            <div class="card-header" style="justify-content:space-between;">
+                <span><i class="fas fa-film"></i> Downloaded Videos</span>
                 <button class="btn-secondary btn-small" onclick="loadFiles(true)">
                     <i class="fas fa-sync-alt"></i> Refresh
                 </button>
@@ -410,266 +429,325 @@
             <div class="card-body">
                 <ul class="file-list" id="file-list">
                     <div class="empty-state">
-                        <i class="fas fa-inbox"></i>
-                        <p>Loading files...</p>
+                        <i class="fas fa-hourglass-half"></i>
+                        <p>Loading files…</p>
                     </div>
                 </ul>
-            </div>
-        </div>
-
-        <!-- Bottom ad -->
-        <div style="margin-top: 30px; text-align: center;">
-            <div class="ad-placeholder" style="min-height: 90px;">
-                Advertisement (970×90)
             </div>
         </div>
     </div>
 
     <script>
-        // ---------- Sound Generator ----------
-        function beep(frequency, duration, volume = 0.2) {
+        // ─── Audio ────────────────────────────────────────────────
+        function beep(frequency, duration, volume = 0.18) {
             try {
-                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
                 const play = () => {
-                    const oscillator = audioContext.createOscillator();
-                    const gainNode = audioContext.createGain();
-                    oscillator.connect(gainNode);
-                    gainNode.connect(audioContext.destination);
-                    oscillator.frequency.value = frequency;
-                    oscillator.type = 'sine';
-                    gainNode.gain.value = volume;
-                    oscillator.start();
-                    oscillator.stop(audioContext.currentTime + duration / 1000);
+                    const osc  = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.frequency.value = frequency;
+                    osc.type = 'sine';
+                    gain.gain.value = volume;
+                    osc.start();
+                    osc.stop(ctx.currentTime + duration / 1000);
                 };
-                if (audioContext.state === 'suspended') {
-                    audioContext.resume().then(play).catch(e => console.warn('AudioContext resume failed:', e));
-                } else {
-                    play();
-                }
-            } catch (e) {
-                console.warn('Web Audio API not supported or blocked:', e);
-            }
+                ctx.state === 'suspended' ? ctx.resume().then(play).catch(() => {}) : play();
+            } catch (_) {}
         }
 
-        // ---------- Global State ----------
-        const socket = io({
-            reconnection: true,
-            reconnectionAttempts: 5,
-            reconnectionDelay: 1000
-        });
-
-        // Track active downloads (supports multiple)
-        const activeDownloads = new Map(); // downloadId -> { title, percent, ... }
-
-        // Stats
-        let downloadCount = parseInt(localStorage.getItem('downloadCount')) || 0;
-        let downloadedToday = parseInt(localStorage.getItem('downloadedToday')) || 0;
-        let lastDownloadDate = localStorage.getItem('lastDownloadDate') || new Date().toDateString();
-
-        if (lastDownloadDate !== new Date().toDateString()) {
-            downloadedToday = 0;
-            localStorage.setItem('lastDownloadDate', new Date().toDateString());
-        }
-
-        // Update badge on load
-        updateStatsBadge();
-
-        // ---------- Toast ----------
-        function showToast(message, type = 'info') {
+        // ─── Toast ────────────────────────────────────────────────
+        function showToast(message, type = 'info', duration = 4000) {
             const container = document.getElementById('toast-container');
-            if (!container) return;
             const toast = document.createElement('div');
+            const icon = type === 'success' ? 'fa-check-circle'
+                       : type === 'error'   ? 'fa-exclamation-circle'
+                       : type === 'warning' ? 'fa-exclamation-triangle'
+                       :                      'fa-info-circle';
             toast.className = `toast ${type}`;
-            toast.innerHTML = `
-                <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}"></i>
-                <span>${message}</span>
-            `;
+            toast.innerHTML = `<i class="fas ${icon}"></i><span>${message}</span>`;
             container.appendChild(toast);
             setTimeout(() => {
                 toast.style.animation = 'fadeOut 0.3s ease-out forwards';
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
+                setTimeout(() => toast.remove(), 350);
+            }, duration);
         }
 
-        // ---------- Socket Events ----------
+        // ─── Global state ─────────────────────────────────────────
+        // Map of downloadId -> { title, status, percent, speed, eta, size }
+        const activeDownloads = new Map();
+
+        // Persistent counters (session-level in localStorage)
+        let downloadCount = parseInt(localStorage.getItem('dlCount')) || 0;
+
+        // ─── Socket setup ─────────────────────────────────────────
+        const socket = io({ reconnection: true, reconnectionAttempts: 10, reconnectionDelay: 1500 });
+
+        const connDot = document.getElementById('conn-dot');
+
         socket.on('connect', () => {
-            console.log('Socket connected – refreshing files');
+            connDot.className = 'connected';
             loadFiles(false);
             updateStatsBadge();
-            // Re-subscribe to active downloads after reconnect
-            activeDownloads.forEach((_, id) => {
-                socket.emit('subscribe', { download_id: id });
-            });
+            // Re-subscribe to any downloads still tracked (e.g. after brief reconnect)
+            activeDownloads.forEach((_, id) => socket.emit('subscribe', { download_id: id }));
         });
+        socket.on('disconnect', () => { connDot.className = 'error'; });
+        socket.on('connect_error', () => { connDot.className = 'error'; });
 
         socket.on('progress', (data) => {
-            if (!data || !data.id) return;
-            if (activeDownloads.has(data.id)) {
-                const dl = activeDownloads.get(data.id);
-                dl.percent = data.percent;
-                dl.speed = data.speed;
-                dl.eta = data.eta;
-                activeDownloads.set(data.id, dl);
-                // Optionally update a progress bar if you add one later
-            }
+            if (!data?.id) return;
+            const dl = activeDownloads.get(data.id);
+            if (!dl) return;
+            dl.percent = data.percent || 0;
+            dl.speed   = data.speed  || '';
+            dl.eta     = data.eta    || '';
+            dl.size    = data.size   || '';
+            dl.status  = 'downloading';
+            activeDownloads.set(data.id, dl);
+            renderActiveDownloads();
         });
 
         socket.on('completed', (data) => {
-            if (!data || !data.id) {
-                console.warn('Malformed completed event', data);
-                return;
-            }
-            if (activeDownloads.has(data.id)) {
+            if (!data?.id) return;
+            const dl = activeDownloads.get(data.id);
+            if (dl) {
                 downloadCount++;
-                downloadedToday++;
-                localStorage.setItem('downloadCount', downloadCount);
-                localStorage.setItem('downloadedToday', downloadedToday);
-                updateStatsBadge();
-                showToast('✅ Download completed!', 'success');
-                beep(880, 300, 0.2);
+                localStorage.setItem('dlCount', downloadCount);
+                showToast(`✅ "${dl.title}" downloaded!`, 'success');
+                beep(880, 300);
                 activeDownloads.delete(data.id);
-                // Refresh file list to show new file
+                renderActiveDownloads();
+                updateStatsBadge();
                 loadFiles(true);
             }
         });
 
         socket.on('failed', (data) => {
-            if (!data || !data.id) {
-                console.warn('Malformed failed event', data);
-                return;
-            }
-            if (activeDownloads.has(data.id)) {
-                // Use the error message from server, or a default
-                const errorMsg = data.error || 'Download failed';
-                showToast(`❌ ${errorMsg}`, 'error');
-                beep(220, 400, 0.2);
+            if (!data?.id) return;
+            const dl = activeDownloads.get(data.id);
+            if (dl) {
+                const msg = data.error || 'Download failed';
+                showToast(`❌ ${msg}`, 'error', 6000);
+                beep(220, 500);
                 activeDownloads.delete(data.id);
+                renderActiveDownloads();
             }
         });
 
         socket.on('cancelled', (data) => {
-            if (!data || !data.id) return;
+            if (!data?.id) return;
             if (activeDownloads.has(data.id)) {
                 showToast('Download cancelled', 'info');
                 activeDownloads.delete(data.id);
+                renderActiveDownloads();
             }
         });
 
         socket.on('files_updated', () => {
-            console.log('Files updated – reloading list');
             loadFiles(true);
             updateStatsBadge();
         });
 
-        // ---------- Download Form ----------
+        // ─── Active downloads UI ──────────────────────────────────
+        function renderActiveDownloads() {
+            const section = document.getElementById('active-section');
+            const body    = document.getElementById('active-body');
+
+            if (activeDownloads.size === 0) {
+                section.style.display = 'none';
+                body.innerHTML = '';
+                return;
+            }
+
+            section.style.display = '';
+            let html = '';
+            activeDownloads.forEach((dl, id) => {
+                const pct        = Math.min(100, dl.percent || 0);
+                const isQueued   = dl.status === 'queued' || pct === 0;
+                const barClass   = isQueued ? 'progress-fill indeterminate' : 'progress-fill';
+                const barWidth   = isQueued ? '' : `style="width:${pct}%"`;
+                const speedStr   = dl.speed ? `<span><i class="fas fa-tachometer-alt"></i> ${dl.speed}</span>` : '';
+                const etaStr     = dl.eta   ? `<span><i class="fas fa-clock"></i> ETA ${dl.eta}</span>`       : '';
+                const sizeStr    = dl.size  ? `<span><i class="fas fa-hdd"></i> ${dl.size}</span>`            : '';
+                const pctLabel   = isQueued ? 'Queued…' : `${pct.toFixed(1)}%`;
+
+                html += `
+                <div class="dl-card" id="dlc-${id}">
+                    <div class="dl-card-title"><i class="fas fa-video"></i>${escHtml(dl.title)}</div>
+                    <div class="progress-wrap"><div class="${barClass}" ${barWidth}></div></div>
+                    <div class="dl-meta">
+                        <span><i class="fas fa-percent"></i> ${pctLabel}</span>
+                        ${speedStr}${etaStr}${sizeStr}
+                    </div>
+                </div>`;
+            });
+            body.innerHTML = html;
+        }
+
+        function escHtml(str) {
+            return String(str)
+                .replace(/&/g,'&amp;')
+                .replace(/</g,'&lt;')
+                .replace(/>/g,'&gt;')
+                .replace(/"/g,'&quot;');
+        }
+
+        // ─── Download form ────────────────────────────────────────
         document.getElementById('download-form').addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const url = document.getElementById('url').value;
-            const format = document.getElementById('format').value;
-            const cookies = document.getElementById('cookies').value;
+            const url     = document.getElementById('url').value.trim();
+            const format  = document.getElementById('format').value.trim() || 'best';
+            const cookies = document.getElementById('cookies').value.trim();
+            const btn     = document.getElementById('download-btn');
 
-            const btn = document.getElementById('download-btn');
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner"></span> Starting...';
+            btn.disabled  = true;
+            btn.innerHTML = '<span class="spinner"></span> Starting…';
 
             try {
-                const formData = new FormData();
-                formData.append('url', url);
-                formData.append('format', format);
-                formData.append('cookies', cookies);
+                const fd = new FormData();
+                fd.append('url',     url);
+                fd.append('format',  format);
+                fd.append('cookies', cookies);
 
-                const response = await fetch('/start_download', {
-                    method: 'POST',
-                    body: formData
-                });
-                const data = await response.json();
+                const res  = await fetch('/start_download', { method: 'POST', body: fd });
+                const data = await res.json();
 
-                if (response.ok && data.download_id) {
-                    const downloadId = data.download_id;
-                    activeDownloads.set(downloadId, {
-                        title: data.title || 'Unknown',
-                        status: 'queued',
-                        percent: 0
+                if (res.ok && data.download_id) {
+                    const id = data.download_id;
+                    activeDownloads.set(id, {
+                        title:   data.title || url,
+                        status:  'queued',
+                        percent: 0,
+                        speed:   '',
+                        eta:     '',
+                        size:    ''
                     });
-                    socket.emit('subscribe', { download_id: downloadId });
+                    socket.emit('subscribe', { download_id: id });
+                    renderActiveDownloads();
 
-                    // Show any warning from server (e.g., info error)
                     if (data.warning) {
-                        showToast(`⚠️ ${data.warning}`, 'info');
+                        showToast(`⚠️ ${data.warning}`, 'warning');
                     } else {
-                        showToast('Download started in background', 'info');
+                        showToast('Download queued – progress will appear above', 'info');
                     }
-                    beep(440, 200, 0.2);
+                    beep(440, 200);
+
+                    // Clear URL field for next download
+                    document.getElementById('url').value = '';
                 } else {
                     throw new Error(data.error || 'Failed to start download');
                 }
             } catch (err) {
-                showToast('Error: ' + err.message, 'error');
+                showToast('Error: ' + err.message, 'error', 6000);
             } finally {
-                btn.disabled = false;
+                btn.disabled  = false;
                 btn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Start Download';
             }
         });
 
-        // ---------- Stats Badge Update ----------
+        // ─── Stats badge ──────────────────────────────────────────
         async function updateStatsBadge() {
             document.getElementById('badge-count').textContent = downloadCount;
-
             try {
-                const response = await fetch(`/files?t=${Date.now()}`);
-                const files = await response.json();
-                let totalSize = 0;
-                files.forEach(f => totalSize += f.size);
-                const sizeInMB = (totalSize / 1024 / 1024).toFixed(2);
-                document.getElementById('badge-size').textContent = sizeInMB + ' MB';
-            } catch (e) {
-                console.log('Stats error:', e);
+                const res   = await fetch(`/files?t=${Date.now()}`);
+                const files = await res.json();
+                let total = 0;
+                files.forEach(f => { total += f.size; });
+                const mb = (total / 1024 / 1024).toFixed(1);
+                document.getElementById('badge-size').textContent = mb + ' MB';
+            } catch (_) {}
+        }
+
+        // ─── File list ────────────────────────────────────────────
+        async function loadFiles(animate = false) {
+            const list = document.getElementById('file-list');
+            try {
+                const res   = await fetch(`/files?t=${Date.now()}`);
+                const files = await res.json();
+
+                if (!Array.isArray(files) || files.length === 0) {
+                    list.innerHTML = `
+                        <div class="empty-state">
+                            <i class="fas fa-inbox"></i>
+                            <p>No files downloaded yet</p>
+                        </div>`;
+                    return;
+                }
+
+                list.innerHTML = '';
+                files.forEach((file, idx) => {
+                    const li   = document.createElement('li');
+                    li.className = 'file-item';
+                    if (animate) li.style.animationDelay = (idx * 0.04) + 's';
+
+                    const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+                    const date   = new Date(file.modified * 1000).toLocaleDateString();
+                    const safeName = escHtml(file.name);
+                    const dlHref   = '/downloads/' + encodeURIComponent(file.name);
+
+                    li.innerHTML = `
+                        <div class="file-info">
+                            <div class="file-name">
+                                <i class="fas fa-film" style="color:#667eea; margin-right:7px;"></i>${safeName}
+                            </div>
+                            <div class="file-meta">${sizeMB} MB &bull; ${date}</div>
+                        </div>
+                        <div class="file-actions">
+                            <a href="${dlHref}" download="${safeName}" class="btn-file-dl">
+                                <i class="fas fa-download"></i> Save
+                            </a>
+                            <button class="btn-danger btn-small delete-btn"
+                                    data-filename="${safeName}"
+                                    title="Delete file">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>`;
+                    list.appendChild(li);
+                });
+            } catch (_) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <p>Could not load file list</p>
+                    </div>`;
             }
         }
 
-        // ---------- Load File List ----------
-        async function loadFiles(animate = false) {
-            const fileList = document.getElementById('file-list');
+        // ─── Delete file ──────────────────────────────────────────
+        // Use event delegation to avoid inline onclick with user data
+        document.getElementById('file-list').addEventListener('click', async (e) => {
+            const btn = e.target.closest('.delete-btn');
+            if (!btn) return;
+            const filename = btn.dataset.filename;
+            if (!filename) return;
+            await deleteFile(filename, btn);
+        });
 
+        async function deleteFile(filename, btn) {
+            if (!confirm(`Delete "${filename}"?`)) return;
+            btn.disabled = true;
             try {
-                const response = await fetch(`/files?t=${Date.now()}`);
-                const files = await response.json();
-
-                if (files.length === 0) {
-                    fileList.innerHTML = '<div class="empty-state"><i class="fas fa-inbox"></i><p>No files downloaded yet</p></div>';
+                const res = await fetch('/delete/' + encodeURIComponent(filename), { method: 'DELETE' });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showToast('File deleted', 'success');
+                    loadFiles(true);
+                    updateStatsBadge();
                 } else {
-                    fileList.innerHTML = '';
-                    files.forEach((file, index) => {
-                        const li = document.createElement('li');
-                        li.className = 'file-item';
-                        if (animate) {
-                            li.style.animationDelay = (index * 0.05) + 's';
-                        }
-
-                        const sizeMB = (file.size / 1024 / 1024).toFixed(2);
-                        const date = new Date(file.modified * 1000).toLocaleDateString();
-
-                        li.innerHTML = `
-                            <div class="file-info">
-                                <div class="file-name"><i class="fas fa-video" style="color: #667eea; margin-right: 8px;"></i>${file.name}</div>
-                                <div class="file-meta">${sizeMB} MB • ${date}</div>
-                            </div>
-                            <div class="file-actions">
-                                <a href="/downloads/${file.name}" target="_blank" class="btn-download" style="text-decoration: none;">
-                                    <i class="fas fa-download"></i> Download
-                                </a>
-                            </div>
-                        `;
-                        fileList.appendChild(li);
-                    });
+                    showToast(data.error || 'Delete failed', 'error');
                 }
             } catch (err) {
-                fileList.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-circle"></i><p>Error loading files</p></div>';
+                showToast('Delete failed: ' + err.message, 'error');
+            } finally {
+                btn.disabled = false;
             }
         }
 
-        // ---------- Initial Load ----------
+        // ─── Init ─────────────────────────────────────────────────
+        updateStatsBadge();
         loadFiles(true);
     </script>
 </body>
