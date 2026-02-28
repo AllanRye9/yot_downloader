@@ -115,3 +115,81 @@ ERROR: [youtube] iSju36iLcr4: Sign in to confirm you’re not a bot. This helps 
 2026-02-28 19:50:08,654 - api.app - WARNING - Info error for https://youtu.be/iSju36iLcr4: yt-dlp error: ERROR: [youtube] iSju36iLcr4: Sign in to confirm you’re not a bot. This helps protect our community. Learn more
 
 2026-02-28 19:50:08,817 - api.app - INFO - Client bZwfr__UQaWu5d6RAAAB subscribed to 8c77cbfa-fe12-4b94-99da-f2a250c3aa98
+2026-02-28 19:58:07,835 - app - INFO - ==================================================
+2026-02-28 19:58:07,835 - app - INFO - 🚀 Starting Video Downloader (Production)
+2026-02-28 19:58:07,835 - app - INFO - ==================================================
+2026-02-28 19:58:08,098 - app - INFO - ✅ yt-dlp version: 2024.04.09
+2026-02-28 19:58:08,099 - app - WARNING - ⚠️ ffmpeg not found - some formats may not work
+2026-02-28 19:58:08,099 - app - INFO - 📁 Root directory: /home/runner/work/yot_downloader/yot_downloader
+2026-02-28 19:58:08,099 - app - INFO - 📁 Templates directory: /home/runner/work/yot_downloader/yot_downloader/templates
+2026-02-28 19:58:08,099 - app - INFO - 📁 Downloads directory: /home/runner/work/yot_downloader/yot_downloader/downloads
+2026-02-28 19:58:08,099 - app - INFO - 📁 Template exists: True
+2026-02-28 19:58:08,099 - app - INFO - ==================================================
+2026-02-28 19:58:12,508 - __main__ - INFO - ==================================================
+2026-02-28 19:58:12,508 - __main__ - INFO - 🚀 Starting Video Downloader (Production)
+2026-02-28 19:58:12,508 - __main__ - INFO - ==================================================
+2026-02-28 19:58:12,735 - __main__ - INFO - ✅ yt-dlp version: 2024.04.09
+2026-02-28 19:58:12,735 - __main__ - WARNING - ⚠️ ffmpeg not found - some formats may not work
+2026-02-28 19:58:12,735 - __main__ - INFO - 📁 Root directory: /home/runner/work/yot_downloader/yot_downloader
+2026-02-28 19:58:12,735 - __main__ - INFO - 📁 Templates directory: /home/runner/work/yot_downloader/yot_downloader/templates
+2026-02-28 19:58:12,735 - __main__ - INFO - 📁 Downloads directory: /home/runner/work/yot_downloader/yot_downloader/downloads
+2026-02-28 19:58:12,735 - __main__ - INFO - 📁 Template exists: True
+2026-02-28 19:58:12,736 - __main__ - INFO - ==================================================
+2026-02-28 19:58:12,736 - __main__ - INFO - 🌐 Starting server on port 5001
+2026-02-28 19:58:12,736 - __main__ - INFO - 🐛 Debug mode: False
+2026-02-28 19:58:30,911 - __main__ - INFO - ==================================================
+2026-02-28 19:58:30,911 - __main__ - INFO - 🚀 Starting Video Downloader (Production)
+2026-02-28 19:58:30,911 - __main__ - INFO - ==================================================
+2026-02-28 19:58:31,136 - __main__ - INFO - ✅ yt-dlp version: 2024.04.09
+2026-02-28 19:58:31,137 - __main__ - WARNING - ⚠️ ffmpeg not found - some formats may not work
+2026-02-28 19:58:31,137 - __main__ - INFO - 📁 Root directory: /home/runner/work/yot_downloader/yot_downloader
+2026-02-28 19:58:31,137 - __main__ - INFO - 📁 Templates directory: /home/runner/work/yot_downloader/yot_downloader/templates
+2026-02-28 19:58:31,137 - __main__ - INFO - 📁 Downloads directory: /home/runner/work/yot_downloader/yot_downloader/downloads
+2026-02-28 19:58:31,137 - __main__ - INFO - 📁 Template exists: True
+2026-02-28 19:58:31,137 - __main__ - INFO - ==================================================
+2026-02-28 19:58:31,137 - __main__ - INFO - 🌐 Starting server on port 5001
+2026-02-28 19:58:31,138 - __main__ - INFO - 🐛 Debug mode: False
+2026-02-28 19:58:53,028 - __main__ - INFO - ==================================================
+2026-02-28 19:58:53,028 - __main__ - INFO - 🚀 Starting Video Downloader (Production)
+2026-02-28 19:58:53,028 - __main__ - INFO - ==================================================
+2026-02-28 19:58:53,253 - __main__ - INFO - ✅ yt-dlp version: 2024.04.09
+2026-02-28 19:58:53,253 - __main__ - WARNING - ⚠️ ffmpeg not found - some formats may not work
+2026-02-28 19:58:53,254 - __main__ - INFO - 📁 Root directory: /home/runner/work/yot_downloader/yot_downloader
+2026-02-28 19:58:53,254 - __main__ - INFO - 📁 Templates directory: /home/runner/work/yot_downloader/yot_downloader/templates
+2026-02-28 19:58:53,254 - __main__ - INFO - 📁 Downloads directory: /home/runner/work/yot_downloader/yot_downloader/downloads
+2026-02-28 19:58:53,254 - __main__ - INFO - 📁 Template exists: True
+2026-02-28 19:58:53,254 - __main__ - INFO - ==================================================
+2026-02-28 19:58:53,254 - __main__ - INFO - 🌐 Starting server on port 5001
+2026-02-28 19:58:53,254 - __main__ - INFO - 🐛 Debug mode: False
+2026-02-28 19:59:15,930 - __main__ - INFO - ==================================================
+2026-02-28 19:59:15,930 - __main__ - INFO - 🚀 Starting Video Downloader (Production)
+2026-02-28 19:59:15,930 - __main__ - INFO - ==================================================
+2026-02-28 19:59:16,158 - __main__ - INFO - ✅ yt-dlp version: 2024.04.09
+2026-02-28 19:59:16,158 - __main__ - WARNING - ⚠️ ffmpeg not found - some formats may not work
+2026-02-28 19:59:16,158 - __main__ - INFO - 📁 Root directory: /home/runner/work/yot_downloader/yot_downloader
+2026-02-28 19:59:16,158 - __main__ - INFO - 📁 Templates directory: /home/runner/work/yot_downloader/yot_downloader/templates
+2026-02-28 19:59:16,158 - __main__ - INFO - 📁 Downloads directory: /home/runner/work/yot_downloader/yot_downloader/downloads
+2026-02-28 19:59:16,158 - __main__ - INFO - 📁 Template exists: True
+2026-02-28 19:59:16,158 - __main__ - INFO - ==================================================
+2026-02-28 19:59:16,159 - __main__ - INFO - 🌐 Starting server on port 5000
+2026-02-28 19:59:16,159 - __main__ - INFO - 🐛 Debug mode: False
+2026-02-28 19:59:22,232 - api.app - INFO - ==================================================
+2026-02-28 19:59:22,232 - api.app - INFO - 🚀 Starting Video Downloader (Production)
+2026-02-28 19:59:22,232 - api.app - INFO - ==================================================
+2026-02-28 19:59:22,458 - api.app - INFO - ✅ yt-dlp version: 2024.04.09
+2026-02-28 19:59:22,458 - api.app - WARNING - ⚠️ ffmpeg not found - some formats may not work
+2026-02-28 19:59:22,458 - api.app - INFO - 📁 Root directory: /home/runner/work/yot_downloader/yot_downloader
+2026-02-28 19:59:22,459 - api.app - INFO - 📁 Templates directory: /home/runner/work/yot_downloader/yot_downloader/templates
+2026-02-28 19:59:22,459 - api.app - INFO - 📁 Downloads directory: /home/runner/work/yot_downloader/yot_downloader/downloads
+2026-02-28 19:59:22,459 - api.app - INFO - 📁 Template exists: True
+2026-02-28 19:59:22,459 - api.app - INFO - ==================================================
+2026-02-28 20:01:29,232 - api.app - INFO - ==================================================
+2026-02-28 20:01:29,232 - api.app - INFO - 🚀 Starting Video Downloader (Production)
+2026-02-28 20:01:29,232 - api.app - INFO - ==================================================
+2026-02-28 20:01:29,462 - api.app - INFO - ✅ yt-dlp version: 2024.04.09
+2026-02-28 20:01:29,462 - api.app - WARNING - ⚠️ ffmpeg not found - some formats may not work
+2026-02-28 20:01:29,462 - api.app - INFO - 📁 Root directory: /home/runner/work/yot_downloader/yot_downloader
+2026-02-28 20:01:29,462 - api.app - INFO - 📁 Templates directory: /home/runner/work/yot_downloader/yot_downloader/templates
+2026-02-28 20:01:29,462 - api.app - INFO - 📁 Downloads directory: /home/runner/work/yot_downloader/yot_downloader/downloads
+2026-02-28 20:01:29,462 - api.app - INFO - 📁 Template exists: True
+2026-02-28 20:01:29,462 - api.app - INFO - ==================================================
