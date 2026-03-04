@@ -212,6 +212,35 @@ def get_ssl_env() -> dict:
     env["REQUESTS_CA_BUNDLE"] = certifi.where()
     return env
 
+def _get_yt_extractor_args() -> dict:
+    """Build YouTube extractor args with player clients that avoid bot detection.
+
+    Uses the ``android`` and ``tv_embedded`` player clients, which are far less
+    likely to trigger YouTube's "Sign in to confirm you're not a bot" error than
+    the ``ios``/``web`` clients.
+
+    Optionally includes a Proof-of-Origin (PO) token when the
+    ``YOUTUBE_PO_TOKEN`` environment variable is set.  PO tokens are tied to the
+    client they were generated for; this function always pairs the token with the
+    ``android`` client (i.e. ``android+<token>``), which must match how the token
+    was obtained (e.g. via the yt-dlp ``--po-token`` helper or a browser
+    extension such as YouTube-po-token-plugin).
+
+    ``YOUTUBE_VISITOR_DATA`` may optionally be set alongside the PO token to
+    pass the visitor-data string returned by YouTube during token generation.
+
+    See https://github.com/yt-dlp/yt-dlp/wiki/Extractors#youtube for details.
+    """
+    args: dict = {"player_client": ["android", "tv_embedded"]}
+    po_token = os.environ.get("YOUTUBE_PO_TOKEN", "").strip()
+    visitor_data = os.environ.get("YOUTUBE_VISITOR_DATA", "").strip()
+    if po_token:
+        # Token format: "<client>+<token_value>" – must match the client above.
+        args["po_token"] = [f"android+{po_token}"]
+    if visitor_data:
+        args["visitor_data"] = [visitor_data]
+    return {"youtube": args}
+
 def format_speed(bytes_per_sec) -> str:
     """Format bytes/s to a human-readable speed string"""
     if bytes_per_sec is None or bytes_per_sec <= 0:
@@ -236,7 +265,7 @@ def get_video_info(url: str) -> dict:
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
-            "extractor_args": {"youtube": {"player_client": ["ios", "web"]}},
+            "extractor_args": _get_yt_extractor_args(),
             "http_headers": {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             },
@@ -334,7 +363,7 @@ def download_worker(download_id, url, output_template, format_spec, cookies_file
         "format": format_spec,
         "outtmpl": output_template,
         "noplaylist": True,
-        "extractor_args": {"youtube": {"player_client": ["ios", "web"]}},
+        "extractor_args": _get_yt_extractor_args(),
         "http_headers": {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         },
