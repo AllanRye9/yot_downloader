@@ -1012,28 +1012,48 @@
             }
 
             section.style.display = '';
-            let html = '';
-            activeDownloads.forEach((dl, id) => {
-                const pct        = Math.min(100, dl.percent || 0);
-                const isQueued   = dl.status === 'queued' || pct === 0;
-                const barClass   = isQueued ? 'progress-fill indeterminate' : 'progress-fill';
-                const barWidth   = isQueued ? '' : `style="width:${pct}%"`;
-                const speedStr   = dl.speed ? `<span><i class="fas fa-tachometer-alt"></i> ${dl.speed}</span>` : '';
-                const etaStr     = dl.eta   ? `<span><i class="fas fa-clock"></i> ETA ${dl.eta}</span>`       : '';
-                const sizeStr    = dl.size  ? `<span><i class="fas fa-hdd"></i> ${dl.size}</span>`            : '';
-                const pctLabel   = isQueued ? 'Queued…' : `${pct.toFixed(1)}%`;
 
-                html += `
-                <div class="dl-card" id="dlc-${id}">
-                    <div class="dl-card-title"><i class="fas fa-video"></i>${escHtml(dl.title)}</div>
-                    <div class="progress-wrap"><div class="${barClass}" ${barWidth}></div></div>
-                    <div class="dl-meta">
-                        <span><i class="fas fa-percent"></i> ${pctLabel}</span>
-                        ${speedStr}${etaStr}${sizeStr}
-                    </div>
-                </div>`;
+            // Remove cards for downloads that are no longer active
+            Array.from(body.querySelectorAll('.dl-card')).forEach(card => {
+                if (card.dataset.dlId && !activeDownloads.has(card.dataset.dlId)) card.remove();
             });
-            body.innerHTML = html;
+
+            activeDownloads.forEach((dl, id) => {
+                const pct      = Math.min(100, dl.percent || 0);
+                const isQueued = dl.status === 'queued' || pct === 0;
+                const speedStr = dl.speed ? `<span><i class="fas fa-tachometer-alt"></i> ${dl.speed}</span>` : '';
+                const etaStr   = dl.eta   ? `<span><i class="fas fa-clock"></i> ETA ${dl.eta}</span>`        : '';
+                const sizeStr  = dl.size  ? `<span><i class="fas fa-hdd"></i> ${dl.size}</span>`             : '';
+                const pctLabel = isQueued ? 'Queued…' : `${pct.toFixed(1)}%`;
+
+                let card = document.getElementById(`dlc-${id}`);
+                if (!card) {
+                    card = document.createElement('div');
+                    card.className = 'dl-card';
+                    card.id = `dlc-${id}`;
+                    card.dataset.dlId = id;
+                    card.innerHTML = `
+                        <div class="dl-card-title"><i class="fas fa-video"></i>${escHtml(dl.title)}</div>
+                        <div class="progress-wrap"><div class="progress-fill" style="width:0%"></div></div>
+                        <div class="dl-meta"></div>`;
+                    body.appendChild(card);
+                }
+
+                // Update progress bar in-place so CSS transition animates smoothly
+                const fill = card.querySelector('.progress-fill');
+                if (isQueued) {
+                    if (!fill.classList.contains('indeterminate')) {
+                        fill.classList.add('indeterminate');
+                        fill.style.width = '';
+                    }
+                } else {
+                    if (fill.classList.contains('indeterminate')) fill.classList.remove('indeterminate');
+                    fill.style.width = pct + '%';
+                }
+
+                card.querySelector('.dl-meta').innerHTML =
+                    `<span><i class="fas fa-percent"></i> ${pctLabel}</span>${speedStr}${etaStr}${sizeStr}`;
+            });
         }
 
         function escHtml(str) {
@@ -1133,27 +1153,48 @@
                 return;
             }
             titleEl.textContent = 'Download in Progress';
-            let html = '';
+
+            // Remove cards for downloads that are no longer active
+            Array.from(body.querySelectorAll('.dl-card')).forEach(card => {
+                if (card.dataset.dlId && !activeDownloads.has(card.dataset.dlId)) card.remove();
+            });
+
             activeDownloads.forEach((dl, id) => {
                 const pct      = Math.min(100, dl.percent || 0);
                 const isQueued = dl.status === 'queued' || pct === 0;
-                const barClass = isQueued ? 'progress-fill indeterminate' : 'progress-fill';
-                const barWidth = isQueued ? '' : `style="width:${pct}%"`;
                 const speedStr = dl.speed ? `<span><i class="fas fa-tachometer-alt"></i> ${dl.speed}</span>` : '';
                 const etaStr   = dl.eta   ? `<span><i class="fas fa-clock"></i> ETA ${dl.eta}</span>`        : '';
                 const sizeStr  = dl.size  ? `<span><i class="fas fa-hdd"></i> ${dl.size}</span>`             : '';
                 const pctLabel = isQueued ? 'Queued…' : `${pct.toFixed(1)}%`;
-                html += `
-                <div class="dl-card">
-                    <div class="dl-card-title"><i class="fas fa-video"></i>${escHtml(dl.title)}</div>
-                    <div class="progress-wrap"><div class="${barClass}" ${barWidth}></div></div>
-                    <div class="dl-meta">
-                        <span><i class="fas fa-percent"></i> ${pctLabel}</span>
-                        ${speedStr}${etaStr}${sizeStr}
-                    </div>
-                </div>`;
+
+                let card = document.getElementById(`modal-dlc-${id}`);
+                if (!card) {
+                    card = document.createElement('div');
+                    card.className = 'dl-card';
+                    card.id = `modal-dlc-${id}`;
+                    card.dataset.dlId = id;
+                    card.innerHTML = `
+                        <div class="dl-card-title"><i class="fas fa-video"></i>${escHtml(dl.title)}</div>
+                        <div class="progress-wrap"><div class="progress-fill" style="width:0%"></div></div>
+                        <div class="dl-meta"></div>`;
+                    body.appendChild(card);
+                }
+
+                // Update progress bar in-place so CSS transition animates smoothly
+                const fill = card.querySelector('.progress-fill');
+                if (isQueued) {
+                    if (!fill.classList.contains('indeterminate')) {
+                        fill.classList.add('indeterminate');
+                        fill.style.width = '';
+                    }
+                } else {
+                    if (fill.classList.contains('indeterminate')) fill.classList.remove('indeterminate');
+                    fill.style.width = pct + '%';
+                }
+
+                card.querySelector('.dl-meta').innerHTML =
+                    `<span><i class="fas fa-percent"></i> ${pctLabel}</span>${speedStr}${etaStr}${sizeStr}`;
             });
-            body.innerHTML = html;
         }
 
         document.getElementById('progress-modal-close-btn').addEventListener('click', closeProgressModal);
