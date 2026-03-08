@@ -631,21 +631,21 @@
         </div>
     </div>
 
-    <!-- Retention: 1-minute keep-or-delete prompt -->
+    <!-- Retention: 1-minute delete-or-exit prompt -->
     <div id="retention-modal" role="dialog" aria-modal="true" aria-labelledby="retention-modal-title">
         <div class="retention-box">
             <div class="modal-icon"><i class="fas fa-clock"></i></div>
-            <div class="modal-title" id="retention-modal-title">Keep this download?</div>
+            <div class="modal-title" id="retention-modal-title">File ready for action</div>
             <div class="retention-filename" id="retention-filename"></div>
             <p style="font-size:0.88rem; color:#64748b; margin-bottom:20px;">
-                This file has been available for 1&nbsp;minute.<br>Would you like to keep or delete it?
+                This file has been available for 1&nbsp;minute.<br>Would you like to delete it or exit this prompt?
             </p>
             <div class="retention-actions">
                 <button class="btn-danger" id="retention-delete-btn">
                     <i class="fas fa-trash"></i> Delete
                 </button>
                 <button class="btn-modal-keep" id="retention-keep-btn">
-                    <i class="fas fa-check"></i> Keep
+                    <i class="fas fa-times"></i> Exit
                 </button>
             </div>
         </div>
@@ -1438,7 +1438,7 @@
 
         document.getElementById('retention-keep-btn').addEventListener('click', () => {
             _closeRetentionModal();
-            showToast('File kept', 'info', 2500);
+            showToast('Prompt dismissed', 'info', 2500);
         });
 
         updateStatsBadge();
