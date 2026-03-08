@@ -833,6 +833,15 @@ def index():
         logger.error(f"Template error: {e}")
         return jsonify({"error": "Template not found"}), 500
 
+@app.route("/ads.txt")
+def ads_txt():
+    """Serve ads.txt for Google AdSense verification"""
+    ads_txt_path = os.path.join(ROOT_DIR, "ads.txt")
+    if os.path.exists(ads_txt_path):
+        return send_from_directory(ROOT_DIR, "ads.txt", mimetype="text/plain")
+    logger.warning("ads.txt file not found at %s", ads_txt_path)
+    return jsonify({"error": "ads.txt not found"}), 404
+
 @app.route("/health")
 def health():
     """Health check endpoint"""
