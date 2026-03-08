@@ -1379,11 +1379,13 @@ def admin_db_download():
 @app.route("/admin/db/upload", methods=["POST"])
 @admin_required
 def admin_db_upload():
-    """Replace the SQLite database with an uploaded backup (admin only).
+    """Merge an uploaded backup database into the live database (admin only).
 
-    The uploaded file is validated as a SQLite database before replacing the
-    live file.  After a successful replace the in-memory state (downloads,
-    visitors) is reloaded from the new database.
+    The uploaded file is validated as a SQLite database before merging.
+    Downloads are merged using INSERT OR IGNORE (live records take precedence;
+    backup-only records are added). Visitors from both databases are combined
+    and re-sorted by timestamp so that records appear in chronological order.
+    After a successful merge the in-memory state is reloaded.
     """
     if "db_file" not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
@@ -1396,7 +1398,7 @@ def admin_db_upload():
     if len(content) < 16 or content[:16] != b"SQLite format 3\x00":
         return jsonify({"error": "Uploaded file is not a valid SQLite database"}), 400
 
-    # Write to a temp file, run an integrity check, then atomically replace
+    # Write to a temp file and run an integrity check
     tmp_path = DB_PATH + ".upload_tmp"
     try:
         with open(tmp_path, "wb") as fh:
@@ -1404,24 +1406,74 @@ def admin_db_upload():
 
         # Integrity check runs on the temp file — no lock needed
         check_conn = sqlite3.connect(tmp_path)
+        check_conn.row_factory = sqlite3.Row
         try:
             result = check_conn.execute("PRAGMA integrity_check").fetchone()
             if result[0] != "ok":
-                os.remove(tmp_path)
                 return jsonify({"error": "Uploaded database failed integrity check"}), 400
+
+            # Read downloads and visitors from the backup
+            try:
+                backup_dl_rows = check_conn.execute("SELECT id, data FROM downloads").fetchall()
+                backup_dl = [(r["id"], r["data"]) for r in backup_dl_rows]
+            except sqlite3.OperationalError:
+                backup_dl = []
+            try:
+                backup_v_rows = check_conn.execute("SELECT data FROM visitors ORDER BY rowid").fetchall()
+                backup_visitors = [r["data"] for r in backup_v_rows]
+            except sqlite3.OperationalError:
+                backup_visitors = []
         finally:
             check_conn.close()
 
-        # Atomically replace the live database, then reload in-memory state.
-        # The replace is POSIX-atomic so readers always see either the old or
-        # the new file; there is no partial-write window.
-        with _db_lock:
-            os.replace(tmp_path, DB_PATH)
+        # Flush current in-memory state to disk before merging
+        save_downloads_to_disk()
+        save_visitors_to_disk()
 
-        # Reload in-memory state from the new database.
+        # Merge backup data into the live database under _db_lock
+        with _db_lock:
+            conn = _get_db()
+            try:
+                # Downloads: INSERT OR IGNORE preserves live records and adds
+                # any backup records whose id does not yet exist in the live DB.
+                for (did, data_json) in backup_dl:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO downloads (id, data) VALUES (?, ?)",
+                        (did, data_json),
+                    )
+
+                # Visitors: combine live + backup, deduplicate by JSON content,
+                # then re-insert sorted by the "timestamp" field so the full
+                # history is stored in chronological order.
+                live_v_rows = conn.execute("SELECT data FROM visitors").fetchall()
+                live_v_jsons = [r["data"] for r in live_v_rows]
+
+                seen_visitor_jsons: set[str] = set()
+                all_visitors = []
+                for v_json in live_v_jsons + backup_visitors:
+                    if v_json not in seen_visitor_jsons:
+                        seen_visitor_jsons.add(v_json)
+                        try:
+                            all_visitors.append(json.loads(v_json))
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+
+                all_visitors.sort(key=lambda v: v.get("timestamp", 0))
+
+                conn.execute("DELETE FROM visitors")
+                for v in all_visitors:
+                    conn.execute(
+                        "INSERT INTO visitors (data) VALUES (?)",
+                        (json.dumps(v, default=str),),
+                    )
+
+                conn.commit()
+            finally:
+                conn.close()
+
+        # Reload in-memory state from the merged database.
         # We must NOT hold _db_lock here because load_persistence() acquires it
-        # internally.  A brief window exists between the replace and the reload,
-        # but this is acceptable for an infrequent admin-only restore operation.
+        # internally.
         global downloads, visitors
         with downloads_lock:
             downloads.clear()
@@ -1429,16 +1481,29 @@ def admin_db_upload():
             visitors.clear()
         load_persistence()
 
-        logger.info("Admin uploaded and restored database backup")
-        return jsonify({"success": True, "message": "Database restored successfully"})
+        added_dl = len(backup_dl)
+        added_v = len(backup_visitors)
+        logger.info(
+            f"Admin merged database backup: {added_dl} download records and "
+            f"{added_v} visitor records from backup processed"
+        )
+        return jsonify({
+            "success": True,
+            "message": (
+                f"Database merged successfully. "
+                f"Processed {added_dl} download record(s) and "
+                f"{added_v} visitor record(s) from backup."
+            ),
+        })
     except Exception as exc:
         logger.error(f"DB upload error: {exc}")
+        return jsonify({"error": f"Upload failed: {exc}"}), 500
+    finally:
         if os.path.exists(tmp_path):
             try:
                 os.remove(tmp_path)
             except OSError:
                 pass
-        return jsonify({"error": f"Upload failed: {exc}"}), 500
 
 # =========================================================
 # SOCKET.IO EVENTS
