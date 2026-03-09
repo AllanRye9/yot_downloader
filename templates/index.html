@@ -424,6 +424,9 @@
             flex-direction: column;
             gap: 12px;
             padding-top: 4px;
+            position: sticky;
+            top: 80px;
+            align-self: flex-start;
         }
         .ad-placeholder {
             background: rgba(255,255,255,0.65);
@@ -470,8 +473,13 @@
         .main-section-header {
             padding: 0;
             gap: 0;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            justify-content: center;
         }
+        .main-section-header::-webkit-scrollbar { display: none; }
         .main-tab-btn {
             padding: 15px 20px;
             background: transparent;
@@ -486,7 +494,8 @@
             letter-spacing: -0.01em;
             font-family: inherit;
             min-height: 52px;
-            flex: 1;
+            flex: 0 0 auto;
+            white-space: nowrap;
             text-align: center;
             display: inline-flex;
             align-items: center;
@@ -501,7 +510,7 @@
             box-shadow: inset 0 -3px 0 white;
         }
         @media (max-width: 600px) {
-            .main-tab-btn { font-size: 0.75rem; padding: 11px 8px; min-height: 44px; }
+            .main-tab-btn { font-size: 0.75rem; padding: 11px 10px; min-height: 44px; }
         }
 
         /* ── Footer ── */
@@ -1109,7 +1118,7 @@
                     <h1 class="hero-title" style="font-size:1.3rem; line-height:1.1;">YOT Downloader</h1>
                     <p class="hero-subtitle" style="margin-top:2px; font-size:0.8rem; justify-content:flex-start;">
                         <span id="conn-dot"></span>
-                        Powered by yt-dlp &mdash; download videos from YouTube and 1,000+ sites
+                        Powered by yt-dlp &mdash; download videos from YouTube and 1000+ sites
                     </p>
                 </div>
             </div>
@@ -1606,12 +1615,12 @@
             </div>
             <p style="font-size:0.9rem; color:#475569; line-height:1.65;">
                 <strong>YOT Downloader</strong> is a powerful, browser-based video downloader and editor powered by
-                <strong>yt-dlp</strong>. It lets you download videos from YouTube and 1,000+ other platforms, then
+                <strong>yt-dlp</strong>. It lets you download videos from YouTube and 1000+ other platforms, then
                 convert, trim, or enhance them — all from one page.
             </p>
             <div class="info-section-title">Tech Stack</div>
             <ul class="info-feature-list">
-                <li><i class="fab fa-python"></i><div><strong>yt-dlp</strong><span>High-performance video extraction engine supporting 1,000+ sites</span></div></li>
+                <li><i class="fab fa-python"></i><div><strong>yt-dlp</strong><span>High-performance video extraction engine supporting 1000+ sites</span></div></li>
                 <li><i class="fas fa-server"></i><div><strong>Flask + Socket.IO</strong><span>Real-time progress updates via WebSockets</span></div></li>
                 <li><i class="fas fa-film"></i><div><strong>FFmpeg</strong><span>Professional-grade video and audio processing</span></div></li>
             </ul>
@@ -1701,12 +1710,12 @@
                 <i class="fas fa-download"></i> YOT Downloader
             </div>
             <p class="footer-subtitle">
-                Powered by yt-dlp &mdash; download videos from YouTube and 1,000+ sites
+                Powered by yt-dlp &mdash; download videos from YouTube and 1000+ sites
             </p>
             <div class="footer-links">
                 <span>Fast &amp; Free</span>
                 <span>&bull;</span>
-                <span>Supports 1,000+ Sites</span>
+                <span>Supports 1000+ Sites</span>
                 <span>&bull;</span>
                 <span>Powered by yt-dlp</span>
             </div>
