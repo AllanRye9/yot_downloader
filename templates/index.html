@@ -200,8 +200,10 @@
         }
         @media (max-width: 600px) {
             .form-row { grid-template-columns: 1fr; }
-            .stats-badge { width: 52px; height: 52px; font-size: 0.9rem; top: 64px; left: 10px; }
-            .stats-badge small { font-size: 0.6rem; }
+            /* Hide the fixed stats badge on mobile — the same stats are already
+               shown inline in the hero section, and the fixed badge overlaps the
+               hero icon at narrow viewport widths. */
+            .stats-badge { display: none; }
             .card-body { padding: 14px; }
             .toast-container { left: 10px; right: 10px; bottom: 10px; }
             .toast { max-width: 100%; }
@@ -209,6 +211,26 @@
         @media (max-width: 480px) {
             .file-item { flex-wrap: wrap; }
             .file-actions { margin-left: 0; width: 100%; justify-content: flex-end; margin-top: 6px; }
+            /* Narrow hero: stack icon+title block and stats vertically */
+            .hero { flex-direction: column !important; align-items: flex-start !important; }
+        }
+        @media (max-width: 375px) {
+            /* Tighter card body padding on very small phones */
+            .card-body { padding: 10px; }
+            /* Reduce modal box padding to prevent content overflow */
+            .modal-box { padding: 24px 16px 20px !important; }
+            .retention-box { padding: 22px 16px 18px; }
+            .info-modal-box { padding: 24px 16px 20px; }
+            /* Shrink tab buttons further so more fit without scrolling */
+            .main-tab-btn { font-size: 0.7rem; padding: 10px 8px; }
+            /* Tighter tab-nav buttons in feature sections */
+            .tab-btn { padding: 6px 10px; font-size: 0.78rem; }
+        }
+        @media (max-width: 320px) {
+            .hero-title { font-size: 1.2rem !important; }
+            .card-header { font-size: 0.9rem; padding: 12px 14px; }
+            /* Icons-only for the three main section tabs at the smallest screens */
+            .main-tab-btn .tab-label { display: none; }
         }
 
         /* ── Buttons ── */
@@ -1128,13 +1150,13 @@
                 <div id="section-download" class="card card-has-dropdown">
                     <div class="card-header main-section-header">
                         <button class="main-tab-btn active" id="main-tab-download" onclick="switchMainSection('download-panel', this)">
-                            <i class="fas fa-link"></i> Download Video
+                            <i class="fas fa-link"></i><span class="tab-label"> Download Video</span>
                         </button>
                         <button class="main-tab-btn" id="main-tab-playlist" onclick="switchMainSection('playlist-panel', this)">
-                            <i class="fas fa-list"></i> Playlist &amp; Bulk Download
+                            <i class="fas fa-list"></i><span class="tab-label"> Playlist &amp; Bulk Download</span>
                         </button>
                         <button class="main-tab-btn" id="main-tab-editing" onclick="switchMainSection('editing-panel', this)">
-                            <i class="fas fa-tools"></i> Video Editing &amp; Conversion
+                            <i class="fas fa-tools"></i><span class="tab-label"> Video Editing &amp; Conversion</span>
                         </button>
                     </div>
                     <!-- Download Video panel (active by default) -->
