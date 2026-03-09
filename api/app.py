@@ -835,6 +835,8 @@ _ALL_CONVERT_FORMATS = _VALID_VIDEO_FORMATS | _VALID_AUDIO_FORMATS
 
 _VALID_RESOLUTION_RE = re.compile(r"^\d{2,5}x\d{2,5}$")
 _VALID_BITRATE_RE    = re.compile(r"^\d+[kKmMgG]?$")
+# Matches: plain seconds (e.g. "90", "1.5"), MM:SS (e.g. "1:30"), HH:MM:SS (e.g. "1:02:30")
+_VALID_TIME_RE = re.compile(r"^\d+(\.\d+)?$|^\d+:\d{1,2}(\.\d+)?$|^\d+:\d{2}:\d{2}(\.\d+)?$")
 
 
 def _resolve_download_file(filename: str):
@@ -1647,7 +1649,7 @@ def _build_video_convert_cmd(ffmpeg_path, input_path, output_path, fmt,
             cmd.extend(["-c:v", "libx264"])
             if video_bitrate:
                 cmd.extend(["-b:v", video_bitrate])
-            cmd.extend(["-c:a", "mp3"])
+            cmd.extend(["-c:a", "libmp3lame"])
             if audio_bitrate:
                 cmd.extend(["-b:a", audio_bitrate])
     cmd.append(output_path)
@@ -1776,7 +1778,7 @@ def trim_video():
     if not ffmpeg_path:
         return jsonify({"error": "ffmpeg is not installed on this server"}), 503
 
-    time_re = re.compile(r"^(\d+:)?(\d+:)?\d+(\.\d+)?$")
+    time_re = _VALID_TIME_RE
     if not time_re.match(start_time):
         return jsonify({"error": "Invalid start_time. Use seconds or HH:MM:SS"}), 400
     if not time_re.match(end_time):
@@ -1929,8 +1931,7 @@ def extract_clip():
     if not (10 <= dur_sec <= 60):
         return jsonify({"error": "duration must be between 10 and 60 seconds"}), 400
 
-    time_re = re.compile(r"^(\d+:)?(\d+:)?\d+(\.\d+)?$")
-    if not time_re.match(start_time):
+    if not _VALID_TIME_RE.match(start_time):
         return jsonify({"error": "Invalid start_time. Use seconds or HH:MM:SS"}), 400
 
     ext = os.path.splitext(filename)[1].lstrip(".") or "mp4"
