@@ -224,7 +224,9 @@
         }
         @media (max-width: 600px) {
             .form-row { grid-template-columns: 1fr; }
-            /* Move badge below the hero so it doesn't overlap the title */
+            /* Hide the hero on mobile — the fixed nav already shows the brand */
+            .hero { display: none; }
+            /* Stats badge: bottom-left, clear of page content */
             .stats-badge { width: 52px; height: 52px; font-size: 0.9rem; top: auto; bottom: 16px; left: 10px; }
             .stats-badge small { font-size: 0.6rem; }
             .card-body { padding: 14px; }
@@ -450,6 +452,8 @@
             gap: 20px;
             align-items: start;
         }
+        /* Prevent grid items from expanding beyond their column width */
+        .main-grid > div { min-width: 0; }
         .ad-col {
             display: flex;
             flex-direction: column;
@@ -1078,6 +1082,8 @@
         .mobile-nav-item:hover,
         .mobile-nav-item:active { background: rgba(255,255,255,0.16); }
         .mobile-nav-item i { width: 20px; text-align: center; font-size: 0.95rem; flex-shrink: 0; }
+        /* Reset <a> link defaults when used as a mobile nav item */
+        a.mobile-nav-item { text-decoration: none; }
         .mobile-nav-section-label {
             font-size: 0.68rem;
             font-weight: 700;
@@ -1120,7 +1126,7 @@
             .btn-small { min-height: 40px; padding: 9px 14px; }
             .file-actions .btn-small { min-height: 40px; }
             .hero-subtitle { font-size: 0.72rem; }
-            select, input[type="text"], input[type="url"], input[type="number"] {
+            select, input[type="text"], input[type="url"], input[type="number"], textarea {
                 font-size: 1rem; /* prevents iOS zoom on focus */
             }
         }
@@ -1210,6 +1216,12 @@
             <button class="mobile-nav-item" onclick="showSectionPanel('editing-panel'); closeMobileNav();">
                 <i class="fas fa-tools"></i> Video Editing &amp; Conversion
             </button>
+            {% if is_admin %}
+            <div class="mobile-nav-divider"></div>
+            <a href="/const" class="mobile-nav-item" onclick="closeMobileNav();">
+                <i class="fas fa-shield-alt"></i> Admin Panel
+            </a>
+            {% endif %}
         </div>
     </nav>
 
