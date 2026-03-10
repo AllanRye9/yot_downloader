@@ -158,10 +158,7 @@
         .hero-stats-text { font-size: 0.75rem; color: rgba(255, 255, 255, 0.7); }
 
         @media (max-width: 600px) {
-            .hero { padding: 8px 14px; }
-            .hero-title { font-size: 1rem; }
-            /* Hide inline stats in hero on mobile — the bottom badge shows them */
-            .hero-stats-text { display: none; }
+            .hero { display: none; }
         }
 
         /* ── Card ── */
@@ -560,6 +557,9 @@
         .footer-copy {
             font-size: 0.75rem;
             color: rgba(255, 255, 255, 0.5);
+        }
+        @media (max-width: 600px) {
+            .site-footer { display: none; }
         }
 
         /* ── Format-guide dropdown ── */
