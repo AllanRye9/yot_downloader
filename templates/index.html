@@ -2835,6 +2835,13 @@
 
         function _enqueueRetentionPrompt(filename) {
             if (promptedFiles.has(filename)) return;
+            // Defer the prompt until all active downloads have finished
+            if (activeDownloads.size > 0) {
+                const retryTimer = setTimeout(() => _enqueueRetentionPrompt(filename), 5000);
+                promptTimers.set(filename, retryTimer);
+                return;
+            }
+            promptTimers.delete(filename);
             promptedFiles.add(filename);
             const modal = document.getElementById('retention-modal');
             if (modal.style.display === 'flex') {
