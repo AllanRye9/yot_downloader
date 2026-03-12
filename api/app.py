@@ -252,6 +252,10 @@ def _execute(conn, sql, params=None):
     Handles the dialect differences between SQLite (``?`` placeholders,
     ``conn.execute``) and PostgreSQL (``%s`` placeholders, cursor with
     ``RealDictCursor``).
+
+    Note: The ``?`` → ``%s`` replacement is safe here because all SQL in this
+    application uses ``?`` exclusively as parameter placeholders (no question
+    marks appear inside string literals or comments).
     """
     if USE_POSTGRES:
         sql = sql.replace("?", "%s")
@@ -375,8 +379,8 @@ def load_persistence():
         try:
             rows = _execute(conn, "SELECT id, data FROM downloads").fetchall()
             saved_dl = {r["id"]: json.loads(r["data"]) for r in rows}
-            rows_v = _execute(conn, "SELECT data FROM visitors ORDER BY %s" %
-                              ("id" if USE_POSTGRES else "rowid")).fetchall()
+            visitor_order_col = "id" if USE_POSTGRES else "rowid"
+            rows_v = _execute(conn, f"SELECT data FROM visitors ORDER BY {visitor_order_col}").fetchall()
             saved_v = [json.loads(r["data"]) for r in rows_v]
         finally:
             conn.close()
@@ -1798,6 +1802,7 @@ async def admin_db_upload(request: Request):
 
     if not is_sqlite:
         # Try to parse as JSON backup
+        _bad_backup_msg = "Uploaded file is not a valid backup (expected SQLite or JSON)"
         try:
             parsed = json.loads(content)
             if isinstance(parsed, dict) and ("downloads" in parsed or "visitors" in parsed):
@@ -1809,9 +1814,9 @@ async def admin_db_upload(request: Request):
                 for v in v_data:
                     backup_visitors.append(json.dumps(v, default=str))
             else:
-                return JSONResponse({"error": "Uploaded file is not a valid backup (expected SQLite or JSON)"}, status_code=400)
+                return JSONResponse({"error": _bad_backup_msg}, status_code=400)
         except (json.JSONDecodeError, ValueError):
-            return JSONResponse({"error": "Uploaded file is not a valid backup (expected SQLite or JSON)"}, status_code=400)
+            return JSONResponse({"error": _bad_backup_msg}, status_code=400)
 
     if is_sqlite:
         # Parse the SQLite backup file
