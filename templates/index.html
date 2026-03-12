@@ -694,6 +694,23 @@
             transition: background 0.2s;
         }
         .btn-modal-keep:hover { background: #dde1e7; }
+        .btn-modal-save {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 26px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            text-decoration: none;
+            min-height: 42px;
+        }
+        .btn-modal-save:hover { background: #1d4ed8; }
 
         /* ── Page loader overlay ── */
         #page-loader {
@@ -1468,7 +1485,7 @@
                 <button class="btn-danger" id="retention-delete-btn">
                     <i class="fas fa-trash"></i> Delete
                 </button>
-                <a id="retention-save-link" href="#" download="" class="btn-file-dl" style="text-decoration:none;">
+                <a id="retention-save-link" href="#" download="" class="btn-modal-save">
                     <i class="fas fa-download"></i> Save
                 </a>
             </div>
@@ -2879,7 +2896,7 @@
 
         document.getElementById('retention-save-link').addEventListener('click', () => {
             _closeRetentionModal();
-            showToast('File saved to device', 'success', 2500);
+            showToast('Download started', 'success', 2500);
         });
 
         updateStatsBadge();
