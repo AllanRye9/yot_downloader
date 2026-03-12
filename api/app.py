@@ -10,6 +10,15 @@ import shutil
 import json
 import logging
 import sqlite3
+try:
+    import psycopg2
+    import psycopg2.extras
+except ImportError:
+    psycopg2 = None
+# Tuple of integrity-error types so except clauses work for both backends
+_IntegrityErrors: tuple = (sqlite3.IntegrityError,)
+if psycopg2 is not None:
+    _IntegrityErrors = (sqlite3.IntegrityError, psycopg2.IntegrityError)
 import zipfile
 import ipaddress
 import asyncio
@@ -176,6 +185,10 @@ DATA_DIR = os.path.join(ROOT_DIR, "data")
 DB_PATH = os.path.join(DATA_DIR, "admin.db")
 os.makedirs(DATA_DIR, exist_ok=True)
 
+# PostgreSQL support: when DATABASE_URL is set, use PostgreSQL instead of SQLite
+DATABASE_URL = os.environ.get("DATABASE_URL")
+USE_POSTGRES = bool(DATABASE_URL and psycopg2 is not None)
+
 # Paths whose visits are tracked for analytics (main site + admin page)
 TRACKED_VISITOR_PATHS = {"/const", "/"}
 
@@ -210,24 +223,43 @@ os.environ['SSL_CERT_FILE'] = certifi.where()
 os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
 
 # =========================================================
-# SQLITE PERSISTENCE
+# DATABASE PERSISTENCE  (PostgreSQL when DATABASE_URL is set, else SQLite)
 # =========================================================
 
 _db_lock = threading.Lock()
 
 
 def _get_db():
-    """Open a short-lived SQLite connection for the calling thread.
+    """Open a short-lived database connection for the calling thread.
 
     Callers hold _db_lock and immediately close the connection after use,
-    so each connection is used by exactly one thread — check_same_thread is
-    not needed.
+    so each connection is used by exactly one thread.
     """
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+    if USE_POSTGRES:
+        conn = psycopg2.connect(DATABASE_URL)
+        return conn
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        return conn
+
+
+def _execute(conn, sql, params=None):
+    """Execute *sql* on *conn* and return a cursor-like object.
+
+    Handles the dialect differences between SQLite (``?`` placeholders,
+    ``conn.execute``) and PostgreSQL (``%s`` placeholders, cursor with
+    ``RealDictCursor``).
+    """
+    if USE_POSTGRES:
+        sql = sql.replace("?", "%s")
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(sql, params)
+        return cur
+    else:
+        return conn.execute(sql, params or ())
 
 
 def init_db():
@@ -235,21 +267,43 @@ def init_db():
     with _db_lock:
         conn = _get_db()
         try:
-            conn.executescript("""
-                CREATE TABLE IF NOT EXISTS downloads (
-                    id TEXT PRIMARY KEY,
-                    data TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS visitors (
-                    rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-                    data TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS admin_users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE NOT NULL,
-                    password_hash TEXT NOT NULL
-                );
-            """)
+            if USE_POSTGRES:
+                cur = conn.cursor()
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS downloads (
+                        id TEXT PRIMARY KEY,
+                        data TEXT NOT NULL
+                    )
+                """)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS visitors (
+                        id SERIAL PRIMARY KEY,
+                        data TEXT NOT NULL
+                    )
+                """)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS admin_users (
+                        id SERIAL PRIMARY KEY,
+                        username TEXT UNIQUE NOT NULL,
+                        password_hash TEXT NOT NULL
+                    )
+                """)
+            else:
+                conn.executescript("""
+                    CREATE TABLE IF NOT EXISTS downloads (
+                        id TEXT PRIMARY KEY,
+                        data TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS visitors (
+                        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+                        data TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS admin_users (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT UNIQUE NOT NULL,
+                        password_hash TEXT NOT NULL
+                    );
+                """)
             conn.commit()
         finally:
             conn.close()
@@ -260,8 +314,9 @@ def admin_user_exists() -> bool:
     with _db_lock:
         conn = _get_db()
         try:
-            row = conn.execute("SELECT COUNT(*) FROM admin_users").fetchone()
-            return row[0] > 0
+            cur = _execute(conn, "SELECT COUNT(*) AS cnt FROM admin_users")
+            row = cur.fetchone()
+            return (row["cnt"] if USE_POSTGRES else row[0]) > 0
         finally:
             conn.close()
 
@@ -278,13 +333,15 @@ def register_admin_user(username: str, password: str) -> tuple[bool, str]:
     with _db_lock:
         conn = _get_db()
         try:
-            conn.execute(
+            _execute(
+                conn,
                 "INSERT INTO admin_users (username, password_hash) VALUES (?, ?)",
                 (username, ph),
             )
             conn.commit()
             return True, ""
-        except sqlite3.IntegrityError:
+        except _IntegrityErrors:
+            conn.rollback()
             return False, "User already exists"
         finally:
             conn.close()
@@ -295,7 +352,8 @@ def verify_admin_user(username: str, password: str) -> bool:
     with _db_lock:
         conn = _get_db()
         try:
-            row = conn.execute(
+            row = _execute(
+                conn,
                 "SELECT password_hash FROM admin_users WHERE username=?",
                 (username,),
             ).fetchone()
@@ -307,17 +365,18 @@ def verify_admin_user(username: str, password: str) -> bool:
 
 
 def load_persistence():
-    """Load downloads and visitors from SQLite on startup."""
+    """Load downloads and visitors from the database on startup."""
     global downloads, visitors
-    # Migrate legacy JSON files into SQLite (one-time migration)
-    _migrate_json_to_sqlite()
+    # Migrate legacy JSON files into the database (one-time migration)
+    _migrate_json_to_db()
 
     with _db_lock:
         conn = _get_db()
         try:
-            rows = conn.execute("SELECT id, data FROM downloads").fetchall()
+            rows = _execute(conn, "SELECT id, data FROM downloads").fetchall()
             saved_dl = {r["id"]: json.loads(r["data"]) for r in rows}
-            rows_v = conn.execute("SELECT data FROM visitors ORDER BY rowid").fetchall()
+            rows_v = _execute(conn, "SELECT data FROM visitors ORDER BY %s" %
+                              ("id" if USE_POSTGRES else "rowid")).fetchall()
             saved_v = [json.loads(r["data"]) for r in rows_v]
         finally:
             conn.close()
@@ -326,11 +385,11 @@ def load_persistence():
         downloads.update(saved_dl)
     with visitors_lock:
         visitors.extend(saved_v)
-    logger.info(f"Loaded {len(saved_dl)} download records and {len(saved_v)} visitor records from SQLite")
+    logger.info(f"Loaded {len(saved_dl)} download records and {len(saved_v)} visitor records from {'PostgreSQL' if USE_POSTGRES else 'SQLite'}")
 
 
-def _migrate_json_to_sqlite():
-    """One-time migration: import legacy JSON persistence files into SQLite."""
+def _migrate_json_to_db():
+    """One-time migration: import legacy JSON persistence files into the database."""
     legacy_dl = os.path.join(DATA_DIR, "downloads.json")
     legacy_v = os.path.join(DATA_DIR, "visitors.json")
     conn = _get_db()
@@ -340,35 +399,43 @@ def _migrate_json_to_sqlite():
                 with open(legacy_dl) as fh:
                     data = json.load(fh)
                 for did, d in data.items():
-                    conn.execute(
-                        "INSERT OR IGNORE INTO downloads (id, data) VALUES (?, ?)",
-                        (did, json.dumps(d, default=str)),
-                    )
+                    if USE_POSTGRES:
+                        cur = conn.cursor()
+                        cur.execute(
+                            "INSERT INTO downloads (id, data) VALUES (%s, %s) ON CONFLICT (id) DO NOTHING",
+                            (did, json.dumps(d, default=str)),
+                        )
+                    else:
+                        conn.execute(
+                            "INSERT OR IGNORE INTO downloads (id, data) VALUES (?, ?)",
+                            (did, json.dumps(d, default=str)),
+                        )
                 conn.commit()
                 os.rename(legacy_dl, legacy_dl + ".migrated")
-                logger.info(f"Migrated {len(data)} download records from JSON to SQLite")
+                logger.info(f"Migrated {len(data)} download records from JSON to {'PostgreSQL' if USE_POSTGRES else 'SQLite'}")
             except Exception as exc:
-                logger.error(f"JSON→SQLite migration failed for downloads: {exc}")
+                logger.error(f"JSON→DB migration failed for downloads: {exc}")
         if os.path.exists(legacy_v):
             try:
                 with open(legacy_v) as fh:
                     data = json.load(fh)
                 for v in data:
-                    conn.execute(
+                    _execute(
+                        conn,
                         "INSERT INTO visitors (data) VALUES (?)",
                         (json.dumps(v, default=str),),
                     )
                 conn.commit()
                 os.rename(legacy_v, legacy_v + ".migrated")
-                logger.info(f"Migrated {len(data)} visitor records from JSON to SQLite")
+                logger.info(f"Migrated {len(data)} visitor records from JSON to {'PostgreSQL' if USE_POSTGRES else 'SQLite'}")
             except Exception as exc:
-                logger.error(f"JSON→SQLite migration failed for visitors: {exc}")
+                logger.error(f"JSON→DB migration failed for visitors: {exc}")
     finally:
         conn.close()
 
 
 def save_downloads_to_disk():
-    """Persist current downloads dict to SQLite (upsert all records)."""
+    """Persist current downloads dict to the database (upsert all records)."""
     try:
         with downloads_lock:
             data = dict(downloads)
@@ -376,10 +443,18 @@ def save_downloads_to_disk():
             conn = _get_db()
             try:
                 for did, d in data.items():
-                    conn.execute(
-                        "INSERT OR REPLACE INTO downloads (id, data) VALUES (?, ?)",
-                        (did, json.dumps(d, default=str)),
-                    )
+                    if USE_POSTGRES:
+                        cur = conn.cursor()
+                        cur.execute(
+                            "INSERT INTO downloads (id, data) VALUES (%s, %s) "
+                            "ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data",
+                            (did, json.dumps(d, default=str)),
+                        )
+                    else:
+                        conn.execute(
+                            "INSERT OR REPLACE INTO downloads (id, data) VALUES (?, ?)",
+                            (did, json.dumps(d, default=str)),
+                        )
                 conn.commit()
             finally:
                 conn.close()
@@ -388,16 +463,17 @@ def save_downloads_to_disk():
 
 
 def save_visitors_to_disk():
-    """Persist visitor list to SQLite (replace all rows)."""
+    """Persist visitor list to the database (replace all rows)."""
     try:
         with visitors_lock:
             data = list(visitors)
         with _db_lock:
             conn = _get_db()
             try:
-                conn.execute("DELETE FROM visitors")
+                _execute(conn, "DELETE FROM visitors")
                 for v in data:
-                    conn.execute(
+                    _execute(
+                        conn,
                         "INSERT INTO visitors (data) VALUES (?)",
                         (json.dumps(v, default=str),),
                     )
@@ -1507,7 +1583,7 @@ async def admin_visitors_api(request: Request):
 
 
 def _get_persistent_stats() -> dict:
-    """Query SQLite for all-time aggregate stats (accurate even after in-memory cleanup).
+    """Query the database for all-time aggregate stats (accurate even after in-memory cleanup).
 
     Returns a dict with keys:
         total_downloads, daily_downloads, download_rate_per_day,
@@ -1522,7 +1598,7 @@ def _get_persistent_stats() -> dict:
             conn = _get_db()
             try:
                 # Downloads: parse created_at from the JSON blob
-                dl_rows = conn.execute("SELECT data FROM downloads").fetchall()
+                dl_rows = _execute(conn, "SELECT data FROM downloads").fetchall()
                 total_downloads = len(dl_rows)
                 daily_downloads = 0
                 week_downloads = 0
@@ -1539,7 +1615,7 @@ def _get_persistent_stats() -> dict:
 
                 # Visitors: only count main-site visits (page == "/")
                 # Legacy records without a "page" key were admin-page visits, so skip them.
-                v_rows = conn.execute("SELECT data FROM visitors").fetchall()
+                v_rows = _execute(conn, "SELECT data FROM visitors").fetchall()
                 total_site_visitors = 0
                 daily_site_visitors = 0
                 for row in v_rows:
@@ -1604,7 +1680,7 @@ async def admin_analytics_api(request: Request):
         if name and name != "Unknown":
             all_country_names.add(name)
 
-    # Persistent aggregate stats (queried from SQLite for accuracy)
+    # Persistent aggregate stats (queried from the database for accuracy)
     persistent = _get_persistent_stats()
 
     return JSONResponse({
@@ -1655,30 +1731,55 @@ async def admin_clear_visitors(request: Request):
 @fastapi_app.get("/admin/db/download")
 @admin_required
 async def admin_db_download(request: Request):
-    """Download the SQLite database file for backup (admin only)."""
-    if not os.path.exists(DB_PATH):
-        return JSONResponse({"error": "Database file not found"}, status_code=404)
-    # Flush in-memory state to disk before serving the file
+    """Download a database backup (admin only).
+
+    When using PostgreSQL the backup is a JSON file; otherwise the raw SQLite
+    file is returned.
+    """
+    # Flush in-memory state to disk before serving
     save_downloads_to_disk()
     save_visitors_to_disk()
     logger.info("Admin downloaded database backup")
-    return FileResponse(
-        DB_PATH,
-        filename="admin.db",
-        media_type="application/x-sqlite3",
-    )
+
+    if USE_POSTGRES:
+        # Export PostgreSQL data as JSON
+        with _db_lock:
+            conn = _get_db()
+            try:
+                dl_rows = _execute(conn, "SELECT id, data FROM downloads").fetchall()
+                v_rows = _execute(conn, "SELECT data FROM visitors ORDER BY id").fetchall()
+            finally:
+                conn.close()
+        backup = {
+            "downloads": {r["id"]: json.loads(r["data"]) for r in dl_rows},
+            "visitors": [json.loads(r["data"]) for r in v_rows],
+        }
+        return Response(
+            content=json.dumps(backup, indent=2, default=str),
+            media_type="application/json",
+            headers={"Content-Disposition": "attachment; filename=admin_backup.json"},
+        )
+    else:
+        if not os.path.exists(DB_PATH):
+            return JSONResponse({"error": "Database file not found"}, status_code=404)
+        return FileResponse(
+            DB_PATH,
+            filename="admin.db",
+            media_type="application/x-sqlite3",
+        )
 
 
 @fastapi_app.post("/admin/db/upload")
 @admin_required
 async def admin_db_upload(request: Request):
-    """Merge an uploaded backup database into the live database (admin only).
+    """Merge an uploaded backup into the live database (admin only).
 
-    The uploaded file is validated as a SQLite database before merging.
-    Downloads are merged using INSERT OR IGNORE (live records take precedence;
-    backup-only records are added). Visitors from both databases are combined
-    and re-sorted by timestamp so that records appear in chronological order.
-    After a successful merge the in-memory state is reloaded.
+    Accepts either a SQLite ``.db`` file (always supported for migration) or a
+    JSON backup produced by the PostgreSQL download endpoint.  Downloads are
+    merged using an *ignore-on-conflict* strategy (live records take
+    precedence).  Visitors from both sources are combined, deduplicated by JSON
+    content, and re-sorted chronologically.  After a successful merge the
+    in-memory state is reloaded.
     """
     form = await request.form()
     db_file = form.get("db_file")
@@ -1687,59 +1788,85 @@ async def admin_db_upload(request: Request):
     if not hasattr(db_file, "read"):
         return JSONResponse({"error": "No file selected"}, status_code=400)
 
-    # Read uploaded content and validate SQLite magic header
     content = await db_file.read()
-    if len(content) < 16 or content[:16] != b"SQLite format 3\x00":
-        return JSONResponse({"error": "Uploaded file is not a valid SQLite database"}, status_code=400)
 
-    # Write to a temp file and run an integrity check
-    tmp_path = DB_PATH + ".upload_tmp"
-    try:
-        with open(tmp_path, "wb") as fh:
-            fh.write(content)
+    # ── Detect format ────────────────────────────────────────
+    is_sqlite = len(content) >= 16 and content[:16] == b"SQLite format 3\x00"
+    is_json = False
+    backup_dl: list[tuple[str, str]] = []
+    backup_visitors: list[str] = []
 
-        # Integrity check runs on the temp file — no lock needed
-        check_conn = sqlite3.connect(tmp_path)
-        check_conn.row_factory = sqlite3.Row
+    if not is_sqlite:
+        # Try to parse as JSON backup
         try:
-            result = check_conn.execute("PRAGMA integrity_check").fetchone()
-            if result[0] != "ok":
-                return JSONResponse({"error": "Uploaded database failed integrity check"}, status_code=400)
+            parsed = json.loads(content)
+            if isinstance(parsed, dict) and ("downloads" in parsed or "visitors" in parsed):
+                is_json = True
+                dl_data = parsed.get("downloads", {})
+                for did, d in dl_data.items():
+                    backup_dl.append((did, json.dumps(d, default=str)))
+                v_data = parsed.get("visitors", [])
+                for v in v_data:
+                    backup_visitors.append(json.dumps(v, default=str))
+            else:
+                return JSONResponse({"error": "Uploaded file is not a valid backup (expected SQLite or JSON)"}, status_code=400)
+        except (json.JSONDecodeError, ValueError):
+            return JSONResponse({"error": "Uploaded file is not a valid backup (expected SQLite or JSON)"}, status_code=400)
 
-            # Read downloads and visitors from the backup
+    if is_sqlite:
+        # Parse the SQLite backup file
+        tmp_path = os.path.join(DATA_DIR, "upload_tmp.db")
+        try:
+            with open(tmp_path, "wb") as fh:
+                fh.write(content)
+
+            check_conn = sqlite3.connect(tmp_path)
+            check_conn.row_factory = sqlite3.Row
             try:
-                backup_dl_rows = check_conn.execute("SELECT id, data FROM downloads").fetchall()
-                backup_dl = [(r["id"], r["data"]) for r in backup_dl_rows]
-            except sqlite3.OperationalError:
-                backup_dl = []
-            try:
-                backup_v_rows = check_conn.execute("SELECT data FROM visitors ORDER BY rowid").fetchall()
-                backup_visitors = [r["data"] for r in backup_v_rows]
-            except sqlite3.OperationalError:
-                backup_visitors = []
+                result = check_conn.execute("PRAGMA integrity_check").fetchone()
+                if result[0] != "ok":
+                    return JSONResponse({"error": "Uploaded database failed integrity check"}, status_code=400)
+                try:
+                    backup_dl_rows = check_conn.execute("SELECT id, data FROM downloads").fetchall()
+                    backup_dl = [(r["id"], r["data"]) for r in backup_dl_rows]
+                except sqlite3.OperationalError:
+                    backup_dl = []
+                try:
+                    backup_v_rows = check_conn.execute("SELECT data FROM visitors ORDER BY rowid").fetchall()
+                    backup_visitors = [r["data"] for r in backup_v_rows]
+                except sqlite3.OperationalError:
+                    backup_visitors = []
+            finally:
+                check_conn.close()
         finally:
-            check_conn.close()
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
 
-        # Flush current in-memory state to disk before merging
+    # ── Merge into live database ─────────────────────────────
+    try:
         save_downloads_to_disk()
         save_visitors_to_disk()
 
-        # Merge backup data into the live database under _db_lock
         with _db_lock:
             conn = _get_db()
             try:
-                # Downloads: INSERT OR IGNORE preserves live records and adds
-                # any backup records whose id does not yet exist in the live DB.
                 for (did, data_json) in backup_dl:
-                    conn.execute(
-                        "INSERT OR IGNORE INTO downloads (id, data) VALUES (?, ?)",
-                        (did, data_json),
-                    )
+                    if USE_POSTGRES:
+                        cur = conn.cursor()
+                        cur.execute(
+                            "INSERT INTO downloads (id, data) VALUES (%s, %s) ON CONFLICT (id) DO NOTHING",
+                            (did, data_json),
+                        )
+                    else:
+                        conn.execute(
+                            "INSERT OR IGNORE INTO downloads (id, data) VALUES (?, ?)",
+                            (did, data_json),
+                        )
 
-                # Visitors: combine live + backup, deduplicate by JSON content,
-                # then re-insert sorted by the "timestamp" field so the full
-                # history is stored in chronological order.
-                live_v_rows = conn.execute("SELECT data FROM visitors").fetchall()
+                live_v_rows = _execute(conn, "SELECT data FROM visitors").fetchall()
                 live_v_jsons = [r["data"] for r in live_v_rows]
 
                 seen_visitor_jsons: set[str] = set()
@@ -1754,9 +1881,10 @@ async def admin_db_upload(request: Request):
 
                 all_visitors.sort(key=lambda v: v.get("timestamp", 0))
 
-                conn.execute("DELETE FROM visitors")
+                _execute(conn, "DELETE FROM visitors")
                 for v in all_visitors:
-                    conn.execute(
+                    _execute(
+                        conn,
                         "INSERT INTO visitors (data) VALUES (?)",
                         (json.dumps(v, default=str),),
                     )
@@ -1765,9 +1893,6 @@ async def admin_db_upload(request: Request):
             finally:
                 conn.close()
 
-        # Reload in-memory state from the merged database.
-        # We must NOT hold _db_lock here because load_persistence() acquires it
-        # internally.
         global downloads, visitors
         with downloads_lock:
             downloads.clear()
@@ -1792,12 +1917,6 @@ async def admin_db_upload(request: Request):
     except Exception as exc:
         logger.error(f"DB upload error: {exc}")
         return JSONResponse({"error": f"Upload failed: {exc}"}, status_code=500)
-    finally:
-        if os.path.exists(tmp_path):
-            try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
 
 
 # ── Cookie management (admin) ─────────────────────────────
@@ -2669,8 +2788,12 @@ logger.info(f"📁 Templates directory: {TEMPLATES_DIR}")
 logger.info(f"📁 Downloads directory: {DOWNLOAD_FOLDER}")
 logger.info(f"📁 Template exists: {os.path.exists(os.path.join(TEMPLATES_DIR, 'index.html'))}")
 
-# Initialise SQLite schema
+# Initialise database schema
 init_db()
+if USE_POSTGRES:
+    logger.info("Using PostgreSQL database via DATABASE_URL")
+else:
+    logger.info(f"Using SQLite database at {DB_PATH}")
 
 # Load persisted data
 load_persistence()
