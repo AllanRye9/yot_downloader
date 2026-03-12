@@ -1231,7 +1231,7 @@ async def delete_file(filename: str):
 
 @fastapi_app.get("/stats")
 async def get_stats():
-    """Get download statistics"""
+    """Get download statistics including all-time totals"""
     try:
         files = []
         total_size = 0
@@ -1246,12 +1246,16 @@ async def get_stats():
             active_count = sum(1 for d in downloads.values()
                               if d["status"] in ("queued", "downloading"))
 
+        persistent = _get_persistent_stats()
+
         return JSONResponse({
             "file_count": len(files),
             "total_size": total_size,
             "total_size_hr": format_size(total_size),
             "active_downloads": active_count,
-            "max_concurrent": Config.MAX_CONCURRENT_DOWNLOADS
+            "max_concurrent": Config.MAX_CONCURRENT_DOWNLOADS,
+            "total_downloads": persistent["total_downloads"],
+            "total_visitors": persistent["total_site_visitors"],
         })
     except Exception as e:
         logger.error(f"Stats error: {e}")
