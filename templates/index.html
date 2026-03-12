@@ -3069,10 +3069,19 @@
         let   retentionQueue = [];         // filenames waiting while modal is open
         let   lastActivityTime = Date.now(); // track user activity
 
-        // Track user activity (mouse, keyboard, touch, scroll)
-        ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'].forEach(evt => {
-            document.addEventListener(evt, () => { lastActivityTime = Date.now(); }, { passive: true });
-        });
+        // Track user activity (mouse, keyboard, touch, scroll) with throttle
+        (function() {
+            let _actThrottle = 0;
+            function _onActivity() {
+                const now = Date.now();
+                if (now - _actThrottle < 500) return; // throttle to once per 500ms
+                _actThrottle = now;
+                lastActivityTime = now;
+            }
+            ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'].forEach(evt => {
+                document.addEventListener(evt, _onActivity, { passive: true });
+            });
+        })();
 
         function _isUserInactive() {
             return (Date.now() - lastActivityTime) >= INACTIVITY_REQUIRED_MS;
