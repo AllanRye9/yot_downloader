@@ -879,6 +879,14 @@
                     <div class="inner-card-body" id="chart-os"></div>
                 </div>
 
+                <!-- Device types -->
+                <div class="inner-card">
+                    <div class="inner-card-header">
+                        <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>Device Types</span>
+                    </div>
+                    <div class="inner-card-body" id="chart-devices"></div>
+                </div>
+
                 <!-- Downloads by day of week -->
                 <div class="inner-card">
                     <div class="inner-card-header">
@@ -1050,6 +1058,7 @@
             renderPeakHoursChart();
             renderVisitorHoursChart();
             renderOsChart();
+            renderDeviceChart();
             renderDowChart();
             renderSuccessRateChart();
             renderRepeatVisitorsChart();
@@ -1313,6 +1322,13 @@
             const items = data.map(d => ({ label: d.os, value: d.count }));
             svgDonut(document.getElementById('chart-os'), items,
                 ['#3b82f6','#10b981','#f59e0b','#a855f7','#ef4444','#64748b','#f97316','#22d3ee']);
+        }
+
+        function renderDeviceChart() {
+            const data = analyticsData.device_breakdown || [];
+            const items = data.map(d => ({ label: d.device, value: d.count }));
+            svgDonut(document.getElementById('chart-devices'), items,
+                ['#3b82f6','#f59e0b','#a855f7','#64748b']);
         }
 
         function renderDowChart() {
@@ -1594,6 +1610,7 @@
                     <td class="col-ip">${esc(v.ip || '—')}</td>
                     <td>${flag ? flag + ' ' : ''}${esc(v.country || '—')}</td>
                     <td class="hide-xs">${esc(v.browser || '—')}</td>
+                    <td class="hide-xs">${esc(v.device || '—')}</td>
                     <td class="hide-xs">${esc(pageLabel)}</td>
                     <td class="col-time">${fmtTime(v.timestamp)}</td>
                     <td class="hide-xs" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.78rem;color:#94a3b8;" title="${esc(v.user_agent)}">${esc(v.user_agent || '—')}</td>
@@ -1605,6 +1622,7 @@
                     <th>IP Address</th>
                     <th>Country</th>
                     <th class="hide-xs">Browser</th>
+                    <th class="hide-xs">Device</th>
                     <th class="hide-xs">Page</th>
                     <th>Visit Time</th>
                     <th class="hide-xs">User Agent</th>
