@@ -647,6 +647,18 @@ def _parse_browser(ua: str) -> str:
     return "Other"
 
 
+def _parse_device(ua: str) -> str:
+    """Best-effort device type detection from User-Agent string."""
+    ua_lower = ua.lower()
+    if "tablet" in ua_lower or "ipad" in ua_lower or "kindle" in ua_lower or "silk" in ua_lower:
+        return "Tablet"
+    if "mobi" in ua_lower or "android" in ua_lower or "iphone" in ua_lower or "ipod" in ua_lower:
+        return "Mobile"
+    if ua_lower:
+        return "Desktop"
+    return "Other"
+
+
 def _is_private_ip(ip: str) -> bool:
     """Return True if *ip* is a loopback, private, link-local or reserved address."""
     try:
@@ -1908,6 +1920,7 @@ async def track_admin_visitor(request: Request, call_next):
         "timestamp": time.time(),
         "user_agent": ua,
         "browser": _parse_browser(ua),
+        "device": _parse_device(ua),
         "country": cached.get("country", ""),
         "country_code": cached.get("code", ""),
         "city": cached.get("city", ""),
@@ -2175,7 +2188,13 @@ async def admin_analytics_api(request: Request):
             os_name = "Other"
         os_counts[os_name] = os_counts.get(os_name, 0) + 1
 
-    # 7. Repeat visitors (IPs seen more than once on the main site)
+    # 7. Device type breakdown (from visitor user-agents)
+    device_counts: dict = {}
+    for v in v_list:
+        device = v.get("device") or _parse_device(v.get("user_agent") or "")
+        device_counts[device] = device_counts.get(device, 0) + 1
+
+    # 8. Repeat visitors (IPs seen more than once on the main site)
     ip_visit_counts: dict = {}
     for v in v_list:
         if v.get("page") == "/":
@@ -2225,6 +2244,10 @@ async def admin_analytics_api(request: Request):
         "os_breakdown": [
             {"os": k, "count": v}
             for k, v in sorted(os_counts.items(), key=lambda x: x[1], reverse=True)
+        ],
+        "device_breakdown": [
+            {"device": k, "count": v}
+            for k, v in sorted(device_counts.items(), key=lambda x: x[1], reverse=True)
         ],
         "unique_visitors": unique_ips,
         "repeat_visitors": repeat_ips,
