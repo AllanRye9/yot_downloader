@@ -652,7 +652,9 @@ def _parse_device(ua: str) -> str:
     ua_lower = ua.lower()
     if "tablet" in ua_lower or "ipad" in ua_lower or "kindle" in ua_lower or "silk" in ua_lower:
         return "Tablet"
-    if "mobi" in ua_lower or "android" in ua_lower or "iphone" in ua_lower or "ipod" in ua_lower:
+    if "android" in ua_lower and "mobi" not in ua_lower:
+        return "Tablet"
+    if "mobi" in ua_lower or "iphone" in ua_lower or "ipod" in ua_lower:
         return "Mobile"
     if ua_lower:
         return "Desktop"
