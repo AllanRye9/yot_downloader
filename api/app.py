@@ -669,6 +669,54 @@ _LANG_TO_COUNTRY: dict[str, str] = {
     "ms": "MY", "tl": "PH", "sw": "KE", "fa": "IR",
 }
 
+# Maps common IANA timezone prefixes/names to their most likely country ISO-2
+# code. Used as a secondary heuristic before Accept-Language fallback.
+_TZ_TO_COUNTRY: dict[str, str] = {
+    "America/New_York": "US", "America/Chicago": "US", "America/Denver": "US",
+    "America/Los_Angeles": "US", "America/Anchorage": "US", "Pacific/Honolulu": "US",
+    "America/Phoenix": "US", "America/Detroit": "US", "America/Indiana/Indianapolis": "US",
+    "America/Toronto": "CA", "America/Vancouver": "CA", "America/Edmonton": "CA",
+    "America/Winnipeg": "CA", "America/Halifax": "CA", "America/St_Johns": "CA",
+    "America/Mexico_City": "MX", "America/Cancun": "MX", "America/Tijuana": "MX",
+    "America/Sao_Paulo": "BR", "America/Fortaleza": "BR", "America/Manaus": "BR",
+    "America/Argentina/Buenos_Aires": "AR", "America/Bogota": "CO",
+    "America/Lima": "PE", "America/Santiago": "CL", "America/Caracas": "VE",
+    "America/Guayaquil": "EC", "America/La_Paz": "BO", "America/Asuncion": "PY",
+    "America/Montevideo": "UY", "America/Panama": "PA", "America/Costa_Rica": "CR",
+    "America/Guatemala": "GT", "America/Havana": "CU", "America/Jamaica": "JM",
+    "America/Port-au-Prince": "HT", "America/Santo_Domingo": "DO",
+    "Europe/London": "GB", "Europe/Paris": "FR", "Europe/Berlin": "DE",
+    "Europe/Madrid": "ES", "Europe/Rome": "IT", "Europe/Amsterdam": "NL",
+    "Europe/Brussels": "BE", "Europe/Zurich": "CH", "Europe/Vienna": "AT",
+    "Europe/Stockholm": "SE", "Europe/Oslo": "NO", "Europe/Copenhagen": "DK",
+    "Europe/Helsinki": "FI", "Europe/Warsaw": "PL", "Europe/Prague": "CZ",
+    "Europe/Budapest": "HU", "Europe/Bucharest": "RO", "Europe/Sofia": "BG",
+    "Europe/Athens": "GR", "Europe/Istanbul": "TR", "Europe/Moscow": "RU",
+    "Europe/Kiev": "UA", "Europe/Lisbon": "PT", "Europe/Dublin": "IE",
+    "Europe/Belgrade": "RS", "Europe/Zagreb": "HR", "Europe/Bratislava": "SK",
+    "Europe/Ljubljana": "SI", "Europe/Tallinn": "EE", "Europe/Riga": "LV",
+    "Europe/Vilnius": "LT", "Europe/Minsk": "BY",
+    "Asia/Tokyo": "JP", "Asia/Seoul": "KR", "Asia/Shanghai": "CN",
+    "Asia/Hong_Kong": "HK", "Asia/Taipei": "TW", "Asia/Singapore": "SG",
+    "Asia/Kolkata": "IN", "Asia/Calcutta": "IN", "Asia/Karachi": "PK",
+    "Asia/Dhaka": "BD", "Asia/Bangkok": "TH", "Asia/Ho_Chi_Minh": "VN",
+    "Asia/Jakarta": "ID", "Asia/Manila": "PH", "Asia/Kuala_Lumpur": "MY",
+    "Asia/Dubai": "AE", "Asia/Riyadh": "SA", "Asia/Tehran": "IR",
+    "Asia/Baghdad": "IQ", "Asia/Jerusalem": "IL", "Asia/Beirut": "LB",
+    "Asia/Colombo": "LK", "Asia/Kathmandu": "NP", "Asia/Yangon": "MM",
+    "Asia/Almaty": "KZ", "Asia/Tashkent": "UZ", "Asia/Bishkek": "KG",
+    "Africa/Cairo": "EG", "Africa/Lagos": "NG", "Africa/Nairobi": "KE",
+    "Africa/Johannesburg": "ZA", "Africa/Casablanca": "MA", "Africa/Algiers": "DZ",
+    "Africa/Tunis": "TN", "Africa/Accra": "GH", "Africa/Addis_Ababa": "ET",
+    "Africa/Dar_es_Salaam": "TZ", "Africa/Kampala": "UG", "Africa/Khartoum": "SD",
+    "Africa/Abidjan": "CI", "Africa/Dakar": "SN", "Africa/Maputo": "MZ",
+    "Africa/Lusaka": "ZM", "Africa/Harare": "ZW", "Africa/Tripoli": "LY",
+    "Australia/Sydney": "AU", "Australia/Melbourne": "AU", "Australia/Brisbane": "AU",
+    "Australia/Perth": "AU", "Australia/Adelaide": "AU", "Australia/Darwin": "AU",
+    "Pacific/Auckland": "NZ", "Pacific/Fiji": "FJ", "Pacific/Guam": "GU",
+    "Pacific/Port_Moresby": "PG",
+}
+
 
 def _country_from_accept_language(accept_lang: str) -> tuple[str, str]:
     """Best-effort country guess from an Accept-Language header value.
@@ -829,6 +877,55 @@ def _lookup_country_async(ip: str, accept_language: str = ""):
             if iso and len(iso) == 2:
                 code = iso
                 country = _ISO2_TO_NAME.get(code, code)
+        except Exception:
+            pass
+
+    # --- Service 6: reallyfreegeoip.org (free, no key required) ---
+    if country == "Unknown":
+        try:
+            with urllib.request.urlopen(
+                f"https://reallyfreegeoip.org/json/{ip}", timeout=5
+            ) as resp:
+                data = json.loads(resp.read())
+            iso = (data.get("country_code") or "").upper()
+            if iso and len(iso) == 2:
+                code = iso
+                country = _ISO2_TO_NAME.get(code, data.get("country_name", code))
+                city = data.get("city", "") or city
+                region = data.get("region_name", "") or region
+        except Exception:
+            pass
+
+    # --- Service 7: freeipapi.com (free, returns country + timezone) ---
+    if country == "Unknown":
+        try:
+            with urllib.request.urlopen(
+                f"https://freeipapi.com/api/json/{ip}", timeout=5
+            ) as resp:
+                data = json.loads(resp.read())
+            iso = (data.get("countryCode") or "").upper()
+            if iso and len(iso) == 2:
+                code = iso
+                country = _ISO2_TO_NAME.get(code, data.get("countryName", code))
+                city = data.get("cityName", "") or city
+                region = data.get("regionName", "") or region
+        except Exception:
+            pass
+
+    # --- Timezone-based heuristic (maps IANA timezone to likely country) ---
+    if country == "Unknown" and not code:
+        try:
+            # Try fetching timezone from worldtimeapi.org and map to a country
+            with urllib.request.urlopen(
+                f"http://worldtimeapi.org/api/ip/{ip}", timeout=5
+            ) as resp:
+                data = json.loads(resp.read())
+            tz = data.get("timezone", "")
+            if tz:
+                tz_code = _TZ_TO_COUNTRY.get(tz, "")
+                if tz_code and tz_code in _ISO2_TO_NAME:
+                    code = tz_code
+                    country = _ISO2_TO_NAME[code]
         except Exception:
             pass
 
