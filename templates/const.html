@@ -1152,9 +1152,9 @@
                 const x = padL + i * step;
                 const y = padT + plotH - (item.value / max) * plotH;
                 dots += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${color}" stroke="#fff" stroke-width="1.5" opacity="0">
+                    <title>${esc(item.label)}: ${item.value}</title>
                     <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="${(0.3 + i * 0.04).toFixed(2)}s" fill="freeze"/>
                 </circle>`;
-                dots += `<title>${esc(item.label)}: ${item.value}</title>`;
             });
 
             // Build labels (show every Nth to avoid crowding)
@@ -1165,7 +1165,7 @@
             }).filter(Boolean).join('');
 
             el.innerHTML = `<div class="line-chart-wrap">
-                <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+                <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Line chart from ${esc(items[0].label)} to ${esc(items[n - 1].label)}">
                     ${grid}
                     <polygon points="${areaPoints}" fill="${fillColor || color}" opacity="0.1">
                         <animate attributeName="opacity" from="0" to="0.1" dur="0.6s" fill="freeze"/>
