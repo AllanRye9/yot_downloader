@@ -1400,11 +1400,9 @@ def download_worker(download_id, url, output_template, format_spec, output_ext=N
     # Force output container format (e.g. mp4, webm, mkv) or extract audio
     if output_ext in _AUDIO_OUTPUT_EXTS:
         # Audio-only extraction via ffmpeg postprocessor
-        codec_map = {"mp3": "mp3", "m4a": "m4a", "wav": "wav", "aac": "aac", "opus": "opus"}
-        preferred_codec = codec_map.get(output_ext, "mp3")
         ydl_opts["postprocessors"] = [{
             "key": "FFmpegExtractAudio",
-            "preferredcodec": preferred_codec,
+            "preferredcodec": output_ext,
             "preferredquality": "192",
         }]
         # Override output template extension for audio files
@@ -1636,7 +1634,8 @@ async def health():
     })
 
 @fastapi_app.post("/video_info")
-async def video_info_endpoint(url: str = Form(None)):
+@rate_limit()
+async def video_info_endpoint(request: Request, url: str = Form(None)):
     """Fetch video metadata (title, thumbnail, duration, available formats) without downloading."""
     if not url or not url.strip():
         return JSONResponse({"error": "URL is required"}, status_code=400)

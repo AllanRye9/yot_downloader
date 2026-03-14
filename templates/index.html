@@ -2109,7 +2109,7 @@
                                             <div class="format-option-icon" style="background:#fdf4ff;color:#7c3aed;"><i class="fas fa-headphones"></i></div>
                                             <div class="format-option-text">
                                                 <div class="format-option-title">M4A Audio</div>
-                                                <div class="format-option-desc">High-quality audio — smaller size than MP3.</div>
+                                                <div class="format-option-desc">High-quality audio — better compression than MP3 at the same quality.</div>
                                             </div>
                                         </div>
                                         <!-- File type section -->
@@ -3375,7 +3375,7 @@
                 dur.innerHTML        = `<i class="fas fa-clock"></i> ${_fmtDuration(data.duration) || '—'}`;
                 uploader.innerHTML   = `<i class="fas fa-user"></i> ${data.uploader || '—'}`;
                 preview.classList.add('visible');
-                showToast(`✅ "${data.title}" — select a format and click Download`, 'success', 4000);
+                showToast(`✅ "${data.title}" — select a format below and click Start Download`, 'success', 4000);
             } catch (err) {
                 showToast('⚠️ ' + err.message, 'error', 6000);
             } finally {
