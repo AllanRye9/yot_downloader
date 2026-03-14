@@ -448,14 +448,14 @@
         /* ── Card within panel ── */
         .inner-card {
             background: var(--card-bg);
-            border: 1px solid #e5e7eb;
+            border: 1px solid var(--border);
             border-radius: var(--radius-lg);
             overflow: hidden;
             margin-bottom: 10px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.04);
         }
         .inner-card-header {
-            background: #fff;
+            background: var(--card-bg);
             padding: 12px 18px;
             font-size: 0.85rem;
             font-weight: 700;
@@ -1373,7 +1373,7 @@
                 el.innerHTML = '<span>\u25B2</span> New';
                 return;
             }
-            const pctChange = ((numVal - oldVal) / Math.abs(oldVal) * 100).toFixed(1);
+            const pctChange = ((numVal - oldVal) / oldVal * 100).toFixed(1);
             const diff = numVal - oldVal;
             if (diff > 0) {
                 el.className = 'stat-trend up';
