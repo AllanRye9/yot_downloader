@@ -1352,6 +1352,9 @@ def download_worker(download_id, url, output_template, format_spec, output_ext=N
         size = format_size(total) if total else ""
 
         with downloads_lock:
+            # Check if download was cancelled (e.g. by page refresh or admin)
+            if downloads.get(download_id, {}).get("status") == "cancelled":
+                raise yt_dlp.utils.DownloadCancelled("Download cancelled")
             downloads[download_id].update({
                 "percent": percent,
                 "speed": speed,
@@ -1436,6 +1439,16 @@ def download_worker(download_id, url, output_template, format_spec, output_ext=N
             "title": downloads[download_id].get("title")
         }, room=download_id)
         emit_from_thread("files_updated")
+        threading.Thread(target=save_downloads_to_disk, daemon=True).start()
+
+    except yt_dlp.utils.DownloadCancelled:
+        logger.info(f"Download cancelled via hook: {download_id}")
+        with downloads_lock:
+            downloads[download_id].update({
+                "status": "cancelled",
+                "end_time": time.time(),
+            })
+        emit_from_thread("cancelled", {"id": download_id}, room=download_id)
         threading.Thread(target=save_downloads_to_disk, daemon=True).start()
 
     except yt_dlp.utils.DownloadError as e:
@@ -1880,11 +1893,31 @@ async def cancel_download(download_id: str):
         if download_id in downloads:
             if downloads[download_id]["status"] in ("queued", "downloading"):
                 downloads[download_id]["status"] = "cancelled"
+                downloads[download_id]["end_time"] = time.time()
                 emit_from_thread("cancelled", {"id": download_id}, room=download_id)
                 logger.info(f"Cancelled download: {download_id}")
                 return JSONResponse({"success": True})
 
     return JSONResponse({"error": "Download not found"}, status_code=404)
+
+@fastapi_app.post("/cancel_all")
+async def cancel_all_downloads(request: Request):
+    """Cancel all active/queued downloads for the requesting client IP.
+    Called on page refresh so orphaned downloads are cleaned up."""
+    ip = request.client.host if request.client else "unknown"
+    cancelled_ids = []
+    with downloads_lock:
+        for did, d in downloads.items():
+            if d["status"] in ("queued", "downloading") and d.get("ip") == ip:
+                d["status"] = "cancelled"
+                d["end_time"] = time.time()
+                cancelled_ids.append(did)
+    for did in cancelled_ids:
+        emit_from_thread("cancelled", {"id": did}, room=did)
+    if cancelled_ids:
+        logger.info(f"Cancelled {len(cancelled_ids)} downloads for IP {ip}")
+        threading.Thread(target=save_downloads_to_disk, daemon=True).start()
+    return JSONResponse({"success": True, "cancelled": len(cancelled_ids)})
 
 
 # ── Review endpoints ──────────────────────────────────────────────
@@ -2447,15 +2480,36 @@ async def admin_analytics_api(request: Request):
     })
 
 
+@fastapi_app.post("/admin/cancel_download/{download_id}")
+@admin_required
+async def admin_cancel_download(request: Request, download_id: str):
+    """Cancel an active download (admin only)."""
+    with downloads_lock:
+        if download_id in downloads:
+            if downloads[download_id]["status"] in ("queued", "downloading"):
+                downloads[download_id]["status"] = "cancelled"
+                downloads[download_id]["end_time"] = time.time()
+                emit_from_thread("cancelled", {"id": download_id}, room=download_id)
+                logger.info(f"Admin cancelled download: {download_id}")
+                threading.Thread(target=save_downloads_to_disk, daemon=True).start()
+                return JSONResponse({"success": True})
+            return JSONResponse({"error": "Download is not active"}, status_code=409)
+    return JSONResponse({"error": "Download not found"}, status_code=404)
+
+
 @fastapi_app.delete("/admin/delete_record/{download_id}")
 @admin_required
 async def admin_delete_record(request: Request, download_id: str):
-    """Remove a download record from the history (admin only)."""
+    """Remove a download record from the history (admin only).
+    Active downloads are automatically cancelled before deletion."""
     with downloads_lock:
         if download_id in downloads:
             status = downloads[download_id].get("status")
             if status in ("queued", "downloading"):
-                return JSONResponse({"error": "Cannot delete an active download. Cancel it first."}, status_code=409)
+                downloads[download_id]["status"] = "cancelled"
+                downloads[download_id]["end_time"] = time.time()
+                emit_from_thread("cancelled", {"id": download_id}, room=download_id)
+                logger.info(f"Admin force-cancelled download for deletion: {download_id}")
             del downloads[download_id]
 
     # Delete from database as well so the record is permanently removed
@@ -3251,6 +3305,9 @@ async def start_playlist_download(
                 completed[0] += 1
                 pct = (100.0 * completed[0] / total[0]) if total[0] else 0
                 with downloads_lock:
+                    # Check if download was cancelled
+                    if downloads.get(batch_id, {}).get("status") == "cancelled":
+                        raise yt_dlp.utils.DownloadCancelled("Download cancelled")
                     downloads[batch_id].update({"percent": pct, "status": "downloading"})
                 emit_from_thread(
                     "progress",
@@ -3309,6 +3366,16 @@ async def start_playlist_download(
                 room=batch_id,
             )
             emit_from_thread("files_updated")
+            threading.Thread(target=save_downloads_to_disk, daemon=True).start()
+
+        except yt_dlp.utils.DownloadCancelled:
+            logger.info(f"Playlist download cancelled via hook: {batch_id}")
+            with downloads_lock:
+                downloads[batch_id].update({
+                    "status":   "cancelled",
+                    "end_time": time.time(),
+                })
+            emit_from_thread("cancelled", {"id": batch_id}, room=batch_id)
             threading.Thread(target=save_downloads_to_disk, daemon=True).start()
 
         except Exception as exc:
