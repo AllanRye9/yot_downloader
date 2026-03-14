@@ -1373,14 +1373,15 @@
                 el.innerHTML = '<span>\u25B2</span> New';
                 return;
             }
-            const pctChange = ((numVal - oldVal) / oldVal * 100).toFixed(1);
             const diff = numVal - oldVal;
             if (diff > 0) {
+                const pct = ((diff / oldVal) * 100).toFixed(1);
                 el.className = 'stat-trend up';
-                el.innerHTML = '<span>\u25B2</span> ' + pctChange + '% Increase';
+                el.innerHTML = '<span>\u25B2</span> ' + pct + '% Increase';
             } else if (diff < 0) {
+                const pct = ((Math.abs(diff) / oldVal) * 100).toFixed(1);
                 el.className = 'stat-trend down';
-                el.innerHTML = '<span>\u25BC</span> ' + Math.abs(pctChange) + '% Decrease';
+                el.innerHTML = '<span>\u25BC</span> ' + pct + '% Decrease';
             } else {
                 el.className = 'stat-trend neutral';
                 el.innerHTML = '<span>\u2014</span> No change';
@@ -1399,7 +1400,7 @@
             el.textContent = greeting + ', Admin!';
         }
         updateWelcomeGreeting();
-        setInterval(updateWelcomeGreeting, 60000);
+        setInterval(updateWelcomeGreeting, 900000);
 
         // ── Sidebar navigation ─────────────────────────────────────
         function sidebarNav(name, el) {
