@@ -1341,11 +1341,6 @@ def download_worker(download_id, url, output_template, format_spec, output_ext=N
     """Background thread for downloading using the yt-dlp Python API"""
 
     def progress_hook(d):
-        # Check if download was cancelled (e.g. by page refresh or admin)
-        with downloads_lock:
-            if downloads.get(download_id, {}).get("status") == "cancelled":
-                raise yt_dlp.utils.DownloadCancelled("Download cancelled")
-
         if d["status"] != "downloading":
             return
 
@@ -1357,6 +1352,9 @@ def download_worker(download_id, url, output_template, format_spec, output_ext=N
         size = format_size(total) if total else ""
 
         with downloads_lock:
+            # Check if download was cancelled (e.g. by page refresh or admin)
+            if downloads.get(download_id, {}).get("status") == "cancelled":
+                raise yt_dlp.utils.DownloadCancelled("Download cancelled")
             downloads[download_id].update({
                 "percent": percent,
                 "speed": speed,
@@ -3303,15 +3301,13 @@ async def start_playlist_download(
         total     = [0]
 
         def progress_hook(d):
-            # Check if download was cancelled
-            with downloads_lock:
-                if downloads.get(batch_id, {}).get("status") == "cancelled":
-                    raise yt_dlp.utils.DownloadCancelled("Download cancelled")
-
             if d["status"] == "finished":
                 completed[0] += 1
                 pct = (100.0 * completed[0] / total[0]) if total[0] else 0
                 with downloads_lock:
+                    # Check if download was cancelled
+                    if downloads.get(batch_id, {}).get("status") == "cancelled":
+                        raise yt_dlp.utils.DownloadCancelled("Download cancelled")
                     downloads[batch_id].update({"percent": pct, "status": "downloading"})
                 emit_from_thread(
                     "progress",
