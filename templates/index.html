@@ -730,9 +730,122 @@
             font-size: 0.75rem;
             color: rgba(255, 255, 255, 0.5);
         }
-        @media (max-width: 600px) {
-            .site-footer { display: none; }
+        .footer-links a {
+            color: rgba(255, 255, 255, 0.65);
+            text-decoration: none;
         }
+        .footer-links a:hover { color: white; text-decoration: underline; }
+        .footer-how-it-works {
+            display: flex;
+            gap: 24px;
+            justify-content: center;
+            margin: 18px 0 14px;
+            flex-wrap: wrap;
+        }
+        .footer-step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            min-width: 90px;
+        }
+        .footer-step-num {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #2563eb;
+            color: white;
+            font-weight: 700;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .footer-step-label {
+            font-size: 0.78rem;
+            color: rgba(255, 255, 255, 0.75);
+            text-align: center;
+        }
+        /* ── Trust badges ── */
+        .trust-badges {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 10px;
+            margin-bottom: 4px;
+        }
+        .trust-badge {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.78rem;
+            color: #64748b;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 20px;
+            padding: 4px 10px;
+        }
+        .trust-badge i { color: #10b981; font-size: 0.72rem; }
+        /* ── Video info preview ── */
+        .video-preview {
+            display: none;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 14px;
+            gap: 14px;
+            align-items: flex-start;
+        }
+        .video-preview.visible { display: flex; }
+        .video-preview-thumb {
+            width: 120px;
+            min-width: 120px;
+            height: 68px;
+            object-fit: cover;
+            border-radius: 6px;
+            background: #e2e8f0;
+        }
+        .video-preview-info { flex: 1; min-width: 0; }
+        .video-preview-title {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #1e293b;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .video-preview-meta {
+            font-size: 0.78rem;
+            color: #64748b;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .video-preview-meta span { display: flex; align-items: center; gap: 4px; }
+        @media (max-width: 480px) {
+            .video-preview-thumb { width: 80px; min-width: 80px; height: 46px; }
+        }
+        /* ── Get Info button ── */
+        .btn-get-info {
+            background: #0ea5e9;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 40px;
+        }
+        .btn-get-info:hover:not(:disabled) { background: #0284c7; }
+        .btn-get-info:disabled { opacity: 0.6; cursor: not-allowed; }
 
         /* ── Format-guide dropdown ── */
         .format-guide-toggle {
@@ -1907,13 +2020,34 @@
                                 <div id="url-fields">
                                     <div class="url-field-row" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
                                         <input type="url" class="url-input" required
-                                               placeholder="https://www.youtube.com/watch?v=…  or any supported URL"
+                                               placeholder="Paste your video link here…"
                                                style="flex:1;">
+                                        <button type="button" class="btn-get-info" id="get-info-btn" onclick="fetchVideoInfo()">
+                                            <i class="fas fa-search"></i> Get Info
+                                        </button>
                                     </div>
                                 </div>
                                 <button type="button" class="btn-secondary btn-small" onclick="addUrlField()" style="margin-top:2px;padding:6px 14px;font-size:0.82rem;">
                                     <i class="fas fa-plus"></i> Add another URL
                                 </button>
+                                <!-- Trust badges -->
+                                <div class="trust-badges">
+                                    <span class="trust-badge"><i class="fas fa-check-circle"></i> No Registration</span>
+                                    <span class="trust-badge"><i class="fas fa-shield-alt"></i> Malware-Free</span>
+                                    <span class="trust-badge"><i class="fas fa-globe"></i> 1000+ Sites</span>
+                                    <span class="trust-badge"><i class="fas fa-lock"></i> Secure</span>
+                                </div>
+                            </div>
+                            <!-- Video preview (shown after Get Info) -->
+                            <div class="video-preview" id="video-preview">
+                                <img class="video-preview-thumb" id="video-preview-thumb" src="" alt="Thumbnail">
+                                <div class="video-preview-info">
+                                    <div class="video-preview-title" id="video-preview-title"></div>
+                                    <div class="video-preview-meta">
+                                        <span id="video-preview-duration"><i class="fas fa-clock"></i> —</span>
+                                        <span id="video-preview-uploader"><i class="fas fa-user"></i> —</span>
+                                    </div>
+                                </div>
                             </div>
                                 <div class="form-group" style="position:relative;">
                                     <input type="hidden" id="format" name="format" value="bestvideo[height<=720]+bestaudio/best">
@@ -1953,6 +2087,29 @@
                                             <div class="format-option-text">
                                                 <div class="format-option-title">Full HD (1080p)</div>
                                                 <div class="format-option-desc">Up to 1080p — sharp on most screens.</div>
+                                            </div>
+                                        </div>
+                                        <div class="format-option" onclick="pickFormat('bestvideo[height<=2160]+bestaudio/best', '4K Ultra HD')" role="option" tabindex="0">
+                                            <div class="format-option-icon" style="background:#eff6ff;color:#1d4ed8;"><i class="fas fa-expand"></i></div>
+                                            <div class="format-option-text">
+                                                <div class="format-option-title">4K Ultra HD</div>
+                                                <div class="format-option-desc">Highest quality — large file size, best on 4K screens.</div>
+                                            </div>
+                                        </div>
+                                        <!-- Audio section -->
+                                        <div class="format-section-label" style="margin-top:8px;">Audio Only</div>
+                                        <div class="format-option" onclick="pickFormat('bestaudio/best', 'Best Audio'); pickExt('mp3','MP3')" role="option" tabindex="0">
+                                            <div class="format-option-icon" style="background:#fdf4ff;color:#a21caf;"><i class="fas fa-music"></i></div>
+                                            <div class="format-option-text">
+                                                <div class="format-option-title">MP3 Audio <span class="format-option-tag">Podcast / Music</span></div>
+                                                <div class="format-option-desc">Extract audio only — great for music and podcasts.</div>
+                                            </div>
+                                        </div>
+                                        <div class="format-option" onclick="pickFormat('bestaudio/best', 'Best Audio'); pickExt('m4a','M4A')" role="option" tabindex="0">
+                                            <div class="format-option-icon" style="background:#fdf4ff;color:#7c3aed;"><i class="fas fa-headphones"></i></div>
+                                            <div class="format-option-text">
+                                                <div class="format-option-title">M4A Audio</div>
+                                                <div class="format-option-desc">High-quality audio — smaller size than MP3.</div>
                                             </div>
                                         </div>
                                         <!-- File type section -->
@@ -2558,15 +2715,37 @@
                 <i class="fas fa-download"></i> YOT Downloader
             </div>
             <p class="footer-subtitle">
-                Powered by yt-dlp &mdash; download videos from YouTube and 1000+ sites
+                Download Any Video. Fast, Free, and Secure.
             </p>
+            <!-- How It Works -->
+            <div class="footer-how-it-works">
+                <div class="footer-step">
+                    <div class="footer-step-num">1</div>
+                    <div class="footer-step-label">Copy Link</div>
+                </div>
+                <div class="footer-step">
+                    <div class="footer-step-num">2</div>
+                    <div class="footer-step-label">Paste &amp; Get Info</div>
+                </div>
+                <div class="footer-step">
+                    <div class="footer-step-num">3</div>
+                    <div class="footer-step-label">Choose &amp; Download</div>
+                </div>
+            </div>
             <div class="footer-links">
                 <span>Fast &amp; Free</span>
                 <span>&bull;</span>
                 <span>Supports 1000+ Sites</span>
                 <span>&bull;</span>
                 <span>Powered by yt-dlp</span>
+                <span>&bull;</span>
+                <a href="#" onclick="showAboutModal(); return false;">Privacy Policy</a>
+                <span>&bull;</span>
+                <a href="#" onclick="showAboutModal(); return false;">Terms of Service</a>
             </div>
+            <p style="font-size:0.73rem;color:rgba(255,255,255,0.45);margin-bottom:8px;">
+                Only download content you have the right to use, in accordance with copyright laws and the platform's terms of service.
+            </p>
             <p class="footer-copy">&copy; <span id="footer-year"></span> YOT Downloader. All rights reserved.</p>
         </div>
     </footer>
@@ -2611,6 +2790,11 @@
                 </button>`;
             container.appendChild(row);
             row.querySelector('.url-input').focus();
+            // Hide Get Info button when multiple URLs are entered
+            const infoBtn = document.getElementById('get-info-btn');
+            if (infoBtn) infoBtn.style.display = 'none';
+            // Hide video preview
+            document.getElementById('video-preview').classList.remove('visible');
         }
 
         function removeUrlField(btn) {
@@ -2619,6 +2803,10 @@
             if (container.querySelectorAll('.url-field-row').length > 1) {
                 row.remove();
             }
+            // Show Get Info button again when back to single URL
+            const remaining = container.querySelectorAll('.url-field-row').length;
+            const infoBtn = document.getElementById('get-info-btn');
+            if (infoBtn) infoBtn.style.display = remaining <= 1 ? '' : 'none';
         }
 
         function getUrlValues() {
@@ -2635,6 +2823,10 @@
                 if (i > 0) row.remove();
                 else row.querySelector('.url-input').value = '';
             });
+            // Show Get Info button again, hide video preview
+            const infoBtn = document.getElementById('get-info-btn');
+            if (infoBtn) infoBtn.style.display = '';
+            document.getElementById('video-preview').classList.remove('visible');
         }
 
         // ─── Batch URL field helpers ──────────────────────────────
@@ -3145,6 +3337,52 @@
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && progressModalVisible) closeProgressModal();
         });
+
+        // ─── Get Video Info (two-step flow) ──────────────────────
+        function _fmtDuration(secs) {
+            if (!secs) return '';
+            const h = Math.floor(secs / 3600);
+            const m = Math.floor((secs % 3600) / 60);
+            const s = Math.floor(secs % 60);
+            if (h) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+            return `${m}:${String(s).padStart(2,'0')}`;
+        }
+
+        async function fetchVideoInfo() {
+            const urls = getUrlValues();
+            if (urls.length === 0) { showToast('Please enter a URL first', 'warning'); return; }
+            if (urls.length > 1) { showToast('Get Info works for a single URL — use Batch for multiple URLs', 'warning'); return; }
+            const url = urls[0];
+            const btn = document.getElementById('get-info-btn');
+            const preview = document.getElementById('video-preview');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Analyzing…';
+            preview.classList.remove('visible');
+            try {
+                const fd = new FormData();
+                fd.append('url', url);
+                const res  = await fetch('/video_info', { method: 'POST', body: fd });
+                const data = await res.json();
+                if (!res.ok || data.error) throw new Error(data.error || 'Could not fetch video info');
+                // Populate preview
+                const thumb   = document.getElementById('video-preview-thumb');
+                const title   = document.getElementById('video-preview-title');
+                const dur     = document.getElementById('video-preview-duration');
+                const uploader = document.getElementById('video-preview-uploader');
+                if (data.thumbnail) { thumb.src = data.thumbnail; thumb.style.display = ''; }
+                else { thumb.style.display = 'none'; }
+                title.textContent    = data.title || url;
+                dur.innerHTML        = `<i class="fas fa-clock"></i> ${_fmtDuration(data.duration) || '—'}`;
+                uploader.innerHTML   = `<i class="fas fa-user"></i> ${data.uploader || '—'}`;
+                preview.classList.add('visible');
+                showToast(`✅ "${data.title}" — select a format and click Download`, 'success', 4000);
+            } catch (err) {
+                showToast('⚠️ ' + err.message, 'error', 6000);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-search"></i> Get Info';
+            }
+        }
 
         // ─── Download form ────────────────────────────────────────
         document.getElementById('download-form').addEventListener('submit', async (e) => {

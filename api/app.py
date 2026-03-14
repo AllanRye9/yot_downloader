@@ -1397,8 +1397,19 @@ def download_worker(download_id, url, output_template, format_spec, output_ext=N
         **_get_cookie_opts(),
     }
 
-    # Force output container format (e.g. mp4, webm, mkv)
-    if output_ext in _VALID_OUTPUT_EXTS:
+    # Force output container format (e.g. mp4, webm, mkv) or extract audio
+    if output_ext in _AUDIO_OUTPUT_EXTS:
+        # Audio-only extraction via ffmpeg postprocessor
+        codec_map = {"mp3": "mp3", "m4a": "m4a", "wav": "wav", "aac": "aac", "opus": "opus"}
+        preferred_codec = codec_map.get(output_ext, "mp3")
+        ydl_opts["postprocessors"] = [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": preferred_codec,
+            "preferredquality": "192",
+        }]
+        # Override output template extension for audio files
+        output_template = os.path.splitext(output_template)[0] + ".%(ext)s"
+    elif output_ext in _VALID_OUTPUT_EXTS:
         ydl_opts["merge_output_format"] = output_ext
 
     # Add ffmpeg if available
@@ -1494,6 +1505,7 @@ _VALID_VIDEO_FORMATS = {"mp4", "webm", "avi", "mkv"}
 _VALID_AUDIO_FORMATS = {"mp3", "wav"}
 _ALL_CONVERT_FORMATS = _VALID_VIDEO_FORMATS | _VALID_AUDIO_FORMATS
 _VALID_OUTPUT_EXTS   = {"mp4", "webm", "mkv", "avi"}
+_AUDIO_OUTPUT_EXTS   = {"mp3", "m4a", "wav", "aac", "opus"}
 
 _VALID_RESOLUTION_RE = re.compile(r"^\d{2,5}x\d{2,5}$")
 _VALID_BITRATE_RE    = re.compile(r"^\d+[kKmMgG]?$")
@@ -1623,13 +1635,25 @@ async def health():
         "version": "1.0.0"
     })
 
+@fastapi_app.post("/video_info")
+async def video_info_endpoint(url: str = Form(None)):
+    """Fetch video metadata (title, thumbnail, duration, available formats) without downloading."""
+    if not url or not url.strip():
+        return JSONResponse({"error": "URL is required"}, status_code=400)
+    url = url.strip()
+    info = get_video_info(url)
+    if not info or "error" in info:
+        return JSONResponse({"error": (info or {}).get("error", "Failed to fetch video info")}, status_code=422)
+    return JSONResponse(info)
+
+
 @fastapi_app.post("/start_download")
 @rate_limit()
 async def start_download(request: Request, url: str = Form(None), format: str = Form("best"), ext: str = Form("mp4")):
     """Start a download with better error feedback"""
     format_spec = format
     output_ext  = ext.strip().lower() if ext else "mp4"
-    if output_ext not in _VALID_OUTPUT_EXTS:
+    if output_ext not in _VALID_OUTPUT_EXTS and output_ext not in _AUDIO_OUTPUT_EXTS:
         output_ext = "mp4"
 
     if not url:
