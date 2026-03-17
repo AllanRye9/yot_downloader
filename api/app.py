@@ -78,6 +78,8 @@ STATIC_DIR = os.path.join(ROOT_DIR, Config.STATIC_FOLDER)
 DOWNLOAD_FOLDER = os.path.join(ROOT_DIR, Config.DOWNLOAD_FOLDER)
 DATA_DIR = os.path.join(ROOT_DIR, "data")
 COOKIES_FILE = os.environ.get("COOKIES_FILE", os.path.join(DATA_DIR, "cookies.txt"))
+# React frontend build output
+FRONTEND_DIST = os.path.join(ROOT_DIR, "frontend_dist")
 
 # Create directories
 os.makedirs(TEMPLATES_DIR, exist_ok=True)
@@ -132,13 +134,19 @@ fastapi_app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
-# Jinja2 template rendering
+# Jinja2 template rendering (still used for legacy /admin/login fallback)
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 # Mount static files
 from starlette.staticfiles import StaticFiles
 if os.path.isdir(STATIC_DIR):
     fastapi_app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+# Mount React frontend build assets (CSS/JS chunks)
+if os.path.isdir(FRONTEND_DIST):
+    _frontend_assets = os.path.join(FRONTEND_DIST, "assets")
+    if os.path.isdir(_frontend_assets):
+        fastapi_app.mount("/assets", StaticFiles(directory=_frontend_assets), name="frontend_assets")
 
 # Socket.IO with ASGI mode
 sio = socketio_pkg.AsyncServer(
@@ -1608,20 +1616,32 @@ def _start_ffmpeg_job(
 
 
 # =========================================================
+# REACT SPA HELPERS
+# =========================================================
+
+def _react_index():
+    """Return the React build index.html, falling back to a basic HTML stub."""
+    idx = os.path.join(FRONTEND_DIST, "index.html")
+    if os.path.isfile(idx):
+        return FileResponse(idx, media_type="text/html")
+    # Fallback stub while the React build is absent (dev/CI)
+    return Response(
+        '<html><body><h1>YOT Downloader</h1>'
+        '<p>React frontend build not found. Run <code>npm run build</code> inside the '
+        '<code>frontend/</code> directory.</p></body></html>',
+        media_type="text/html",
+        status_code=200,
+    )
+
+
+# =========================================================
 # ROUTES
 # =========================================================
 
 @fastapi_app.get("/")
 async def index(request: Request):
-    """Main page"""
-    try:
-        return templates.TemplateResponse(
-            "index.html",
-            {"request": request, "is_admin": bool(request.session.get("admin_logged_in"))},
-        )
-    except Exception as e:
-        logger.error(f"Template error: {e}")
-        return JSONResponse({"error": "Template not found"}, status_code=500)
+    """Serve the React SPA (main page)"""
+    return _react_index()
 
 @fastapi_app.get("/ads.txt")
 async def ads_txt():
@@ -2048,24 +2068,20 @@ async def submit_review(request: Request):
 
 
 @fastapi_app.get("/const")
-@admin_required
 async def admin_page(request: Request):
-    """Admin page — full download history (authentication required)"""
-    return templates.TemplateResponse("const.html", {"request": request})
+    """Admin dashboard — served via React SPA (authentication checked client-side via /admin/auth_status)"""
+    return _react_index()
 
 
 @fastapi_app.get("/admin/login")
 async def admin_login_get(request: Request):
-    """Admin login page (GET)."""
-    return templates.TemplateResponse(
-        "admin_login.html",
-        {"request": request, "error": None, "has_admin": admin_user_exists()},
-    )
+    """Admin login — served via React SPA."""
+    return _react_index()
 
 
 @fastapi_app.post("/admin/login")
 async def admin_login_post(request: Request):
-    """Admin login (POST with form data)."""
+    """Admin login (POST with form data) — legacy form-based endpoint kept for compatibility."""
     form = await request.form()
     username = (form.get("username") or "").strip()
     password = form.get("password") or ""
@@ -2094,19 +2110,13 @@ async def admin_login_post(request: Request):
 
 @fastapi_app.get("/admin/register")
 async def admin_register_get(request: Request):
-    """Admin registration page (GET)."""
-    if request.session.get("admin_logged_in"):
-        return RedirectResponse(url="/const", status_code=302)
-    return templates.TemplateResponse(
-        "admin_login.html",
-        {"request": request, "error": None, "success": None,
-         "register_mode": True, "has_admin": admin_user_exists()},
-    )
+    """Admin registration — served via React SPA."""
+    return _react_index()
 
 
 @fastapi_app.post("/admin/register")
 async def admin_register_post(request: Request):
-    """Admin registration (POST with form data)."""
+    """Admin registration (POST with form data) — legacy endpoint kept for compatibility."""
     if request.session.get("admin_logged_in"):
         return RedirectResponse(url="/const", status_code=302)
     form = await request.form()
@@ -2139,6 +2149,83 @@ async def admin_logout(request: Request):
     request.session.pop("admin_username", None)
     return RedirectResponse(url="/admin/login", status_code=302)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JSON AUTH ENDPOINTS — consumed by the React frontend
+# ─────────────────────────────────────────────────────────────────────────────
+
+@fastapi_app.get("/admin/auth_status")
+async def admin_auth_status(request: Request):
+    """Return current admin session status as JSON (used by React SPA)."""
+    logged_in = bool(request.session.get("admin_logged_in"))
+    return JSONResponse({
+        "logged_in": logged_in,
+        "username": request.session.get("admin_username") if logged_in else None,
+    })
+
+
+@fastapi_app.get("/admin/has_admin")
+async def admin_has_admin():
+    """Return whether an admin account has been registered (used by React SPA)."""
+    return JSONResponse({"has_admin": admin_user_exists()})
+
+
+@fastapi_app.post("/admin/api/login")
+async def admin_api_login(request: Request):
+    """JSON admin login endpoint (used by React SPA)."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    username = (body.get("username") or "").strip()
+    password = body.get("password") or ""
+
+    if not admin_user_exists():
+        if secrets.compare_digest(password, Config.ADMIN_PASSWORD):
+            request.session["admin_logged_in"] = True
+            request.session["admin_username"] = username or "admin"
+            return JSONResponse({"success": True, "username": username or "admin"})
+        return JSONResponse({"error": "Incorrect password."}, status_code=401)
+
+    if verify_admin_user(username, password):
+        request.session["admin_logged_in"] = True
+        request.session["admin_username"] = username
+        return JSONResponse({"success": True, "username": username})
+    return JSONResponse({"error": "Incorrect username or password."}, status_code=401)
+
+
+@fastapi_app.post("/admin/api/logout")
+async def admin_api_logout(request: Request):
+    """JSON admin logout endpoint (used by React SPA)."""
+    request.session.pop("admin_logged_in", None)
+    request.session.pop("admin_username", None)
+    return JSONResponse({"success": True})
+
+
+@fastapi_app.post("/admin/api/register")
+async def admin_api_register(request: Request):
+    """JSON admin registration endpoint (used by React SPA)."""
+    if request.session.get("admin_logged_in"):
+        return JSONResponse({"error": "Already logged in."}, status_code=400)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    username        = (body.get("username") or "").strip()
+    password        = body.get("password") or ""
+    confirm_password = body.get("confirm_password") or ""
+
+    if not username or not password:
+        return JSONResponse({"error": "Username and password are required."}, status_code=400)
+    if password != confirm_password:
+        return JSONResponse({"error": "Passwords do not match."}, status_code=400)
+
+    ok, msg = register_admin_user(username, password)
+    if ok:
+        return JSONResponse({"success": True, "message": "Admin account created. You can now log in."})
+    return JSONResponse({"error": msg}, status_code=400)
 
 @fastapi_app.middleware("http")
 async def track_admin_visitor(request: Request, call_next):
@@ -3692,13 +3779,25 @@ logger.info("=" * 50)
 # ERROR HANDLERS
 # =========================================================
 
-@fastapi_app.exception_handler(404)
-async def not_found_error(request: Request, exc):
-    return JSONResponse({"error": "Not found"}, status_code=404)
-
 @fastapi_app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    # For 404s on non-API paths, serve the React SPA so client-side routing works
     if exc.status_code == 404:
+        path = request.url.path
+        # Only serve SPA for non-API / non-static paths
+        api_prefixes = (
+            "/video_info", "/start_download", "/status/", "/files", "/downloads/",
+            "/stream/", "/delete/", "/cancel", "/cancel_all", "/stats",
+            "/active_downloads", "/start_playlist_download", "/start_batch_download",
+            "/download_zip", "/convert_file", "/batch_convert", "/trim", "/crop",
+            "/watermark", "/extract_clip", "/merge", "/job_status/", "/reviews",
+            "/admin/downloads", "/admin/visitors", "/admin/analytics",
+            "/admin/cancel_download/", "/admin/delete_record/", "/admin/clear_visitors",
+            "/admin/db/", "/admin/cookies", "/admin/auth_status", "/admin/has_admin",
+            "/admin/api/", "/health", "/ads.txt", "/static/", "/assets/",
+        )
+        if not any(path.startswith(p) for p in api_prefixes):
+            return _react_index()
         return JSONResponse({"error": "Not found"}, status_code=404)
     if exc.status_code == 500:
         logger.error(f"Internal error: {exc.detail}")

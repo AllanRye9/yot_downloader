@@ -1,16 +1,27 @@
 FROM python:3.12-slim
 
-# Install ffmpeg (required by yt-dlp for merging formats)
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+# Install Node.js (for building the React frontend) + ffmpeg + ca-certificates
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg ca-certificates curl \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install Python dependencies
+# ── 1. Build the React frontend ───────────────────────────────────────────────
+COPY frontend/package*.json ./frontend/
+RUN cd frontend && npm ci --prefer-offline
+
+COPY frontend/ ./frontend/
+RUN cd frontend && npm run build
+# The build output lands in /app/frontend_dist (per vite.config.js)
+
+# ── 2. Install Python dependencies ───────────────────────────────────────────
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application source
+# ── 3. Copy application source ────────────────────────────────────────────────
 COPY . .
 
 # Create data directory for persistent files (cookies, etc.)
