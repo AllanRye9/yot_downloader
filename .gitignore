@@ -6,3 +6,8 @@ nohup.out
 app.log
 data/
 static/
+
+# React frontend - don't commit node_modules
+frontend/node_modules/
+
+# Keep frontend_dist (pre-built output committed for deployments without Node)
