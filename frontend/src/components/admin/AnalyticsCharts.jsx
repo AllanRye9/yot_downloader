@@ -20,8 +20,8 @@ function NoData() {
 
 /* ── Daily Downloads Line Chart ── */
 function DailyDownloadsChart({ data }) {
-  // data is an array of 30 numbers (oldest first)
-  if (!data?.length) return <NoData />
+  // data may be a 30-element array (oldest→newest) or undefined/scalar
+  if (!Array.isArray(data) || !data.length) return <NoData />
   const chartData = data.map((v, i) => ({ day: `${i + 1}`, downloads: v }))
   return (
     <ResponsiveContainer width="100%" height={200}>
@@ -91,7 +91,7 @@ function ColorBar({ data, height = 200 }) {
   )
 }
 
-export default function AnalyticsCharts({ analytics }) {
+export default function AnalyticsCharts({ analytics, downloadsTrend }) {
   if (!analytics) return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {Array.from({ length: 8 }).map((_, i) => (
@@ -141,7 +141,7 @@ export default function AnalyticsCharts({ analytics }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <ChartCard title="📅 Daily Downloads (30 days)">
-        <DailyDownloadsChart data={analytics.daily_downloads} />
+        <DailyDownloadsChart data={downloadsTrend} />
       </ChartCard>
 
       <ChartCard title="🍕 Download Status">

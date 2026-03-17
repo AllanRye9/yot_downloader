@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../App'
 import {
@@ -36,6 +36,20 @@ export default function AdminDashboard() {
   const [error, setError]             = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
+  // Compute 30-day download trend from download records
+  const downloadsTrend = useMemo(() => {
+    if (!downloads.length) return null
+    const now = Date.now() / 1000
+    const buckets = Array(30).fill(0)
+    downloads.forEach(d => {
+      const ts = d.created_at
+      if (!ts) return
+      const daysAgo = Math.floor((now - ts) / 86400)
+      if (daysAgo >= 0 && daysAgo < 30) buckets[29 - daysAgo]++
+    })
+    return buckets
+  }, [downloads])
+
   const fetchAnalytics = useCallback(async () => {
     setLoadingAnalytics(true)
     try { setAnalytics(await getAdminAnalytics()) } catch {}
@@ -60,7 +74,10 @@ export default function AdminDashboard() {
 
   // Load data based on active tab
   useEffect(() => {
-    if (tab === 'dashboard' || tab === 'analytics') fetchAnalytics()
+    if (tab === 'dashboard' || tab === 'analytics') {
+      fetchAnalytics()
+      fetchDownloads()  // needed for 30-day trend
+    }
     if (tab === 'downloads')  fetchDownloads()
     if (tab === 'visitors')   fetchVisitors()
     if (tab === 'cookies')    fetchCookies()
@@ -213,7 +230,7 @@ export default function AdminDashboard() {
             <div>
               {loadingAnalytics && !analytics
                 ? <div className="flex justify-center py-20"><span className="spinner w-10 h-10" /></div>
-                : <AnalyticsCharts analytics={analytics} />
+                : <AnalyticsCharts analytics={analytics} downloadsTrend={downloadsTrend} />
               }
             </div>
           )}
