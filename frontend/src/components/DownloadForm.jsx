@@ -75,6 +75,10 @@ export default function DownloadForm({ onDownloadStarted }) {
           value={url}
           onChange={e => setUrl(e.target.value)}
           autoComplete="off"
+          inputMode="url"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
         />
         <button type="submit" className="btn-primary shrink-0" disabled={loading}>
           {loading
@@ -91,12 +95,12 @@ export default function DownloadForm({ onDownloadStarted }) {
       {/* Video preview card */}
       {info && (
         <div className="mt-5 bg-gray-800/60 rounded-xl p-4">
-          <div className="flex gap-4">
+          <div className="flex flex-col sm:flex-row gap-3">
             {info.thumbnail && (
               <img
                 src={info.thumbnail}
                 alt="thumbnail"
-                className="w-32 sm:w-40 rounded-lg object-cover shrink-0 aspect-video"
+                className="w-full sm:w-36 rounded-lg object-cover shrink-0 aspect-video"
                 referrerPolicy="no-referrer"
               />
             )}

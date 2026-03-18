@@ -180,7 +180,7 @@ export default function Home() {
       </nav>
 
       {/* ── Hero ── */}
-      <div className="bg-gradient-to-b from-gray-900 to-gray-950 border-b border-gray-800 py-8 px-4">
+      <div className="bg-gradient-to-b from-gray-900 to-gray-950 border-b border-gray-800 py-6 sm:py-8 px-4">
         <div className="max-w-2xl mx-auto text-center">
           <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">
             Download <span className="gradient-text">Any Video</span> — Free &amp; Fast
@@ -192,7 +192,7 @@ export default function Home() {
       </div>
 
       {/* ── Main Content ── */}
-      <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-6">
+      <main className="flex-1 max-w-4xl mx-auto w-full px-4 pt-4 sm:pt-6 pb-24 sm:pb-8">
         {/* Tab buttons */}
         <div className="flex gap-2 mb-5 overflow-x-auto pb-1 scrollbar-thin">
           {TABS.map(t => (
@@ -230,7 +230,7 @@ export default function Home() {
       </main>
 
       {/* ── Footer ── */}
-      <footer className="border-t border-gray-800 py-6 px-4 text-center text-xs text-gray-600">
+      <footer className="border-t border-gray-800 py-6 px-4 pb-safe text-center text-xs text-gray-600">
         <p>
           YOT Downloader © {new Date().getFullYear()} — Download responsibly. Respect copyright laws.
         </p>
@@ -249,7 +249,10 @@ export default function Home() {
         aria-label="Help — click for a guide to all features"
         title="Help"
         style={{
-          position: 'fixed', bottom: 24, right: 24, zIndex: 9000,
+          position: 'fixed',
+          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)',
+          right: 24,
+          zIndex: 9000,
           width: 52, height: 52, borderRadius: '50%',
           background: 'linear-gradient(135deg,#dc2626,#b91c1c)',
           color: '#fff', border: 'none', cursor: 'pointer',
@@ -269,6 +272,8 @@ export default function Home() {
             position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
             zIndex: 9100, display: 'flex', alignItems: 'center',
             justifyContent: 'center', padding: 16,
+            overflowY: 'auto',
+            WebkitOverflowScrolling: 'touch',
           }}
           onClick={e => { if (e.target === e.currentTarget) setHelpOpen(false) }}
         >

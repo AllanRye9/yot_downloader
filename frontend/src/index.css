@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Mobile foundations (applied before theme variables) ─────────────────── */
+html {
+  -webkit-text-size-adjust: 100%; /* prevent iOS font-size inflation on rotation */
+}
+body {
+  -webkit-tap-highlight-color: transparent; /* remove blue tap flash on iOS/Android */
+  overscroll-behavior-y: contain; /* prevent pull-to-refresh interference */
+}
+html, body {
+  overflow-x: hidden; /* prevent accidental horizontal scroll */
+  max-width: 100%;
+}
+
 /* ── Theme CSS custom properties ─────────────────────────────────────────── */
 /*
  * Each theme applies its own values to --bg-page, --bg-surface, --bg-card,
@@ -223,6 +236,8 @@ html:not(.theme-dark) .bg-gradient-to-b {
   }
   .input {
     @apply w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-2.5 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200;
+    /* Use 16px on mobile so iOS doesn't zoom the viewport when an input is focused */
+    font-size: max(16px, 0.875rem);
   }
   .card {
     @apply bg-gray-900 border border-gray-800 rounded-xl p-5;
@@ -300,6 +315,22 @@ html:not(.theme-dark) .bg-gradient-to-b {
   .gradient-text {
     @apply bg-gradient-to-r from-red-400 to-pink-400 bg-clip-text text-transparent;
   }
+
+  /* iOS safe-area padding helpers */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .mb-safe {
+    margin-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+/* ── Mobile touch targets ─────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  /* Ensure btn-sm remains comfortably tappable on small screens */
+  .btn-sm {
+    min-height: 38px;
+  }
 }
 
 /* Loading spinner */
@@ -317,4 +348,18 @@ html:not(.theme-dark) .bg-gradient-to-b {
 /* Mobile nav */
 @media (max-width: 640px) {
   .mobile-hidden { display: none; }
+}
+
+/* Popup / modal on mobile: ensure it fits within viewport height */
+@media (max-width: 640px) {
+  .popup-card {
+    @apply p-4;
+  }
+}
+
+/* Prevent chart containers from overflowing on mobile */
+@media (max-width: 640px) {
+  .recharts-wrapper {
+    max-width: 100% !important;
+  }
 }
