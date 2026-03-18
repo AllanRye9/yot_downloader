@@ -5,14 +5,11 @@
 /* ── Mobile foundations (applied before theme variables) ─────────────────── */
 html {
   -webkit-text-size-adjust: 100%; /* prevent iOS font-size inflation on rotation */
-  overflow-x: hidden; /* prevent accidental horizontal scroll; using hidden (not clip) for iOS Safari compatibility */
-  max-width: 100%;
 }
 body {
   -webkit-tap-highlight-color: transparent; /* remove blue tap flash on iOS/Android */
-  overscroll-behavior-y: contain; /* prevent pull-to-refresh interference */
-  overflow-x: hidden; /* prevent accidental horizontal scroll */
-  max-width: 100%;
+  overscroll-behavior-y: contain; /* prevent pull-to-refresh bounce interference */
+  overflow-x: hidden; /* prevent accidental horizontal scroll; propagates to viewport so html-level clip is not needed */
 }
 
 /* ── Theme CSS custom properties ─────────────────────────────────────────── */
