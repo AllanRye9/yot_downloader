@@ -51,11 +51,11 @@ export default function DownloadCompletePopup({ dl, onClose, onDelete }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center sm:p-4"
       onClick={onClose}
     >
       <div
-        className="popup-card w-full max-w-md"
+        className="popup-card w-full sm:max-w-md rounded-b-none sm:rounded-2xl pb-safe"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

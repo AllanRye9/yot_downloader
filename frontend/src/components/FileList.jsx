@@ -156,7 +156,7 @@ export default function FileList({ version }) {
         {files.map(file => (
           <div
             key={file.name}
-            className={`bg-gray-900 border rounded-xl p-3 flex items-center gap-3 transition-all ${
+            className={`bg-gray-900 border rounded-xl p-3 flex flex-wrap items-center gap-x-3 gap-y-2 transition-all ${
               selected.has(file.name) ? 'border-red-600/50 bg-red-900/10' : 'border-gray-800'
             }`}
           >
@@ -173,8 +173,8 @@ export default function FileList({ version }) {
               {isVideo(file.name) ? '🎬' : isAudio(file.name) ? '🎵' : '📄'}
             </span>
 
-            {/* Name + meta */}
-            <div className="flex-1 min-w-0">
+            {/* Name + meta — min-w-[8rem] ensures it stays readable; flex-1 fills remaining space */}
+            <div className="flex-1 min-w-[8rem]">
               <p className="text-sm font-medium text-white truncate">{file.name}</p>
               <p className="text-xs text-gray-500">
                 {file.size_hr || formatBytes(file.size)}
@@ -182,8 +182,8 @@ export default function FileList({ version }) {
               </p>
             </div>
 
-            {/* Actions */}
-            <div className="flex gap-1.5 shrink-0">
+            {/* Actions — ml-auto keeps them right-aligned; on narrow screens they wrap below */}
+            <div className="flex gap-1.5 ml-auto shrink-0">
               {isMedia(file.name) && (
                 <button
                   className="btn-ghost btn-sm text-xs"

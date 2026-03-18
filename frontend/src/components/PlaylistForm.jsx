@@ -90,11 +90,11 @@ export default function PlaylistForm({ onDownloadStarted }) {
     <div>
       <div className="flex gap-2 mb-5">
         <button
-          className={subTab === 'playlist' ? 'tab-btn-active' : 'tab-btn-inactive'}
+          className={`${subTab === 'playlist' ? 'tab-btn-active' : 'tab-btn-inactive'} flex-1`}
           onClick={() => { setSubTab('playlist'); setError(''); setNotice('') }}
         >📋 Playlist / Channel</button>
         <button
-          className={subTab === 'batch' ? 'tab-btn-active' : 'tab-btn-inactive'}
+          className={`${subTab === 'batch' ? 'tab-btn-active' : 'tab-btn-inactive'} flex-1`}
           onClick={() => { setSubTab('batch'); setError(''); setNotice('') }}
         >📄 Batch URLs</button>
       </div>
@@ -112,6 +112,10 @@ export default function PlaylistForm({ onDownloadStarted }) {
               placeholder="https://youtube.com/playlist?list=…"
               value={url}
               onChange={e => setUrl(e.target.value)}
+              inputMode="url"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               required
             />
           </div>
