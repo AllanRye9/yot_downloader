@@ -1675,6 +1675,12 @@ def download_worker(download_id, url, output_template, format_spec, output_ext=N
                     })
                     break
 
+        emit_from_thread(
+            "progress",
+            {"id": download_id, "line": "", "percent": 100,
+             "speed": "", "eta": "", "size": downloads[download_id].get("size", "")},
+            room=download_id,
+        )
         emit_from_thread("completed", {
             "id": download_id,
             "filename": downloads[download_id].get("filename"),
@@ -3861,6 +3867,11 @@ async def start_playlist_download(
                     "percent":  100,
                     "end_time": time.time(),
                 })
+            emit_from_thread(
+                "progress",
+                {"id": batch_id, "line": "", "percent": 100, "speed": "", "eta": ""},
+                room=batch_id,
+            )
             emit_from_thread(
                 "completed",
                 {"id": batch_id, "title": downloads[batch_id].get("title")},

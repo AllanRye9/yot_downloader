@@ -3163,6 +3163,10 @@
         // Map of downloadId -> { title, status, percent, speed, eta, size }
         const activeDownloads = new Map();
 
+        // Delay (ms) for keeping a completed card visible at 100% before removing it.
+        // Must be >= the CSS transition duration on .progress-fill (currently 0.4s).
+        const PROGRESS_COMPLETE_DELAY = 600;
+
         // Persistent counters (session-level in localStorage)
         let downloadCount = parseInt(localStorage.getItem('dlCount')) || 0;
 
@@ -3205,12 +3209,21 @@
                 localStorage.setItem('dlCount', downloadCount);
                 showToast(`✅ "${dl.title}" downloaded!`, 'success');
                 beep(880, 300);
-                activeDownloads.delete(data.id);
+                // Snap bar to 100% so the CSS transition animates to completion
+                dl.percent = 100;
+                dl.status  = 'completing';
+                activeDownloads.set(data.id, dl);
                 renderActiveDownloads();
                 updateProgressModal();
-                updateStatsBadge();
-                updateGlobalStats();
-                loadFiles(true);
+                // Remove card after the CSS transition (0.4s) + small buffer
+                setTimeout(() => {
+                    activeDownloads.delete(data.id);
+                    renderActiveDownloads();
+                    updateProgressModal();
+                    updateStatsBadge();
+                    updateGlobalStats();
+                    loadFiles(true);
+                }, PROGRESS_COMPLETE_DELAY);
             }
         });
 
