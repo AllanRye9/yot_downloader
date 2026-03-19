@@ -52,7 +52,7 @@ class Config:
     TEMPLATES_FOLDER = "templates"
     STATIC_FOLDER = "static"
     MAX_DOWNLOADS_PER_IP = 5
-    MAX_REVIEWS_PER_IP = 2
+    MAX_REVIEWS_PER_IP = 1
     MAX_CONCURRENT_DOWNLOADS = 3
     DOWNLOAD_TIMEOUT = 3600  # 1 hour
     CLEANUP_INTERVAL = 60    # Run cleanup every 60 seconds
@@ -2548,21 +2548,27 @@ async def get_reviews():
     return JSONResponse(safe)
 
 
+@fastapi_app.get("/reviews/can_submit")
+async def can_submit_review(request: Request):
+    """Return whether this IP is allowed to submit another review."""
+    ip = _get_real_ip(request)
+    with reviews_lock:
+        count = sum(1 for r in reviews if r.get("ip") == ip)
+    return JSONResponse({"can_submit": count < Config.MAX_REVIEWS_PER_IP})
+
+
 @fastapi_app.post("/reviews")
-@rate_limit()
 async def submit_review(request: Request):
-    """Submit a new review from a visitor (max 2 per IP)."""
+    """Submit a new review from a visitor (max 1 per IP)."""
     try:
-        body = await request.json()
+        body = json.loads(await request.body())
     except Exception:
         return JSONResponse({"error": "Invalid JSON"}, status_code=400)
 
-    name = (body.get("name") or "").strip()[:50]
+    name = (body.get("name") or "Anonymous").strip()[:50] or "Anonymous"
     comment = (body.get("comment") or "").strip()[:500]
     rating = body.get("rating")
 
-    if not name:
-        return JSONResponse({"error": "Name is required"}, status_code=400)
     try:
         rating = int(rating)
         if rating < 1 or rating > 5:
