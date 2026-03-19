@@ -28,6 +28,7 @@
 
         body {
             font-family: var(--font-family);
+            font-weight: 400;
             background: #f0f2f5;
             background-attachment: fixed;
             color: #1e293b;
@@ -329,6 +330,7 @@
             border-radius: 8px;
             font-family: inherit;
             font-size: 0.92rem;
+            font-weight: 500;
             transition: border-color 0.2s, box-shadow 0.2s;
             background: #fafbfc;
             min-height: 42px;
@@ -1737,6 +1739,24 @@
             transition: background 0.15s;
         }
         .url-remove-btn:hover { background: #fecaca; }
+        .btn-paste-url {
+            background: #16a34a;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            width: 34px;
+            height: 34px;
+            min-height: unset;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+            transition: background 0.15s;
+        }
+        .btn-paste-url:hover { background: #15803d; }
 
         /* ── Review section ── */
         .review-form {
@@ -2170,6 +2190,9 @@
                                         <input type="url" class="url-input" required
                                                placeholder="Paste your video link here…"
                                                style="flex:1;">
+                                        <button type="button" class="btn-paste-url" id="paste-url-btn" onclick="pasteUrlFromClipboard()" title="Paste from clipboard">
+                                            <i class="fas fa-paste"></i>
+                                        </button>
                                         <button type="button" class="btn-get-info" id="get-info-btn" onclick="fetchVideoInfo()">
                                             <i class="fas fa-search"></i> Get Info
                                         </button>
@@ -3051,6 +3074,20 @@
         }
 
         // ─── URL field management ─────────────────────────────────
+        async function pasteUrlFromClipboard() {
+            try {
+                const text = await navigator.clipboard.readText();
+                const input = document.querySelector('#url-fields .url-input');
+                if (input) {
+                    input.value = text.trim();
+                    input.dispatchEvent(new Event('input'));
+                }
+            } catch (err) {
+                console.warn('Clipboard read failed:', err);
+                showToast('Clipboard access requires HTTPS or user permission — paste manually', 'warning', 3500);
+            }
+        }
+
         function addUrlField() {
             const container = document.getElementById('url-fields');
             const rows = container.querySelectorAll('.url-field-row');
@@ -4221,8 +4258,12 @@
         setInterval(() => {
             loadFiles(false);
             updateStatsBadge();
-            updateGlobalStats();
         }, 30000);
+
+        // Refresh Total Downloads / Total Visitors counters every 45 seconds
+        setInterval(() => {
+            updateGlobalStats();
+        }, 45000);
 
         // ─── Tab switcher (feature cards) ─────────────────────────
         function switchFeatureTab(tabId, btn, groupAttr) {

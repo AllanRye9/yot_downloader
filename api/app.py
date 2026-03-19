@@ -2561,7 +2561,7 @@ async def can_submit_review(request: Request):
 async def submit_review(request: Request):
     """Submit a new review from a visitor (max 1 per IP)."""
     try:
-        body = json.loads(await request.body())
+        body = await request.json()
     except Exception:
         return JSONResponse({"error": "Invalid JSON"}, status_code=400)
 
