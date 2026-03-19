@@ -18,6 +18,12 @@
 
         :root {
             --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --theme-primary: #2563eb;
+            --theme-primary-dark: #1d4ed8;
+            --theme-primary-light: #60a5fa;
+            --theme-primary-bg: rgba(37,99,235,0.18);
+            --theme-hero-bg: white;
+            --theme-section-header: linear-gradient(135deg, #1e293b 0%, #334155 50%, #1e293b 100%);
         }
 
         body {
@@ -45,7 +51,7 @@
             left: 16px;
             width: 60px;
             height: 60px;
-            background: #2563eb;
+            background: var(--theme-primary);
             border-radius: 50%;
             display: flex;
             flex-direction: column;
@@ -118,7 +124,7 @@
         .hero-icon {
             width: 34px;
             height: 34px;
-            background: #2563eb;
+            background: var(--theme-primary);
             border-radius: 8px;
             display: flex;
             align-items: center;
@@ -379,12 +385,12 @@
         }
         .btn-primary {
             width: 100%;
-            background: #2563eb;
+            background: var(--theme-primary);
             color: white;
             letter-spacing: 0.01em;
         }
         .btn-primary:hover:not(:disabled) {
-            background: #1d4ed8;
+            background: var(--theme-primary-dark);
             transform: translateY(-1px);
             box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
         }
@@ -702,7 +708,7 @@
             scrollbar-width: none;
             justify-content: center;
             position: relative;
-            background: linear-gradient(135deg, #1e293b 0%, #334155 50%, #1e293b 100%);
+            background: var(--theme-section-header);
             background-size: 200% 200%;
             animation: headerShimmer 6s ease-in-out infinite;
         }
@@ -803,7 +809,7 @@
             width: 32px;
             height: 32px;
             border-radius: 50%;
-            background: #2563eb;
+            background: var(--theme-primary);
             color: white;
             font-weight: 700;
             font-size: 0.95rem;
@@ -1127,7 +1133,7 @@
             margin-bottom: 16px;
         }
         .tab-btn:hover { background: #dbeafe; color: #1d4ed8; }
-        .tab-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
+        .tab-btn.active { background: var(--theme-primary); color: white; border-color: var(--theme-primary); }
         .tab-pane { display: none; }
         .tab-pane.active { display: block; }
 
@@ -1823,6 +1829,87 @@
             transform: rotate(180deg);
         }
 
+        /* ── Theme color picker ── */
+        .theme-picker-wrap {
+            position: relative;
+        }
+        .theme-picker-btn {
+            background: transparent;
+            border: none;
+            color: rgba(255,255,255,0.72);
+            padding: 7px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: background 0.2s, color 0.2s;
+        }
+        .theme-picker-btn:hover { background: rgba(96,165,250,0.18); color: white; }
+        .theme-picker-dot {
+            width: 14px; height: 14px;
+            border-radius: 50%;
+            background: var(--theme-primary);
+            border: 2px solid rgba(255,255,255,0.6);
+            display: inline-block;
+        }
+        .theme-picker-dropdown {
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            right: 0;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+            padding: 10px;
+            z-index: 3000;
+            min-width: 180px;
+        }
+        .theme-picker-dropdown.open { display: block; }
+        .theme-picker-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 8px;
+            padding: 0 2px;
+        }
+        .theme-swatches {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 6px;
+        }
+        .theme-swatch {
+            width: 28px; height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: transform 0.15s, border-color 0.15s;
+        }
+        .theme-swatch:hover { transform: scale(1.18); }
+        .theme-swatch.active { border-color: #1e293b; }
+
+        /* ── Terms modal ── */
+        #terms-modal .info-modal-box {
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .terms-section { margin-bottom: 16px; }
+        .terms-section h3 {
+            font-size: 0.92rem;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 6px;
+        }
+        .terms-section p {
+            font-size: 0.83rem;
+            color: #475569;
+            line-height: 1.6;
+        }
+
     </style>
 </head>
 <body>
@@ -1872,6 +1959,17 @@
                 <i class="fas fa-star" aria-hidden="true"></i>
                 <span class="nav-label">Recommended</span>
             </button>
+            <!-- Theme color picker -->
+            <div class="theme-picker-wrap" id="theme-picker-wrap">
+                <button class="theme-picker-btn" onclick="toggleThemePicker(event)" aria-label="Choose theme color" title="Choose theme color">
+                    <span class="theme-picker-dot" id="theme-picker-dot"></span>
+                    <span class="nav-label">Theme</span>
+                </button>
+                <div class="theme-picker-dropdown" id="theme-picker-dropdown">
+                    <div class="theme-picker-label">Choose Color</div>
+                    <div class="theme-swatches" id="theme-swatches"></div>
+                </div>
+            </div>
         </div>
         <!-- Hamburger button — visible on mobile only -->
         <button class="nav-hamburger" id="nav-hamburger"
@@ -2667,15 +2765,20 @@
                             </div>
                             <input type="hidden" id="review-rating" value="0">
                             <div class="form-group" style="margin-bottom:8px;">
-                                <input type="text" id="review-name" placeholder="Your name" maxlength="50" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:0.85rem;font-family:inherit;">
+                                <input type="text" id="review-name" placeholder="Your name (optional)" maxlength="50" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:0.85rem;font-family:inherit;">
                             </div>
                             <div class="form-group" style="margin-bottom:8px;">
                                 <textarea id="review-comment" placeholder="Write your review… (optional)" maxlength="500" rows="2" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:0.85rem;font-family:inherit;resize:vertical;"></textarea>
                             </div>
-                            <button class="btn-primary" onclick="submitReview()" style="font-size:0.85rem;padding:8px 18px;">
-                                <i class="fas fa-paper-plane"></i> Submit Review
-                            </button>
-                            <div id="review-status" style="margin-top:6px;font-size:0.82rem;"></div>
+                            <div style="text-align:center;margin-bottom:4px;">
+                                <button class="btn-primary" onclick="submitReview()" style="font-size:0.8rem;padding:6px 16px;">
+                                    <i class="fas fa-paper-plane"></i> Submit Review
+                                </button>
+                            </div>
+                            <div id="review-status" style="margin-top:6px;font-size:0.82rem;text-align:center;"></div>
+                        </div>
+                        <div id="review-already-submitted" style="display:none;text-align:center;padding:10px 0 4px;font-size:0.85rem;color:#6b7280;">
+                            <i class="fas fa-check-circle" style="color:#22c55e;"></i> You have already submitted a review. Thank you!
                         </div>
                         <div class="review-list" id="review-list">
                             <div style="text-align:center;color:#9ca3af;padding:12px 0;">
@@ -2821,6 +2924,70 @@
         </div>
     </div>
 
+    <!-- Terms of Service / Privacy Policy modal -->
+    <div class="info-modal-overlay" id="terms-modal" role="dialog" aria-modal="true" aria-labelledby="terms-modal-title">
+        <div class="info-modal-box">
+            <button class="info-modal-close" onclick="closeTermsModal()" aria-label="Close">
+                <i class="fas fa-times"></i>
+            </button>
+            <div class="info-modal-title">
+                <i class="fas fa-file-contract"></i>
+                <span id="terms-modal-title">Terms of Service &amp; Privacy Policy</span>
+            </div>
+            <p style="font-size:0.8rem;color:#94a3b8;margin-bottom:12px;">Effective date: January 1, 2025 &nbsp;&bull;&nbsp; Last updated: March 2026</p>
+
+            <div class="terms-section">
+                <h3>1. Acceptance of Terms</h3>
+                <p>By accessing or using YOT Downloader ("the Service"), you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use the Service. We reserve the right to update these terms at any time; continued use constitutes acceptance of any changes.</p>
+            </div>
+
+            <div class="terms-section">
+                <h3>2. Description of Service</h3>
+                <p>YOT Downloader is a free, browser-based tool that allows users to download publicly accessible video and audio content from supported platforms using the open-source yt-dlp library. The Service is provided "as-is" without warranties of any kind.</p>
+            </div>
+
+            <div class="terms-section">
+                <h3>3. Permitted Use &amp; Copyright Compliance</h3>
+                <p>You may only download content that you have a legal right to download. This includes content you own, content licensed under Creative Commons or similar open licenses, or content that platform terms explicitly permit downloading. You must comply with the Digital Millennium Copyright Act (DMCA), the EU Copyright Directive, and all applicable local copyright laws. Downloading copyrighted content without authorization from the rights holder is strictly prohibited and is solely your legal responsibility.</p>
+            </div>
+
+            <div class="terms-section">
+                <h3>4. Prohibited Activities</h3>
+                <p>You agree not to: (a) use the Service to infringe intellectual property rights; (b) distribute, sell, or commercially exploit downloaded content without authorization; (c) attempt to circumvent platform DRM or access controls; (d) use automated scripts or bots to make excessive requests; (e) use the Service for any unlawful purpose; (f) attempt to disrupt or damage the Service or its infrastructure.</p>
+            </div>
+
+            <div class="terms-section">
+                <h3>5. Disclaimer of Liability</h3>
+                <p>YOT Downloader is not responsible for how users use downloaded content. The operators of this Service expressly disclaim any liability arising from copyright infringement, platform terms-of-service violations, or any other misuse by users. Use of this Service is entirely at your own risk.</p>
+            </div>
+
+            <div class="terms-section">
+                <h3>6. Privacy Policy</h3>
+                <p>We collect your IP address for rate-limiting, abuse prevention, and anonymized analytics (country-level geolocation only). Visitor data is retained temporarily and never sold or shared with third parties. Submitted reviews include your name (or "Anonymous") and rating and are stored indefinitely. Downloaded files are automatically deleted within minutes. No user accounts or personal profiles are created.</p>
+            </div>
+
+            <div class="terms-section">
+                <h3>7. Cookies &amp; Local Storage</h3>
+                <p>The Service uses session cookies strictly for security (CSRF protection) and admin authentication. No tracking cookies or third-party advertising cookies are set by this Service. Third-party ad networks displayed on the page may set their own cookies subject to their own privacy policies.</p>
+            </div>
+
+            <div class="terms-section">
+                <h3>8. Availability &amp; Changes</h3>
+                <p>The Service is provided free of charge and may be modified, suspended, or discontinued at any time without notice. We do not guarantee uninterrupted availability or support for any particular platform or video source.</p>
+            </div>
+
+            <div class="terms-section">
+                <h3>9. Governing Law</h3>
+                <p>These Terms are governed by applicable law. Any disputes shall be resolved in the jurisdiction where the Service operator is based. If any provision is found unenforceable, the remaining provisions remain in full force.</p>
+            </div>
+
+            <div class="terms-section">
+                <h3>10. Contact</h3>
+                <p>If you have questions about these Terms or a DMCA takedown request, please open an issue on the project's GitHub repository.</p>
+            </div>
+        </div>
+    </div>
+
     <!-- Footer -->
     <footer class="site-footer">
         <div class="footer-content">
@@ -2852,9 +3019,9 @@
                 <span>&bull;</span>
                 <span>Powered by yt-dlp</span>
                 <span>&bull;</span>
-                <a href="#" onclick="showAboutModal(); return false;">Privacy Policy</a>
+                <a href="#" onclick="showTermsModal(); return false;">Privacy Policy</a>
                 <span>&bull;</span>
-                <a href="#" onclick="showAboutModal(); return false;">Terms of Service</a>
+                <a href="#" onclick="showTermsModal(); return false;">Terms of Service</a>
             </div>
             <p style="font-size:0.73rem;color:rgba(255,255,255,0.45);margin-bottom:8px;">
                 Only download content you have the right to use, in accordance with copyright laws and the platform's terms of service.
@@ -4485,6 +4652,14 @@
             document.getElementById('features-modal').classList.remove('open');
         }
 
+        // Terms of Service / Privacy Policy modal
+        function showTermsModal() {
+            document.getElementById('terms-modal').classList.add('open');
+        }
+        function closeTermsModal() {
+            document.getElementById('terms-modal').classList.remove('open');
+        }
+
         // Close info modals on backdrop click
         document.addEventListener('DOMContentLoaded', () => {
             document.querySelectorAll('.info-modal-overlay').forEach(el => {
@@ -4496,6 +4671,9 @@
             document.addEventListener('click', (e) => {
                 const wrap = document.getElementById('nav-services-wrap');
                 if (wrap && !wrap.contains(e.target)) closeServicesDropdown();
+                // Close theme picker on outside click
+                const themeWrap = document.getElementById('theme-picker-wrap');
+                if (themeWrap && !themeWrap.contains(e.target)) closeThemePicker();
             });
             // Escape key closes dropdowns and modals
             document.addEventListener('keydown', (ev) => {
@@ -4503,6 +4681,8 @@
                     closeServicesDropdown();
                     closeAboutModal();
                     closeFeaturesModal();
+                    closeTermsModal();
+                    closeThemePicker();
                     closeMobileNav();
                 }
             });
@@ -4639,8 +4819,22 @@
                     });
                 });
             }
+            // Check if this device has already submitted a review
+            checkCanSubmitReview();
             loadReviews();
         })();
+
+        async function checkCanSubmitReview() {
+            try {
+                const res = await fetch('/reviews/can_submit');
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!data.can_submit) {
+                    document.getElementById('review-form').style.display = 'none';
+                    document.getElementById('review-already-submitted').style.display = '';
+                }
+            } catch (_) {}
+        }
 
         async function loadReviews() {
             try {
@@ -4649,10 +4843,6 @@
                 const data = await res.json();
                 renderReviewList(data);
             } catch (_) {}
-        }
-
-        function escHtml(s) {
-            return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         }
 
         const REVIEW_MAX_VISIBLE = 5;
@@ -4708,13 +4898,12 @@
         }
 
         async function submitReview() {
-            const name = document.getElementById('review-name').value.trim();
+            const name = document.getElementById('review-name').value.trim() || 'Anonymous';
             const comment = document.getElementById('review-comment').value.trim();
             const rating = parseInt(document.getElementById('review-rating').value) || 0;
             const status = document.getElementById('review-status');
 
             if (!rating) { status.innerHTML = '<span style="color:#ef4444;">Please select a star rating.</span>'; return; }
-            if (!name) { status.innerHTML = '<span style="color:#ef4444;">Please enter your name.</span>'; return; }
 
             status.innerHTML = '<span style="color:#6b7280;"><i class="fas fa-spinner fa-spin"></i> Submitting…</span>';
             try {
@@ -4725,7 +4914,13 @@
                 });
                 const data = await res.json();
                 if (!res.ok) {
-                    status.innerHTML = `<span style="color:#ef4444;">${escHtml(data.error || 'Error')}</span>`;
+                    if (res.status === 429) {
+                        // Already submitted — hide form
+                        document.getElementById('review-form').style.display = 'none';
+                        document.getElementById('review-already-submitted').style.display = '';
+                    } else {
+                        status.innerHTML = `<span style="color:#ef4444;">${escHtml(data.error || 'Error')}</span>`;
+                    }
                     return;
                 }
                 status.innerHTML = '<span style="color:#22c55e;"><i class="fas fa-check-circle"></i> Review submitted!</span>';
@@ -4738,11 +4933,88 @@
                     s.style.color = '#d1d5db';
                 });
                 loadReviews();
-                setTimeout(() => { status.innerHTML = ''; }, 3000);
+                // Hide form after successful submission (1 review per IP)
+                setTimeout(() => {
+                    document.getElementById('review-form').style.display = 'none';
+                    document.getElementById('review-already-submitted').style.display = '';
+                }, 2000);
             } catch (e) {
                 status.innerHTML = `<span style="color:#ef4444;">Failed: ${escHtml(e.message)}</span>`;
             }
         }
+
+        // ── Theme color picker ──────────────────────────────────────
+        const THEME_COLORS = [
+            { name: 'Blue',       primary: '#2563eb', dark: '#1d4ed8', light: '#60a5fa', bg: 'rgba(37,99,235,0.18)',  header: 'linear-gradient(135deg,#1e293b 0%,#334155 50%,#1e293b 100%)' },
+            { name: 'Violet',     primary: '#7c3aed', dark: '#6d28d9', light: '#a78bfa', bg: 'rgba(124,58,237,0.18)', header: 'linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#1e1b4b 100%)' },
+            { name: 'Rose',       primary: '#e11d48', dark: '#be123c', light: '#fb7185', bg: 'rgba(225,29,72,0.18)',  header: 'linear-gradient(135deg,#1c0a0e 0%,#450a20 50%,#1c0a0e 100%)' },
+            { name: 'Emerald',    primary: '#059669', dark: '#047857', light: '#34d399', bg: 'rgba(5,150,105,0.18)',  header: 'linear-gradient(135deg,#052e16 0%,#064e3b 50%,#052e16 100%)' },
+            { name: 'Orange',     primary: '#ea580c', dark: '#c2410c', light: '#fb923c', bg: 'rgba(234,88,12,0.18)',  header: 'linear-gradient(135deg,#1c0b00 0%,#431407 50%,#1c0b00 100%)' },
+            { name: 'Cyan',       primary: '#0891b2', dark: '#0e7490', light: '#22d3ee', bg: 'rgba(8,145,178,0.18)',  header: 'linear-gradient(135deg,#083344 0%,#164e63 50%,#083344 100%)' },
+            { name: 'Pink',       primary: '#db2777', dark: '#be185d', light: '#f472b6', bg: 'rgba(219,39,119,0.18)', header: 'linear-gradient(135deg,#1a0010 0%,#500724 50%,#1a0010 100%)' },
+            { name: 'Slate',      primary: '#475569', dark: '#334155', light: '#94a3b8', bg: 'rgba(71,85,105,0.18)',  header: 'linear-gradient(135deg,#0f172a 0%,#1e293b 50%,#0f172a 100%)' },
+            { name: 'Amber',      primary: '#d97706', dark: '#b45309', light: '#fbbf24', bg: 'rgba(217,119,6,0.18)',  header: 'linear-gradient(135deg,#1c1000 0%,#451a03 50%,#1c1000 100%)' },
+            { name: 'Indigo',     primary: '#4338ca', dark: '#3730a3', light: '#818cf8', bg: 'rgba(67,56,202,0.18)',  header: 'linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#1e1b4b 100%)' },
+        ];
+        const THEME_KEY = 'yot_theme';
+        let _activeThemeIdx = 0;
+
+        function applyTheme(idx) {
+            const t = THEME_COLORS[idx];
+            if (!t) return;
+            _activeThemeIdx = idx;
+            const root = document.documentElement;
+            root.style.setProperty('--theme-primary', t.primary);
+            root.style.setProperty('--theme-primary-dark', t.dark);
+            root.style.setProperty('--theme-primary-light', t.light);
+            root.style.setProperty('--theme-primary-bg', t.bg);
+            root.style.setProperty('--theme-section-header', t.header);
+            // Update picker dot
+            const dot = document.getElementById('theme-picker-dot');
+            if (dot) dot.style.background = t.primary;
+            // Update swatch active state
+            document.querySelectorAll('.theme-swatch').forEach((sw, i) => {
+                sw.classList.toggle('active', i === idx);
+            });
+            try { localStorage.setItem(THEME_KEY, String(idx)); } catch (_) {}
+        }
+
+        function toggleThemePicker(e) {
+            if (e) e.stopPropagation();
+            document.getElementById('theme-picker-dropdown').classList.toggle('open');
+        }
+
+        function closeThemePicker() {
+            const dd = document.getElementById('theme-picker-dropdown');
+            if (dd) dd.classList.remove('open');
+        }
+
+        (function initThemePicker() {
+            const container = document.getElementById('theme-swatches');
+            if (!container) return;
+            THEME_COLORS.forEach((t, i) => {
+                const sw = document.createElement('button');
+                sw.className = 'theme-swatch';
+                sw.style.background = t.primary;
+                sw.title = t.name;
+                sw.setAttribute('aria-label', t.name + ' theme');
+                sw.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    applyTheme(i);
+                    closeThemePicker();
+                });
+                container.appendChild(sw);
+            });
+            // Restore saved theme
+            try {
+                const saved = parseInt(localStorage.getItem(THEME_KEY));
+                if (!isNaN(saved) && saved >= 0 && saved < THEME_COLORS.length) {
+                    applyTheme(saved);
+                } else {
+                    applyTheme(0);
+                }
+            } catch (_) { applyTheme(0); }
+        })();
 
         // ─── Admin bar: cookie management (home page) ─────────────
         {% if is_admin %}
