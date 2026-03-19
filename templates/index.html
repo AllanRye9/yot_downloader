@@ -3254,6 +3254,42 @@
                 loadFiles(true);
                 updateStatsBadge();
             });
+
+        // Real-time title update: worker resolved the actual video title
+        socket.on('title_update', (data) => {
+            if (!data?.id) return;
+            const dl = activeDownloads.get(data.id);
+            if (dl && data.title) {
+                dl.title = data.title;
+                activeDownloads.set(data.id, dl);
+                renderActiveDownloads();
+                updateProgressModal();
+            }
+        });
+
+        // Real-time status label update (e.g. 'fetching_info')
+        socket.on('status_update', (data) => {
+            if (!data?.id) return;
+            const dl = activeDownloads.get(data.id);
+            if (dl) {
+                dl.status = data.status || dl.status;
+                activeDownloads.set(data.id, dl);
+                renderActiveDownloads();
+                updateProgressModal();
+            }
+        });
+
+        // Non-fatal warning from the download worker (e.g. info-fetch error)
+        socket.on('warning', (data) => {
+            if (!data?.id) return;
+            if (activeDownloads.has(data.id)) {
+                showToast(`⚠️ ${data.message || 'Warning'}`, 'warning', 5000);
+            }
+        });
+
+        // Worker has started — card is already in activeDownloads; no action needed
+        socket.on('started', () => { /* real-time worker start acknowledged */ });
+
         } catch (_) {
             // socket.io unavailable (CDN blocked or offline); real-time updates disabled
             connDot.className = 'error';
@@ -3279,11 +3315,16 @@
 
             activeDownloads.forEach((dl, id) => {
                 const pct      = Math.min(100, dl.percent || 0);
-                const isQueued = dl.status === 'queued' || pct === 0;
+                const isPre    = dl.status === 'starting' || dl.status === 'fetching_info' || dl.status === 'queued';
+                const isQueued = isPre || pct === 0;
                 const speedStr = dl.speed ? `<span><i class="fas fa-tachometer-alt"></i> ${dl.speed}</span>` : '';
                 const etaStr   = dl.eta   ? `<span><i class="fas fa-clock"></i> ETA ${dl.eta}</span>`        : '';
                 const sizeStr  = dl.size  ? `<span><i class="fas fa-hdd"></i> ${dl.size}</span>`             : '';
-                const pctLabel = isQueued ? 'Queued…' : `${pct.toFixed(1)}%`;
+                let pctLabel;
+                if (dl.status === 'fetching_info') pctLabel = 'Fetching info…';
+                else if (dl.status === 'starting')  pctLabel = 'Starting…';
+                else if (isQueued)                  pctLabel = 'Queued…';
+                else                                pctLabel = `${pct.toFixed(1)}%`;
 
                 let card = document.getElementById(`dlc-${id}`);
                 if (!card) {
@@ -3301,6 +3342,10 @@
                         <div class="progress-wrap"><div class="progress-fill" style="width:0%"></div></div>
                         <div class="dl-meta"></div>`;
                     body.appendChild(card);
+                } else {
+                    // Update title in-place when it has been resolved
+                    const titleEl = card.querySelector('.dl-card-title');
+                    if (titleEl) titleEl.innerHTML = `<i class="fas fa-video"></i>${escHtml(dl.title)}`;
                 }
 
                 // Update progress bar in-place so CSS transition animates smoothly
@@ -3442,11 +3487,16 @@
 
             activeDownloads.forEach((dl, id) => {
                 const pct      = Math.min(100, dl.percent || 0);
-                const isQueued = dl.status === 'queued' || pct === 0;
+                const isPre    = dl.status === 'starting' || dl.status === 'fetching_info' || dl.status === 'queued';
+                const isQueued = isPre || pct === 0;
                 const speedStr = dl.speed ? `<span><i class="fas fa-tachometer-alt"></i> ${dl.speed}</span>` : '';
                 const etaStr   = dl.eta   ? `<span><i class="fas fa-clock"></i> ETA ${dl.eta}</span>`        : '';
                 const sizeStr  = dl.size  ? `<span><i class="fas fa-hdd"></i> ${dl.size}</span>`             : '';
-                const pctLabel = isQueued ? 'Queued…' : `${pct.toFixed(1)}%`;
+                let pctLabel;
+                if (dl.status === 'fetching_info') pctLabel = 'Fetching info…';
+                else if (dl.status === 'starting')  pctLabel = 'Starting…';
+                else if (isQueued)                  pctLabel = 'Queued…';
+                else                                pctLabel = `${pct.toFixed(1)}%`;
 
                 let card = document.getElementById(`modal-dlc-${id}`);
                 if (!card) {
@@ -3464,6 +3514,10 @@
                         <div class="progress-wrap"><div class="progress-fill" style="width:0%"></div></div>
                         <div class="dl-meta"></div>`;
                     body.appendChild(card);
+                } else {
+                    // Update title in-place when it has been resolved
+                    const titleEl = card.querySelector('.dl-card-title');
+                    if (titleEl) titleEl.innerHTML = `<i class="fas fa-video"></i>${escHtml(dl.title)}`;
                 }
 
                 // Update progress bar in-place so CSS transition animates smoothly
@@ -3573,7 +3627,7 @@
                         const id = data.download_id;
                         activeDownloads.set(id, {
                             title:   data.title || urls[0],
-                            status:  'queued',
+                            status:  'starting',
                             percent: 0,
                             speed:   '',
                             eta:     '',
@@ -3583,9 +3637,6 @@
                         renderActiveDownloads();
                         openProgressModal();
 
-                        if (data.warning) {
-                            showToast(`⚠️ ${data.warning}`, 'warning');
-                        }
                         beep(440, 200);
                         clearUrlFields();
                     } else {

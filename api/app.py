@@ -1572,6 +1572,51 @@ def get_video_info(url: str) -> dict:
 def download_worker(download_id, url, output_template, format_spec, output_ext=None):
     """Background thread for downloading using the yt-dlp Python API"""
 
+    # ── Phase 1: notify the frontend that the worker has started ──────────────
+    emit_from_thread("started", {"id": download_id}, room=download_id)
+
+    # ── Phase 2: fetch video info to resolve the real title / filename ─────────
+    with downloads_lock:
+        downloads[download_id]["status"] = "fetching_info"
+    emit_from_thread(
+        "status_update",
+        {"id": download_id, "status": "fetching_info", "message": "Fetching video info…"},
+        room=download_id,
+    )
+
+    info = get_video_info(url)
+
+    # Check if the user cancelled the download while info was being fetched.
+    with downloads_lock:
+        if downloads.get(download_id, {}).get("status") == "cancelled":
+            emit_from_thread("cancelled", {"id": download_id}, room=download_id)
+            threading.Thread(target=save_downloads_to_disk, daemon=True).start()
+            return
+
+    if info and "error" not in info:
+        real_title = info.get("title", "")
+        if real_title:
+            safe_real_title = safe_filename(real_title)
+            output_template = os.path.join(DOWNLOAD_FOLDER, f"{safe_real_title}.%(ext)s")
+            with downloads_lock:
+                downloads[download_id]["title"] = real_title
+                downloads[download_id]["safe_title"] = safe_real_title
+                downloads[download_id]["output_template"] = output_template
+            emit_from_thread(
+                "title_update",
+                {"id": download_id, "title": real_title},
+                room=download_id,
+            )
+    elif info and "error" in info:
+        logger.warning(f"Info error for {url}: {info['error']}")
+        with downloads_lock:
+            downloads[download_id]["info_error"] = info["error"]
+        emit_from_thread(
+            "warning",
+            {"id": download_id, "message": info["error"]},
+            room=download_id,
+        )
+
     def progress_hook(d):
         if d["status"] != "downloading":
             return
@@ -1976,7 +2021,7 @@ async def start_download(request: Request, url: str = Form(None), format: str = 
     # Check concurrent downloads
     with downloads_lock:
         active_count = sum(1 for d in downloads.values()
-                          if d["status"] in ("queued", "downloading"))
+                          if d["status"] in ("starting", "fetching_info", "queued", "downloading"))
         if active_count >= Config.MAX_CONCURRENT_DOWNLOADS:
             return JSONResponse({
                 "error": f"Maximum concurrent downloads reached ({Config.MAX_CONCURRENT_DOWNLOADS})"
@@ -1984,15 +2029,9 @@ async def start_download(request: Request, url: str = Form(None), format: str = 
 
     download_id = str(uuid.uuid4())
 
-    # Get video info (may contain error, but we still allow download attempt)
-    info = get_video_info(url)
-    if info and "error" not in info:
-        title = info.get("title", f"video_{download_id[:8]}")
-    else:
-        title = f"video_{download_id[:8]}"
-        if info and "error" in info:
-            logger.warning(f"Info error for {url}: {info['error']}")
-
+    # Use a placeholder title; the worker will resolve the real title via
+    # get_video_info() in the background and emit a title_update event.
+    title = f"video_{download_id[:8]}"
     safe_title = safe_filename(title)
     output_template = os.path.join(DOWNLOAD_FOLDER, f"{safe_title}.%(ext)s")
 
@@ -2011,7 +2050,7 @@ async def start_download(request: Request, url: str = Form(None), format: str = 
             "url": url,
             "title": title,
             "safe_title": safe_title,
-            "status": "queued",
+            "status": "starting",
             "percent": 0,
             "output_template": output_template,
             "format": format_spec,
@@ -2022,7 +2061,7 @@ async def start_download(request: Request, url: str = Form(None), format: str = 
             "country_code": cached_geo.get("code", ""),
             "city": cached_geo.get("city", ""),
             "region": cached_geo.get("region", ""),
-            "info_error": info.get("error") if info and "error" in info else None,
+            "info_error": None,
             "owner_session": session_id or "",
         }
     # Resolve the requester's country in background if not already cached
@@ -2032,7 +2071,8 @@ async def start_download(request: Request, url: str = Form(None), format: str = 
             target=_lookup_country_async, args=(ip, accept_lang), daemon=True
         ).start()
 
-    # Start download thread
+    # Start download thread immediately — returns download_id to the client
+    # right away so the frontend can subscribe and show real-time progress.
     thread = threading.Thread(
         target=download_worker,
         args=(download_id, url, output_template, format_spec, output_ext),
@@ -2048,8 +2088,7 @@ async def start_download(request: Request, url: str = Form(None), format: str = 
     return JSONResponse({
         "download_id": download_id,
         "title": title,
-        "status": "queued",
-        "warning": info.get("error") if info and "error" in info else None
+        "status": "starting",
     })
 
 @fastapi_app.get("/status/{download_id}")
@@ -2289,7 +2328,7 @@ async def get_stats():
 
         with downloads_lock:
             active_count = sum(1 for d in downloads.values()
-                              if d["status"] in ("queued", "downloading"))
+                              if d["status"] in ("starting", "fetching_info", "queued", "downloading"))
 
         persistent = _get_persistent_stats()
 
@@ -2321,7 +2360,7 @@ async def active_downloads_list():
                 "size": d.get("size", "")
             }
             for d in downloads.values()
-            if d["status"] in ("queued", "downloading")
+            if d["status"] in ("starting", "fetching_info", "queued", "downloading")
         ]
     return JSONResponse({"count": len(active), "downloads": active})
 
@@ -2330,7 +2369,7 @@ async def cancel_download(download_id: str):
     """Cancel an ongoing download"""
     with downloads_lock:
         if download_id in downloads:
-            if downloads[download_id]["status"] in ("queued", "downloading"):
+            if downloads[download_id]["status"] in ("starting", "fetching_info", "queued", "downloading"):
                 downloads[download_id]["status"] = "cancelled"
                 downloads[download_id]["end_time"] = time.time()
                 emit_from_thread("cancelled", {"id": download_id}, room=download_id)
@@ -2347,7 +2386,7 @@ async def cancel_all_downloads(request: Request):
     cancelled_ids = []
     with downloads_lock:
         for did, d in downloads.items():
-            if d["status"] in ("queued", "downloading") and d.get("ip") == ip:
+            if d["status"] in ("starting", "fetching_info", "queued", "downloading") and d.get("ip") == ip:
                 d["status"] = "cancelled"
                 d["end_time"] = time.time()
                 cancelled_ids.append(did)
@@ -2992,7 +3031,7 @@ async def admin_cancel_download(request: Request, download_id: str):
     """Cancel an active download (admin only)."""
     with downloads_lock:
         if download_id in downloads:
-            if downloads[download_id]["status"] in ("queued", "downloading"):
+            if downloads[download_id]["status"] in ("starting", "fetching_info", "queued", "downloading"):
                 downloads[download_id]["status"] = "cancelled"
                 downloads[download_id]["end_time"] = time.time()
                 emit_from_thread("cancelled", {"id": download_id}, room=download_id)
@@ -3011,7 +3050,7 @@ async def admin_delete_record(request: Request, download_id: str):
     with downloads_lock:
         if download_id in downloads:
             status = downloads[download_id].get("status")
-            if status in ("queued", "downloading"):
+            if status in ("starting", "fetching_info", "queued", "downloading"):
                 downloads[download_id]["status"] = "cancelled"
                 downloads[download_id]["end_time"] = time.time()
                 emit_from_thread("cancelled", {"id": download_id}, room=download_id)
@@ -3767,7 +3806,7 @@ async def start_playlist_download(
     with downloads_lock:
         active_count = sum(
             1 for d in downloads.values()
-            if d["status"] in ("queued", "downloading")
+            if d["status"] in ("starting", "fetching_info", "queued", "downloading")
         )
         if active_count >= Config.MAX_CONCURRENT_DOWNLOADS:
             return JSONResponse({
@@ -3953,19 +3992,16 @@ async def start_batch_download(
         with downloads_lock:
             active_count = sum(
                 1 for d in downloads.values()
-                if d["status"] in ("queued", "downloading")
+                if d["status"] in ("starting", "fetching_info", "queued", "downloading")
             )
             if active_count >= Config.MAX_CONCURRENT_DOWNLOADS:
                 break  # stop adding once limit reached
 
-        info = get_video_info(url)
-        title = (
-            info.get("title", f"video_{uuid.uuid4().hex[:8]}")
-            if info and "error" not in info
-            else f"video_{uuid.uuid4().hex[:8]}"
-        )
-        safe_title      = safe_filename(title)
+        # Use a placeholder title; each worker resolves the real title via
+        # get_video_info() in the background and emits a title_update event.
         download_id     = str(uuid.uuid4())
+        title           = f"video_{download_id[:8]}"
+        safe_title      = safe_filename(title)
         output_template = os.path.join(DOWNLOAD_FOLDER, f"{safe_title}.%(ext)s")
 
         with downloads_lock:
@@ -3974,7 +4010,7 @@ async def start_batch_download(
                 "url":             url,
                 "title":           title,
                 "safe_title":      safe_title,
-                "status":          "queued",
+                "status":          "starting",
                 "percent":         0,
                 "output_template": output_template,
                 "format":          format_spec,
@@ -3985,6 +4021,7 @@ async def start_batch_download(
                 "country_code":    cached_geo.get("code", ""),
                 "city":            cached_geo.get("city", ""),
                 "region":          cached_geo.get("region", ""),
+                "info_error":      None,
                 "owner_session":   session_id or "",
             }
 
