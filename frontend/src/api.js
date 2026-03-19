@@ -129,7 +129,7 @@ export const getJobStatus = (id) => request('GET', `/job_status/${id}`)
 
 export const getReviews    = () => request('GET', '/reviews')
 export const submitReview  = (rating, comment, name) =>
-  request('POST', '/reviews', formBody({ rating, comment, name }), false)
+  request('POST', '/reviews', { rating, comment, name })
 
 // ── Admin Auth ────────────────────────────────────────────────────────────────
 
