@@ -127,8 +127,9 @@ export const getJobStatus = (id) => request('GET', `/job_status/${id}`)
 
 // ── Reviews ───────────────────────────────────────────────────────────────────
 
-export const getReviews    = () => request('GET', '/reviews')
-export const submitReview  = (rating, comment, name) =>
+export const getReviews       = () => request('GET', '/reviews')
+export const canSubmitReview  = () => request('GET', '/reviews/can_submit')
+export const submitReview     = (rating, comment, name) =>
   request('POST', '/reviews', { rating, comment, name })
 
 // ── Admin Auth ────────────────────────────────────────────────────────────────
