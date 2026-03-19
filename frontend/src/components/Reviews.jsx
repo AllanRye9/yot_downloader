@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getReviews, submitReview } from '../api'
+import { getReviews, submitReview, canSubmitReview } from '../api'
 
 const STARS = [5, 4, 3, 2, 1]
 const REVIEW_MAX_VISIBLE = 5
@@ -34,9 +34,9 @@ function ReviewCard({ review }) {
             <span className="font-medium text-white text-sm">{review.name || 'Anonymous'}</span>
             <span className="text-yellow-400 text-sm">{'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}</span>
             {review.country && <span className="text-xs text-gray-500">🌍 {review.country}</span>}
-            {review.created_at && (
+            {review.timestamp && (
               <span className="text-xs text-gray-600 ml-auto">
-                {new Date(review.created_at * 1000).toLocaleDateString()}
+                {new Date(review.timestamp * 1000).toLocaleDateString()}
               </span>
             )}
           </div>
@@ -83,15 +83,19 @@ function RatingBar({ ratings }) {
 }
 
 export default function Reviews() {
-  const [reviews, setReviews]   = useState([])
-  const [showAll, setShowAll]   = useState(false)
-  const [form, setForm]         = useState({ rating: 0, name: '', comment: '' })
-  const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState('')
-  const [success, setSuccess]   = useState('')
+  const [reviews, setReviews]     = useState([])
+  const [showAll, setShowAll]     = useState(false)
+  const [form, setForm]           = useState({ rating: 0, name: '', comment: '' })
+  const [loading, setLoading]     = useState(false)
+  const [error, setError]         = useState('')
+  const [success, setSuccess]     = useState('')
+  const [canSubmit, setCanSubmit] = useState(true)
 
   useEffect(() => {
     getReviews().then(setReviews).catch(() => {})
+    canSubmitReview()
+      .then(data => setCanSubmit(data.can_submit))
+      .catch(() => setCanSubmit(true))
   }, [])
 
   const ratingCounts = [1,2,3,4,5].map(s => reviews.filter(r => r.rating === s).length)
@@ -105,10 +109,14 @@ export default function Reviews() {
       await submitReview(form.rating, form.comment, form.name)
       setSuccess('✓ Thank you for your review!')
       setForm({ rating: 0, name: '', comment: '' })
-      const updated = await getReviews()
+      const [updated, status] = await Promise.all([getReviews(), canSubmitReview().catch(() => ({ can_submit: true }))])
       setReviews(updated)
+      setCanSubmit(status.can_submit)
     } catch (err) {
-      setError(err.data?.error || err.message || 'Failed to submit review')
+      const msg = err.data?.error || err.message || 'Failed to submit review'
+      setError(msg)
+      // Refresh can_submit status so the form hides if limit was just hit
+      canSubmitReview().then(data => setCanSubmit(data.can_submit)).catch(() => {})
     } finally {
       setLoading(false)
     }
@@ -138,37 +146,43 @@ export default function Reviews() {
       {/* Submit form */}
       <div className="border-t border-gray-800 pt-5">
         <h3 className="text-base font-semibold text-white mb-3">Leave a Review</h3>
-        <form onSubmit={submit} className="space-y-3">
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Your rating</label>
-            <StarRating value={form.rating} onChange={v => setForm(f => ({ ...f, rating: v }))} />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Name (optional)</label>
-            <input
-              className="input"
-              placeholder="Your name"
-              value={form.name}
-              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Comment (optional)</label>
-            <textarea
-              className="input min-h-[80px] resize-y"
-              placeholder="Tell us what you think…"
-              value={form.comment}
-              onChange={e => setForm(f => ({ ...f, comment: e.target.value }))}
-            />
-          </div>
+        {!canSubmit ? (
+          <p className="text-sm text-gray-400 bg-gray-800/40 border border-gray-700 rounded-lg px-3 py-3">
+            You have already submitted the maximum number of reviews. Thank you for your feedback!
+          </p>
+        ) : (
+          <form onSubmit={submit} className="space-y-3">
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Your rating</label>
+              <StarRating value={form.rating} onChange={v => setForm(f => ({ ...f, rating: v }))} />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Name (optional)</label>
+              <input
+                className="input"
+                placeholder="Your name"
+                value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Comment (optional)</label>
+              <textarea
+                className="input min-h-[80px] resize-y"
+                placeholder="Tell us what you think…"
+                value={form.comment}
+                onChange={e => setForm(f => ({ ...f, comment: e.target.value }))}
+              />
+            </div>
 
-          {error   && <p className="text-sm text-red-400 bg-red-900/20 border border-red-800/50 rounded-lg px-3 py-2">{error}</p>}
-          {success && <p className="text-sm text-green-400 bg-green-900/20 border border-green-800/50 rounded-lg px-3 py-2">{success}</p>}
+            {error   && <p className="text-sm text-red-400 bg-red-900/20 border border-red-800/50 rounded-lg px-3 py-2">{error}</p>}
+            {success && <p className="text-sm text-green-400 bg-green-900/20 border border-green-800/50 rounded-lg px-3 py-2">{success}</p>}
 
-          <button type="submit" className="btn-primary w-full" disabled={loading}>
-            {loading ? <><span className="spinner w-4 h-4" /> Submitting…</> : '✉ Submit Review'}
-          </button>
-        </form>
+            <button type="submit" className="btn-primary w-full" disabled={loading}>
+              {loading ? <><span className="spinner w-4 h-4" /> Submitting…</> : '✉ Submit Review'}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   )

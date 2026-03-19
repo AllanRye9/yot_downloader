@@ -11,6 +11,7 @@ import AdminStats from '../components/admin/AdminStats'
 import AnalyticsCharts from '../components/admin/AnalyticsCharts'
 import DownloadsTable from '../components/admin/DownloadsTable'
 import VisitorsTable from '../components/admin/VisitorsTable'
+import ThemeSelector from '../components/ThemeSelector'
 
 const SIDEBAR_TABS = [
   { id: 'dashboard',  icon: '📊', label: 'Dashboard'  },
@@ -189,6 +190,7 @@ export default function AdminDashboard() {
             {SIDEBAR_TABS.find(t => t.id === tab)?.label || tab}
           </h1>
           <div className="flex-1" />
+          <ThemeSelector />
           {/* Refresh */}
           <button
             className="btn-ghost btn-sm text-xs"
