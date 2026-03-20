@@ -161,6 +161,39 @@ export const adminDbUpload      = (file) => {
   return request('POST', '/admin/db/upload', fd, false)
 }
 
+// ── CV Generator ─────────────────────────────────────────────────────────────
+
+/**
+ * Generate a PDF CV.
+ * @param {Object} fields - CV fields (name, email, phone, location, link, summary,
+ *   experience, education, skills, projects, publications)
+ * @param {File|null} logoFile - Optional logo image file
+ * @returns {Promise<Response>} Raw response (blob) — caller should call res.blob()
+ */
+export const generateCV = (fields, logoFile = null) => {
+  const fd = new FormData()
+  Object.entries(fields).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) fd.append(k, v)
+  })
+  if (logoFile) fd.append('logo', logoFile, logoFile.name)
+  return request('POST', '/api/cv/generate', fd, false)
+}
+
+// ── Document Converter ────────────────────────────────────────────────────────
+
+/**
+ * Convert a document to the target format.
+ * @param {File} file - The file to convert
+ * @param {string} target - Target format (e.g. 'pdf', 'docx', 'md')
+ * @returns {Promise<Response>} Raw response (blob) — caller should call res.blob()
+ */
+export const convertDoc = (file, target) => {
+  const fd = new FormData()
+  fd.append('file', file, file.name)
+  fd.append('target', target)
+  return request('POST', '/api/doc/convert', fd, false)
+}
+
 // ── Admin Cookies ─────────────────────────────────────────────────────────────
 
 export const getCookieStatus    = () => request('GET', '/admin/cookies/status')

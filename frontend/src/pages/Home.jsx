@@ -8,6 +8,8 @@ import ActiveDownloads from '../components/ActiveDownloads'
 import FileList from '../components/FileList'
 import Reviews from '../components/Reviews'
 import ThemeSelector from '../components/ThemeSelector'
+import CVGenerator from '../components/CVGenerator'
+import DocConverter from '../components/DocConverter'
 import { getStats } from '../api'
 import socket from '../socket'
 
@@ -64,9 +66,11 @@ function AnimatedCounter({ value, label, icon }) {
 }
 
 const TABS = [
-  { id: 'download', label: '⬇ Download',  icon: '⬇' },
-  { id: 'playlist', label: '📋 Playlist',   icon: '📋' },
-  { id: 'editing',  label: '✂ Edit / Convert', icon: '✂' },
+  { id: 'download', label: '⬇ Download',       icon: '⬇' },
+  { id: 'playlist', label: '📋 Playlist',        icon: '📋' },
+  { id: 'editing',  label: '✂ Edit / Convert',  icon: '✂' },
+  { id: 'cv',       label: '📄 CV Generator',   icon: '📄' },
+  { id: 'docconv',  label: '📁 Doc Converter',  icon: '📁' },
 ]
 
 export default function Home() {
@@ -184,8 +188,8 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 flex items-center h-14 gap-4">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2 text-xl font-bold text-white shrink-0">
-            <span>📥</span>
-            <span className="gradient-text hidden sm:inline">YOT Downloader</span>
+            <img src="/yotweek.png" alt="" width={22} height={22} style={{ borderRadius: 4 }} aria-hidden="true" />
+            <span className="gradient-text hidden sm:inline">yotweek</span>
             <span className="gradient-text sm:hidden">YOT</span>
           </Link>
 
@@ -308,6 +312,8 @@ export default function Home() {
           {tab === 'download' && <DownloadForm onDownloadStarted={handleDownloadStarted} />}
           {tab === 'playlist' && <PlaylistForm onDownloadStarted={handleDownloadStarted} />}
           {tab === 'editing'  && <EditingPanel onJobDone={refreshFiles} />}
+          {tab === 'cv'       && <CVGenerator />}
+          {tab === 'docconv'  && <DocConverter />}
         </div>
 
         {/* Active Downloads */}
@@ -329,11 +335,17 @@ export default function Home() {
       {/* ── Footer ── */}
       <footer className="border-t border-gray-800 py-6 px-4 pb-safe text-center text-xs text-gray-600">
         <p>
-          YOT Downloader © {new Date().getFullYear()} — Download responsibly. Respect copyright laws.
+          yotweek © {new Date().getFullYear()} — Download responsibly. Respect copyright laws.
         </p>
         <p className="mt-1">
+          <a href="mailto:support@yotweek.com" className="hover:text-gray-400 transition-colors">
+            support@yotweek.com
+          </a>
           {!admin && (
-            <Link to="/admin/login" className="hover:text-gray-400 transition-colors">Admin</Link>
+            <>
+              {' · '}
+              <Link to="/admin/login" className="hover:text-gray-400 transition-colors">Admin</Link>
+            </>
           )}
         </p>
       </footer>
@@ -388,7 +400,7 @@ export default function Home() {
               borderRadius: '16px 16px 0 0',
             }}>
               <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
-                ❓ YOT Downloader — Help Guide
+                ❓ yotweek — Help Guide
               </h2>
               <button
                 onClick={() => setHelpOpen(false)}
@@ -433,6 +445,24 @@ export default function Home() {
                   <li><strong>Merge Audio</strong> — overlay a separate audio file onto a video.</li>
                   <li><strong>Batch Convert</strong> — convert multiple files with the same settings at once.</li>
                 </ul>
+              </HelpSection>
+              <HelpDivider />
+              <HelpSection icon="📄" title="CV Generator">
+                <ol style={{ paddingLeft: 18, margin: 0 }}>
+                  <li>Go to the <strong>CV Generator</strong> tab.</li>
+                  <li>Fill in your personal details, experience, education, and skills.</li>
+                  <li>Optionally upload a logo/branding image.</li>
+                  <li>Click <strong>Generate PDF CV</strong> to download your professional CV as a PDF.</li>
+                </ol>
+              </HelpSection>
+              <HelpDivider />
+              <HelpSection icon="📁" title="Document Converter">
+                <ol style={{ paddingLeft: 18, margin: 0 }}>
+                  <li>Go to the <strong>Doc Converter</strong> tab.</li>
+                  <li>Drag &amp; drop or click to upload the file you want to convert.</li>
+                  <li>Choose the target format (PDF, Word, Excel, PowerPoint, Markdown, HTML, images, and more).</li>
+                  <li>Click <strong>Convert &amp; Download</strong> to get your converted file.</li>
+                </ol>
               </HelpSection>
               <HelpDivider />
               <HelpSection icon="📁" title="File Manager">
