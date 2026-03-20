@@ -9,7 +9,7 @@ certifi==2024.2.2
 werkzeug==3.0.3
 psycopg2-binary==2.9.10
 maxminddb==2.6.2
-cvcreator==1.1.17
+cvcreator
 pdf2docx==0.5.12
 tabula-py==2.10.0
 pypandoc==1.17
