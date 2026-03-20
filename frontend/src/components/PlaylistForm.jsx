@@ -51,8 +51,32 @@ export default function PlaylistForm({ onDownloadStarted }) {
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
   const [notice,  setNotice]  = useState('')
+  const [pasteSupported, setPasteSupported] = useState(
+    typeof navigator !== 'undefined' && !!navigator.clipboard
+  )
 
   const urlCount = extractUrls(batchUrls).length
+
+  // Paste helpers -------------------------------------------------------
+  const pasteToPlaylistUrl = async () => {
+    try {
+      const text = await navigator.clipboard.readText()
+      if (text) setUrl(text.trim())
+    } catch {
+      setPasteSupported(false)
+    }
+  }
+
+  const pasteToBatch = async () => {
+    try {
+      const text = await navigator.clipboard.readText()
+      if (!text) return
+      const found = extractUrls(text)
+      setBatchUrls(found.length > 0 ? found.join('\n') : text.trim())
+    } catch {
+      setPasteSupported(false)
+    }
+  }
 
   const submitPlaylist = async (e) => {
     e.preventDefault()
@@ -77,7 +101,7 @@ export default function PlaylistForm({ onDownloadStarted }) {
     setError(''); setNotice(''); setLoading(true)
     try {
       const data = await startBatch(found.join('\n'), format, ext, SESSION_ID)
-      setNotice(`✓ Batch started — ${data.total ?? found.length} downloads queued`)
+      setNotice(`✓ Batch started — ${data.total ?? found.length} downloads queued (sequential)`)
       for (const dl of data.started || []) {
         onDownloadStarted && onDownloadStarted({ download_id: dl.download_id, title: dl.title })
       }
@@ -108,18 +132,30 @@ export default function PlaylistForm({ onDownloadStarted }) {
         <form onSubmit={submitPlaylist} className="space-y-4">
           <div>
             <label className="block text-sm text-gray-400 mb-1">Playlist or Channel URL</label>
-            <input
-              className="input"
-              type="url"
-              placeholder="https://youtube.com/playlist?list=…"
-              value={url}
-              onChange={e => setUrl(e.target.value)}
-              inputMode="url"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              required
-            />
+            <div className="relative">
+              <input
+                className="input w-full pr-20"
+                type="url"
+                placeholder="https://youtube.com/playlist?list=…"
+                value={url}
+                onChange={e => setUrl(e.target.value)}
+                inputMode="url"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                required
+              />
+              {pasteSupported && !url && (
+                <button
+                  type="button"
+                  onClick={pasteToPlaylistUrl}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded transition-colors"
+                  title="Paste from clipboard"
+                >
+                  📋 Paste
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -158,9 +194,21 @@ export default function PlaylistForm({ onDownloadStarted }) {
       {subTab === 'batch' && (
         <form onSubmit={submitBatch} className="space-y-4">
           <div>
-            <label className="block text-sm text-gray-400 mb-1">
-              URLs — paste freely, they are detected automatically (max 50)
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm text-gray-400">
+                URLs — paste freely, detected automatically (max 50)
+              </label>
+              {pasteSupported && (
+                <button
+                  type="button"
+                  onClick={pasteToBatch}
+                  className="text-xs text-gray-400 hover:text-white bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded transition-colors"
+                  title="Paste URLs from clipboard"
+                >
+                  📋 Paste
+                </button>
+              )}
+            </div>
             <textarea
               className="input min-h-[120px] resize-y font-mono text-sm"
               placeholder={'Paste one or more URLs here — from YouTube, TikTok, Instagram, Twitter/X, Facebook or any of 1,000+ sites.\nURLs are detected and arranged automatically regardless of how they are pasted.'}
@@ -181,6 +229,11 @@ export default function PlaylistForm({ onDownloadStarted }) {
             <p className="text-xs mt-1" style={{ color: urlCount > 0 ? '#4ade80' : '#6b7280' }}>
               {urlCount === 0 ? '0 URLs detected' : urlCount === 1 ? '1 URL detected' : `${urlCount} URLs detected${urlCount >= 50 ? ' (max)' : ''}`}
             </p>
+            {urlCount > 1 && (
+              <p className="text-xs mt-0.5 text-gray-500">
+                Downloads will run sequentially — one at a time until all finish.
+              </p>
+            )}
           </div>
 
           <FormatRow format={format} setFormat={setFormat} ext={ext} setExt={setExt} />
