@@ -2038,6 +2038,14 @@ async def ads_txt():
     logger.warning("ads.txt file not found at %s", ads_txt_path)
     return JSONResponse({"error": "ads.txt not found"}, status_code=404)
 
+@fastapi_app.get("/yotweek.png")
+async def yotweek_icon():
+    """Serve the yotweek brand icon."""
+    icon_path = os.path.join(ROOT_DIR, "yotweek.png")
+    if os.path.exists(icon_path):
+        return FileResponse(icon_path, media_type="image/png")
+    return JSONResponse({"error": "Icon not found"}, status_code=404)
+
 @fastapi_app.get("/health")
 async def health():
     """Health check endpoint"""
@@ -4294,6 +4302,10 @@ async def download_zip(
 # =========================================================
 # CV GENERATION MODULE
 # =========================================================
+# CV GENERATION MODULE
+# =========================================================
+
+_MAX_CV_LOGO_BYTES = 5 * 1024 * 1024  # 5 MB max for CV logo uploads
 
 @fastapi_app.post("/api/cv/generate")
 async def api_cv_generate(
@@ -4339,8 +4351,8 @@ async def api_cv_generate(
                 return JSONResponse({"error": "Logo must be PNG or JPG."}, status_code=400)
             logo_path = os.path.join(tmpdir, f"logo{ext}")
             content = await logo.read()
-            if len(content) > 5 * 1024 * 1024:
-                return JSONResponse({"error": "Logo file is too large (max 5 MB)."}, status_code=400)
+            if len(content) > _MAX_CV_LOGO_BYTES:
+                return JSONResponse({"error": f"Logo file is too large (max {_MAX_CV_LOGO_BYTES // (1024*1024)} MB)."}, status_code=400)
             with open(logo_path, "wb") as f:
                 f.write(content)
 
@@ -4523,7 +4535,10 @@ async def api_doc_convert(
 
     content = await file.read()
     if len(content) > Config.MAX_CONTENT_LENGTH:
-        return JSONResponse({"error": "File is too large (max 100 MB)."}, status_code=400)
+        return JSONResponse(
+            {"error": f"File is too large (max {Config.MAX_CONTENT_LENGTH // (1024 * 1024)} MB)."},
+            status_code=400,
+        )
     if not content:
         return JSONResponse({"error": "Uploaded file is empty."}, status_code=400)
 
@@ -4620,13 +4635,13 @@ async def api_doc_convert(
                 result = subprocess.run(
                     [lo_path, "--headless", "--convert-to", lo_target,
                      "--outdir", tmpdir, input_path],
-                    capture_output=True, timeout=300,
+                    capture_output=True, text=True, timeout=300,
                 )
                 # LibreOffice names output after input stem
                 stem = os.path.splitext(os.path.basename(input_path))[0]
                 lo_out = os.path.join(tmpdir, f"{stem}.{lo_target}")
                 if result.returncode != 0 or not os.path.isfile(lo_out):
-                    err_detail = (result.stderr or result.stdout or "").decode("utf-8", errors="replace")[:300]
+                    err_detail = (result.stderr or result.stdout or "").strip()[:300]
                     err_msg = f"LibreOffice conversion failed: {err_detail}"
                 else:
                     output_path = lo_out
@@ -4814,7 +4829,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
             "/admin/cancel_download/", "/admin/delete_record/", "/admin/clear_visitors",
             "/admin/db/", "/admin/cookies", "/admin/auth_status", "/admin/has_admin",
             "/admin/api/", "/health", "/ads.txt", "/static/", "/assets/",
-            "/api/",
+            "/api/", "/yotweek.png",
         )
         if not any(path.startswith(p) for p in api_prefixes):
             return _react_index()
