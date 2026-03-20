@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { generateCV } from '../api'
 
 const INITIAL = {
@@ -7,13 +7,78 @@ const INITIAL = {
   skills: '', projects: '', publications: '',
 }
 
+// ── Auto-formatters ───────────────────────────────────────────────────────────
+
+/** Capitalise each word in a name (e.g. "jane smith" → "Jane Smith"). */
+function formatName(v) {
+  return v.replace(/\b\w/g, c => c.toUpperCase())
+}
+
+/**
+ * Normalise a phone number to E.164-ish display format.
+ * Strips everything except digits and + then groups them nicely.
+ */
+function formatPhone(v) {
+  // Keep only digits, spaces, +, -, (, )
+  let s = v.replace(/[^\d\s+\-().]/g, '')
+  return s
+}
+
+/**
+ * Normalise a skills string: trim each skill, deduplicate, sort, rejoin.
+ * Fired on blur so typing isn't interrupted.
+ */
+function normalizeSkills(v) {
+  const parts = v.split(',').map(s => s.trim()).filter(Boolean)
+  const seen = new Set()
+  const unique = parts.filter(s => { const k = s.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true })
+  return unique.join(', ')
+}
+
+/**
+ * Normalise multiline text blocks:
+ * - Trim leading/trailing blank lines
+ * - Collapse 3+ consecutive blank lines into 2
+ * - Replace bullet-like prefixes (--, *) with •
+ */
+function normalizeMultiline(v) {
+  return v
+    .replace(/^[ \t]+|[ \t]+$/gm, '') // trim line-level whitespace
+    .replace(/\n{3,}/g, '\n\n')       // max 1 blank line between blocks
+    .replace(/^[\-\*]\s+/gm, '• ')    // normalise bullet chars
+    .trim()
+}
+
+/** Ensure link has a protocol prefix. */
+function normalizeLink(v) {
+  const t = v.trim()
+  if (t && !/^https?:\/\//i.test(t) && !t.startsWith('//')) {
+    return `https://${t}`
+  }
+  return t
+}
+
 export default function CVGenerator() {
   const [fields, setFields] = useState(INITIAL)
   const [logoFile, setLogoFile] = useState(null)
   const [status, setStatus] = useState(null) // null | { type: 'loading'|'success'|'error', msg: string }
   const submitRef = useRef(null)
 
+  // Generic setter
   const set = (key) => (e) => setFields(f => ({ ...f, [key]: e.target.value }))
+
+  // Setters with auto-format on change (lightweight, non-disruptive)
+  const setName    = (e) => setFields(f => ({ ...f, name:    formatName(e.target.value) }))
+  const setPhone   = (e) => setFields(f => ({ ...f, phone:   formatPhone(e.target.value) }))
+
+  // On-blur formatters that run heavier normalisation after the user leaves the field
+  const blurSkills     = useCallback(() => setFields(f => ({ ...f, skills:       normalizeSkills(f.skills) })), [])
+  const blurExperience = useCallback(() => setFields(f => ({ ...f, experience:   normalizeMultiline(f.experience) })), [])
+  const blurEducation  = useCallback(() => setFields(f => ({ ...f, education:    normalizeMultiline(f.education) })), [])
+  const blurProjects   = useCallback(() => setFields(f => ({ ...f, projects:     normalizeMultiline(f.projects) })), [])
+  const blurPublicatn  = useCallback(() => setFields(f => ({ ...f, publications: normalizeMultiline(f.publications) })), [])
+  const blurSummary    = useCallback(() => setFields(f => ({ ...f, summary:      f.summary.trim() })), [])
+  const blurLink       = useCallback(() => setFields(f => ({ ...f, link:         normalizeLink(f.link) })), [])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -59,7 +124,8 @@ export default function CVGenerator() {
               className="input"
               placeholder="e.g. Jane Smith"
               value={fields.name}
-              onChange={set('name')}
+              onChange={setName}
+              autoComplete="name"
               required
             />
           </div>
@@ -73,6 +139,7 @@ export default function CVGenerator() {
               placeholder="jane@example.com"
               value={fields.email}
               onChange={set('email')}
+              autoComplete="email"
               required
             />
           </div>
@@ -87,7 +154,9 @@ export default function CVGenerator() {
               className="input"
               placeholder="+1 555 123 4567"
               value={fields.phone}
-              onChange={set('phone')}
+              onChange={setPhone}
+              inputMode="tel"
+              autoComplete="tel"
             />
           </div>
           <div className="space-y-1">
@@ -98,6 +167,7 @@ export default function CVGenerator() {
               placeholder="City, Country"
               value={fields.location}
               onChange={set('location')}
+              autoComplete="address-level2"
             />
           </div>
         </div>
@@ -111,6 +181,10 @@ export default function CVGenerator() {
             placeholder="https://linkedin.com/in/janesmith"
             value={fields.link}
             onChange={set('link')}
+            onBlur={blurLink}
+            inputMode="url"
+            autoCapitalize="none"
+            autoCorrect="off"
           />
         </div>
 
@@ -123,6 +197,7 @@ export default function CVGenerator() {
             placeholder="A brief professional summary…"
             value={fields.summary}
             onChange={set('summary')}
+            onBlur={blurSummary}
           />
         </div>
 
@@ -135,7 +210,9 @@ export default function CVGenerator() {
             placeholder={"Company — Title — Start–End year\n• Achievement or responsibility\n\nCompany — Title — Start–End year\n• Achievement or responsibility"}
             value={fields.experience}
             onChange={set('experience')}
+            onBlur={blurExperience}
           />
+          <p className="text-xs text-gray-500">Separate entries with a blank line. Bullet lines start with • or -.</p>
         </div>
 
         {/* Education */}
@@ -147,13 +224,14 @@ export default function CVGenerator() {
             placeholder={"University — Degree — Year\nUniversity — Degree — Year"}
             value={fields.education}
             onChange={set('education')}
+            onBlur={blurEducation}
           />
         </div>
 
         {/* Skills */}
         <div className="space-y-1">
           <label className="form-label">
-            ⭐ Skills <span className="text-gray-500 text-xs">(comma-separated)</span>
+            ⭐ Skills <span className="text-gray-500 text-xs">(comma-separated — duplicates removed on blur)</span>
           </label>
           <input
             type="text"
@@ -161,6 +239,7 @@ export default function CVGenerator() {
             placeholder="Python, FastAPI, React, Docker, …"
             value={fields.skills}
             onChange={set('skills')}
+            onBlur={blurSkills}
           />
         </div>
 
@@ -175,6 +254,7 @@ export default function CVGenerator() {
             placeholder="Project Name — Description — URL (optional)"
             value={fields.projects}
             onChange={set('projects')}
+            onBlur={blurProjects}
           />
         </div>
 
@@ -189,6 +269,7 @@ export default function CVGenerator() {
             placeholder="Title — Journal — Year"
             value={fields.publications}
             onChange={set('publications')}
+            onBlur={blurPublicatn}
           />
         </div>
 

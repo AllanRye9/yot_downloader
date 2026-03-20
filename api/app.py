@@ -1473,14 +1473,15 @@ def _friendly_cookie_error(error_msg: str) -> str:
             # Site admin should re-upload a fresh cookies.txt (Admin → Cookies).
             return (
                 "This video is temporarily unavailable due to bot detection. "
-                "The authentication session may have expired — please try "
-                "again in a few minutes."
+                "The authentication session may have expired. "
+                "Site admin: please upload a fresh cookies.txt via Admin → Cookies."
             )
         # No cookies configured and cookieless clients also failed.
         return (
             "This video cannot be downloaded without authentication. "
             "It may be age-restricted, private, or temporarily restricted by YouTube. "
-            "Please try again later or try a different video."
+            "Site admin: upload a cookies.txt file via Admin → Cookies to enable "
+            "authenticated downloads. See the README Troubleshooting section for instructions."
         )
 
     # Private / age-restricted videos
@@ -4202,9 +4203,11 @@ async def start_batch_download(
         ip_country_cache[ip] = {"country": "Local", "code": "", "city": "", "region": ""}
     cached_geo = ip_country_cache.get(ip, {})
 
+    batch_items = []  # (download_id, url, output_template, format_spec, output_ext)
     for url in url_list:
-        # Use a placeholder title; each worker resolves the real title via
-        # get_video_info() in the background and emits a title_update event.
+        # Register all downloads immediately with "queued" status so the UI
+        # can show them.  The sequential orchestration thread will start them
+        # one at a time in order.
         download_id     = str(uuid.uuid4())
         title           = f"video_{download_id[:8]}"
         safe_title      = safe_filename(title)
@@ -4216,7 +4219,7 @@ async def start_batch_download(
                 "url":             url,
                 "title":           title,
                 "safe_title":      safe_title,
-                "status":          "starting",
+                "status":          "queued",
                 "percent":         0,
                 "output_template": output_template,
                 "format":          format_spec,
@@ -4231,19 +4234,33 @@ async def start_batch_download(
                 "owner_session":   session_id or "",
             }
 
-        thread = threading.Thread(
-            target=download_worker,
-            args=(download_id, url, output_template, format_spec, output_ext),
-            daemon=True,
-        )
-        thread.start()
-        with downloads_lock:
-            active_threads[download_id] = thread
-
+        batch_items.append((download_id, url, output_template, format_spec, output_ext))
         started.append({"download_id": download_id, "url": url, "title": title})
 
     if not started:
         return JSONResponse({"error": "Could not start any downloads (concurrent limit reached)"}, status_code=429)
+
+    # Orchestration thread: run each download_worker sequentially so downloads
+    # complete one at a time rather than all at once.
+    def _batch_orchestrator(items):
+        for dl_id, dl_url, dl_template, dl_format, dl_ext in items:
+            # Skip if cancelled while waiting in queue
+            with downloads_lock:
+                if downloads.get(dl_id, {}).get("status") == "cancelled":
+                    continue
+                active_threads[dl_id] = threading.current_thread()
+            try:
+                download_worker(dl_id, dl_url, dl_template, dl_format, dl_ext)
+            finally:
+                with downloads_lock:
+                    active_threads.pop(dl_id, None)
+
+    orch_thread = threading.Thread(
+        target=_batch_orchestrator,
+        args=(batch_items,),
+        daemon=True,
+    )
+    orch_thread.start()
 
     threading.Thread(target=save_downloads_to_disk, daemon=True).start()
     if ip not in ip_country_cache:
@@ -4302,10 +4319,246 @@ async def download_zip(
 # =========================================================
 # CV GENERATION MODULE
 # =========================================================
-# CV GENERATION MODULE
-# =========================================================
 
 _MAX_CV_LOGO_BYTES = 5 * 1024 * 1024  # 5 MB max for CV logo uploads
+
+# ---------------------------------------------------------------------------
+# Pure-Python PDF builder (fpdf2).  No LaTeX / LibreOffice required.
+# ---------------------------------------------------------------------------
+def _build_cv_pdf(
+    output_path: str,
+    *,
+    name: str,
+    email: str,
+    phone: str = "",
+    location: str = "",
+    link: str = "",
+    summary: str = "",
+    experience: str = "",
+    education: str = "",
+    skills: str = "",
+    projects: str = "",
+    publications: str = "",
+    logo_path: str = "",
+) -> None:
+    """Build a professional single-file PDF CV using fpdf2."""
+    from fpdf import FPDF, XPos, YPos
+
+    _NL = dict(new_x=XPos.LMARGIN, new_y=YPos.NEXT)  # replaces deprecated ln=True
+
+    # ---- Colour palette ----
+    DARK   = (30,  30,  30)   # near-black for body text
+    ACCENT = (37,  99, 235)   # blue-600 accent for headings / dividers
+    LIGHT  = (107, 114, 128)  # gray-500 for sub-labels
+    WHITE  = (255, 255, 255)  # noqa: F841
+
+    # ---- Unicode → Latin-1 safe text normaliser ----
+    # Helvetica is a core PDF font that uses Latin-1 encoding.  Any character
+    # outside Latin-1 (e.g. em-dashes, bullets, curly quotes) must be replaced
+    # with ASCII equivalents before being passed to fpdf.
+    _UNICODE_MAP = str.maketrans({
+        "\u2013": " - ",   # en dash
+        "\u2014": " - ",   # em dash
+        "\u2015": " - ",   # horizontal bar
+        "\u2022": "*",     # bullet •
+        "\u2018": "'",     # left single quote
+        "\u2019": "'",     # right single quote
+        "\u201C": '"',     # left double quote
+        "\u201D": '"',     # right double quote
+        "\u2026": "...",   # ellipsis
+        "\u00A0": " ",     # non-breaking space
+    })
+
+    def _safe(text: str) -> str:
+        """Return *text* with all non-Latin-1 characters replaced safely."""
+        text = text.translate(_UNICODE_MAP)
+        return text.encode("latin-1", errors="replace").decode("latin-1")
+
+    class CV(FPDF):
+        def header(self):
+            pass  # custom header drawn in body
+        def footer(self):
+            self.set_y(-12)
+            self.set_font("Helvetica", "I", 8)
+            self.set_text_color(*LIGHT)
+            self.cell(0, 8, f"Page {self.page_no()}", align="C")
+
+    pdf = CV(orientation="P", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.add_page()
+    pdf.set_margins(18, 18, 18)
+
+    page_w = pdf.w - 36  # usable width (A4 210 mm − 18 mm × 2)
+
+    # ---- Helper: section divider ----
+    def section_heading(title: str):
+        pdf.ln(4)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(*ACCENT)
+        pdf.cell(0, 7, _safe(title.upper()), **_NL)
+        pdf.set_draw_color(*ACCENT)
+        pdf.set_line_width(0.4)
+        pdf.line(18, pdf.get_y(), 18 + page_w, pdf.get_y())
+        pdf.ln(2)
+        pdf.set_text_color(*DARK)
+
+    # ---- Helper: wrap long text ----
+    def multi(txt: str, font_size: int = 9, style: str = "", indent: float = 0):
+        pdf.set_font("Helvetica", style, font_size)
+        pdf.set_text_color(*DARK)
+        if indent:
+            pdf.set_x(18 + indent)
+        pdf.multi_cell(page_w - indent, 5, _safe(txt), **_NL)
+
+    # ================================================================
+    # HEADER BLOCK
+    # ================================================================
+    logo_w = 0.0
+    if logo_path and os.path.isfile(logo_path):
+        try:
+            logo_w = 22.0
+            pdf.image(logo_path, x=18, y=16, w=logo_w)
+        except Exception:
+            logo_w = 0.0
+
+    x_text = 18 + (logo_w + 4 if logo_w else 0)
+    w_text = page_w - (logo_w + 4 if logo_w else 0)
+
+    pdf.set_xy(x_text, 16)
+    pdf.set_font("Helvetica", "B", 20)
+    pdf.set_text_color(*DARK)
+    pdf.cell(w_text, 10, _safe(name), **_NL)
+
+    # Contact line
+    contact_parts = [p for p in (email, phone, location) if p]
+    if contact_parts:
+        pdf.set_x(x_text)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(*LIGHT)
+        pdf.cell(w_text, 5, _safe("  |  ".join(contact_parts)), **_NL)
+
+    if link:
+        pdf.set_x(x_text)
+        pdf.set_font("Helvetica", "U", 9)
+        pdf.set_text_color(*ACCENT)
+        pdf.cell(w_text, 5, _safe(link), **_NL)
+
+    # Separator after header
+    pdf.ln(3)
+    pdf.set_draw_color(*ACCENT)
+    pdf.set_line_width(0.8)
+    pdf.line(18, pdf.get_y(), 18 + page_w, pdf.get_y())
+    pdf.ln(4)
+
+    # ================================================================
+    # SUMMARY
+    # ================================================================
+    if summary.strip():
+        section_heading("Professional Summary")
+        multi(summary.strip())
+
+    # ================================================================
+    # SKILLS
+    # ================================================================
+    skill_list = [s.strip() for s in skills.split(",") if s.strip()]
+    if skill_list:
+        section_heading("Skills")
+        # Render as a flowing comma-separated line with * bullets per item
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(*DARK)
+        # Group into rows of ~5 items each
+        row_size = 5
+        for i in range(0, len(skill_list), row_size):
+            row = skill_list[i:i + row_size]
+            pdf.set_x(18)
+            pdf.cell(0, 5, _safe("  *  ".join(row)), **_NL)
+        pdf.ln(1)
+
+    # ================================================================
+    # EXPERIENCE
+    # ================================================================
+    if experience.strip():
+        section_heading("Work Experience")
+        for block in re.split(r'\n\s*\n', experience.strip()):
+            lines = [l.strip() for l in block.split('\n') if l.strip()]
+            if not lines:
+                continue
+            # Header line: "Company - Title - Dates"
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_text_color(*DARK)
+            pdf.multi_cell(page_w, 5, _safe(lines[0]), **_NL)
+            # Bullet points
+            for bullet in lines[1:]:
+                bullet_text = bullet.lstrip("*-\u2022\u2013\u2014 ").strip()
+                if bullet_text:
+                    pdf.set_font("Helvetica", "", 9)
+                    pdf.set_text_color(*DARK)
+                    pdf.set_x(22)  # indent bullets
+                    pdf.multi_cell(page_w - 4, 5, _safe(f"* {bullet_text}"), **_NL)
+            pdf.ln(1)
+
+    # ================================================================
+    # EDUCATION
+    # ================================================================
+    if education.strip():
+        section_heading("Education")
+        for block in re.split(r'\n\s*\n', education.strip()):
+            lines = [l.strip() for l in block.split('\n') if l.strip()]
+            if not lines:
+                continue
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_text_color(*DARK)
+            pdf.multi_cell(page_w, 5, _safe(lines[0]), **_NL)
+            for extra in lines[1:]:
+                if extra.strip():
+                    pdf.set_font("Helvetica", "", 9)
+                    pdf.set_text_color(*LIGHT)
+                    pdf.set_x(22)
+                    pdf.multi_cell(page_w - 4, 5, _safe(extra.strip()), **_NL)
+            pdf.ln(1)
+
+    # ================================================================
+    # PROJECTS
+    # ================================================================
+    if projects.strip():
+        section_heading("Projects")
+        for block in re.split(r'\n\s*\n', projects.strip()):
+            lines = [l.strip() for l in block.split('\n') if l.strip()]
+            if not lines:
+                continue
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_text_color(*DARK)
+            pdf.multi_cell(page_w, 5, _safe(lines[0]), **_NL)
+            for extra in lines[1:]:
+                if extra.strip():
+                    pdf.set_font("Helvetica", "", 9)
+                    pdf.set_text_color(*DARK)
+                    pdf.set_x(22)
+                    pdf.multi_cell(page_w - 4, 5, _safe(extra.strip()), **_NL)
+            pdf.ln(1)
+
+    # ================================================================
+    # PUBLICATIONS
+    # ================================================================
+    if publications.strip():
+        section_heading("Publications")
+        for block in re.split(r'\n\s*\n', publications.strip()):
+            lines = [l.strip() for l in block.split('\n') if l.strip()]
+            if not lines:
+                continue
+            pdf.set_font("Helvetica", "I", 9)
+            pdf.set_text_color(*DARK)
+            pdf.multi_cell(page_w, 5, _safe(lines[0]), **_NL)
+            for extra in lines[1:]:
+                if extra.strip():
+                    pdf.set_font("Helvetica", "", 9)
+                    pdf.set_text_color(*LIGHT)
+                    pdf.set_x(22)
+                    pdf.multi_cell(page_w - 4, 5, _safe(extra.strip()), **_NL)
+            pdf.ln(1)
+
+    pdf.output(output_path)
+
 
 @fastapi_app.post("/api/cv/generate")
 async def api_cv_generate(
@@ -4323,14 +4576,14 @@ async def api_cv_generate(
     publications: str = Form(""),
     logo: UploadFile = File(None),
 ):
-    """Generate a professional PDF CV using cvcreator and return it for download."""
+    """Generate a professional PDF CV using fpdf2 (pure Python, no LaTeX required)."""
     import tempfile
 
     try:
-        import cvcreator  # noqa: F401
+        from fpdf import FPDF  # noqa: F401
     except ImportError:
         return JSONResponse(
-            {"error": "CV generation is not available: cvcreator is not installed on this server."},
+            {"error": "CV generation is not available: fpdf2 is not installed on this server."},
             status_code=503,
         )
 
@@ -4344,7 +4597,7 @@ async def api_cv_generate(
     tmpdir = tempfile.mkdtemp(prefix="cv_", dir=DOWNLOAD_FOLDER)
     try:
         # Save logo if provided
-        logo_path = None
+        logo_path = ""
         if logo and logo.filename:
             ext = os.path.splitext(logo.filename)[1].lower()
             if ext not in (".png", ".jpg", ".jpeg"):
@@ -4356,94 +4609,27 @@ async def api_cv_generate(
             with open(logo_path, "wb") as f:
                 f.write(content)
 
-        # Build TOML configuration for cvcreator
-        skill_list = [s.strip() for s in skills.split(",") if s.strip()]
-        toml_lines = [
-            '[personal]',
-            f'name = {json.dumps(name)}',
-            f'email = {json.dumps(email)}',
-        ]
-        if phone:
-            toml_lines.append(f'phone = {json.dumps(phone.strip())}')
-        if location:
-            toml_lines.append(f'location = {json.dumps(location.strip())}')
-        if link:
-            toml_lines.append(f'website = {json.dumps(link.strip())}')
-        if summary:
-            toml_lines.append(f'summary = {json.dumps(summary.strip())}')
-        if logo_path:
-            toml_lines.append(f'logo = {json.dumps(logo_path)}')
-
-        if skill_list:
-            toml_lines.append('\n[skills]')
-            toml_lines.append(f'items = {json.dumps(skill_list)}')
-
-        # Experience: parse "Company — Title — Dates\n• bullet" blocks
-        if experience.strip():
-            toml_lines.append('\n[[experience]]')
-            # Each blank-line-separated block becomes one entry
-            for block in re.split(r'\n\s*\n', experience.strip()):
-                lines = [l.strip() for l in block.split('\n') if l.strip()]
-                if not lines:
-                    continue
-                header = lines[0]
-                bullets = [l.lstrip('•- ') for l in lines[1:] if l]
-                toml_lines.append(f'title = {json.dumps(header)}')
-                if bullets:
-                    toml_lines.append(f'bullets = {json.dumps(bullets)}')
-                toml_lines.append('')
-
-        # Education
-        if education.strip():
-            toml_lines.append('\n[[education]]')
-            for block in re.split(r'\n\s*\n', education.strip()):
-                lines = [l.strip() for l in block.split('\n') if l.strip()]
-                if not lines:
-                    continue
-                toml_lines.append(f'title = {json.dumps(lines[0])}')
-                toml_lines.append('')
-
-        # Optional projects
-        if projects.strip():
-            toml_lines.append('\n[[projects]]')
-            for block in re.split(r'\n\s*\n', projects.strip()):
-                lines = [l.strip() for l in block.split('\n') if l.strip()]
-                if not lines:
-                    continue
-                toml_lines.append(f'title = {json.dumps(lines[0])}')
-                if len(lines) > 1:
-                    toml_lines.append(f'description = {json.dumps(" ".join(lines[1:]))}')
-                toml_lines.append('')
-
-        # Optional publications
-        if publications.strip():
-            toml_lines.append('\n[[publications]]')
-            for block in re.split(r'\n\s*\n', publications.strip()):
-                lines = [l.strip() for l in block.split('\n') if l.strip()]
-                if not lines:
-                    continue
-                toml_lines.append(f'title = {json.dumps(lines[0])}')
-                toml_lines.append('')
-
-        toml_content = '\n'.join(toml_lines)
-        toml_path = os.path.join(tmpdir, "cv.toml")
-        with open(toml_path, "w", encoding="utf-8") as f:
-            f.write(toml_content)
-
         output_pdf = os.path.join(tmpdir, "cv.pdf")
 
-        # Run cvcreator CLI
-        result = subprocess.run(
-            ["python", "-m", "cvcreator", toml_path, "--output", output_pdf],
-            capture_output=True, text=True, timeout=120,
+        # Build PDF directly using fpdf2 (no external tools required)
+        _build_cv_pdf(
+            output_pdf,
+            name=name,
+            email=email,
+            phone=phone.strip(),
+            location=location.strip(),
+            link=link.strip(),
+            summary=summary.strip(),
+            experience=experience,
+            education=education,
+            skills=skills,
+            projects=projects,
+            publications=publications,
+            logo_path=logo_path,
         )
-        if result.returncode != 0 or not os.path.isfile(output_pdf):
-            err_detail = (result.stderr or result.stdout or "Unknown error").strip()[:500]
-            logger.error("cvcreator error: %s", err_detail)
-            return JSONResponse(
-                {"error": f"CV generation failed: {err_detail}"},
-                status_code=500,
-            )
+
+        if not os.path.isfile(output_pdf):
+            return JSONResponse({"error": "CV generation produced no output."}, status_code=500)
 
         # Track the CV generation as a download record
         record_id = str(uuid.uuid4())
@@ -4474,8 +4660,6 @@ async def api_cv_generate(
             media_type="application/pdf",
             background=None,
         )
-    except subprocess.TimeoutExpired:
-        return JSONResponse({"error": "CV generation timed out."}, status_code=500)
     except Exception as exc:
         logger.error("CV generation error: %s", exc, exc_info=True)
         return JSONResponse({"error": f"CV generation failed: {exc}"}, status_code=500)
@@ -4628,9 +4812,7 @@ async def api_doc_convert(
 
         else:  # libreoffice
             lo_path = shutil.which("libreoffice") or shutil.which("soffice")
-            if not lo_path:
-                err_msg = "LibreOffice is not installed on this server."
-            else:
+            if lo_path:
                 lo_target = target
                 result = subprocess.run(
                     [lo_path, "--headless", "--convert-to", lo_target,
@@ -4645,6 +4827,89 @@ async def api_doc_convert(
                     err_msg = f"LibreOffice conversion failed: {err_detail}"
                 else:
                     output_path = lo_out
+            else:
+                # LibreOffice is not available — attempt Python-only fallbacks
+                # for the most common Office→text/html conversions.
+                src_clean = src_ext.lstrip(".")
+                fallback_attempted = False
+
+                # .docx / .doc → plain-text via python-docx (text extraction only)
+                if src_clean in ("docx", "doc") and target in ("txt", "html"):
+                    try:
+                        import docx as python_docx
+                        doc = python_docx.Document(input_path)
+                        paragraphs = [p.text for p in doc.paragraphs]
+                        if target == "txt":
+                            with open(output_path, "w", encoding="utf-8") as out_f:
+                                out_f.write("\n".join(paragraphs))
+                        else:  # html
+                            html_body = "".join(
+                                f"<p>{p}</p>" for p in paragraphs if p.strip()
+                            )
+                            with open(output_path, "w", encoding="utf-8") as out_f:
+                                out_f.write(
+                                    f"<!DOCTYPE html><html><body>{html_body}</body></html>"
+                                )
+                        fallback_attempted = True
+                    except ImportError:
+                        pass
+                    except Exception as exc:
+                        err_msg = f"Word text extraction failed: {exc}"
+                        fallback_attempted = True
+
+                # .xlsx / .xls → CSV via openpyxl
+                elif src_clean in ("xlsx", "xls") and target == "csv":
+                    try:
+                        import openpyxl
+                        import csv as csv_mod
+                        wb = openpyxl.load_workbook(input_path, read_only=True, data_only=True)
+                        ws = wb.active
+                        with open(output_path, "w", newline="", encoding="utf-8") as out_f:
+                            writer = csv_mod.writer(out_f)
+                            for row in ws.iter_rows(values_only=True):
+                                writer.writerow(["" if v is None else v for v in row])
+                        fallback_attempted = True
+                    except ImportError:
+                        pass
+                    except Exception as exc:
+                        err_msg = f"Excel→CSV conversion failed: {exc}"
+                        fallback_attempted = True
+
+                # .pptx → txt via python-pptx (text extraction only)
+                elif src_clean == "pptx" and target in ("txt", "html"):
+                    try:
+                        from pptx import Presentation
+                        prs = Presentation(input_path)
+                        lines = []
+                        for slide in prs.slides:
+                            for shape in slide.shapes:
+                                if shape.has_text_frame:
+                                    for para in shape.text_frame.paragraphs:
+                                        txt = "".join(run.text for run in para.runs)
+                                        if txt.strip():
+                                            lines.append(txt)
+                        if target == "txt":
+                            with open(output_path, "w", encoding="utf-8") as out_f:
+                                out_f.write("\n".join(lines))
+                        else:  # html
+                            html_body = "".join(f"<p>{l}</p>" for l in lines)
+                            with open(output_path, "w", encoding="utf-8") as out_f:
+                                out_f.write(
+                                    f"<!DOCTYPE html><html><body>{html_body}</body></html>"
+                                )
+                        fallback_attempted = True
+                    except ImportError:
+                        pass
+                    except Exception as exc:
+                        err_msg = f"PowerPoint text extraction failed: {exc}"
+                        fallback_attempted = True
+
+                if not fallback_attempted and not err_msg:
+                    err_msg = (
+                        "LibreOffice is not installed on this server. "
+                        f"Converting {src_ext} → {target} requires LibreOffice. "
+                        "Please install it or try a different conversion."
+                    )
 
         if err_msg:
             return JSONResponse({"error": err_msg}, status_code=500)
