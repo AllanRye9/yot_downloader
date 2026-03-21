@@ -268,7 +268,8 @@ html:not(.theme-dark) .bg-gradient-to-b {
     font-size: max(16px, 0.875rem);
   }
   .card {
-    @apply bg-gray-900 border border-gray-800 rounded-xl p-5;
+    @apply bg-gray-900 border border-gray-800 rounded-xl;
+    padding: 19px;
   }
   .tab-btn {
     @apply px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none;

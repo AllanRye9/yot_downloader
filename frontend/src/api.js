@@ -69,13 +69,7 @@ export const cancelDownload  = (id)  => request('POST', `/cancel/${id}`)
 export const cancelAll        = ()   => request('POST', '/cancel_all')
 export const getActiveDownloads = () => request('GET', '/active_downloads')
 
-// ── Playlist / Batch ──────────────────────────────────────────────────────────
-
-export const startPlaylist = (url, format = 'best', ext = 'mp4', startIdx = '', endIdx = '', sessionId = '') =>
-  request('POST', '/start_playlist_download', formBody({ url, format, ext, start_index: startIdx, end_index: endIdx, session_id: sessionId }), false)
-
-export const startBatch = (urls, format = 'best', ext = 'mp4', sessionId = '') =>
-  request('POST', '/start_batch_download', formBody({ urls, format, ext, session_id: sessionId }), false)
+// ── Bulk download ─────────────────────────────────────────────────────────────
 
 export const downloadZip = (filenames) => {
   const fd = new FormData()
