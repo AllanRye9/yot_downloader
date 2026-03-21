@@ -2,6 +2,7 @@ import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area,
 } from 'recharts'
+import VisitorMap from './VisitorMap'
 
 const COLORS = ['#ef4444','#3b82f6','#10b981','#f59e0b','#8b5cf6','#06b6d4','#f97316','#ec4899']
 
@@ -203,7 +204,15 @@ export default function AnalyticsCharts({ analytics, downloadsTrend }) {
 
       {/* ── Geographic Distribution ── */}
       <SectionHeading icon="🌍" title="Geographic Distribution" />
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4">
+        <ChartCard title="Active Users & Visitors — World Map" wide>
+          <VisitorMap
+            visitorCountries={visitor_countries}
+            downloadCountries={download_countries}
+          />
+        </ChartCard>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
         <ChartCard title="Downloads by Country (Top 10)">
           <ColorBar data={dlCountryData} height={220} />
         </ChartCard>

@@ -4,25 +4,86 @@ import { convertDoc } from '../api'
 // Conversion matrix: source extension → available target formats
 const CONVERSION_MAP = {
   pdf:  [
-    { value: 'word',  label: '📝 Word (.docx)',  icon: '📝' },
-    { value: 'excel', label: '📊 Excel (.xlsx)', icon: '📊' },
-    { value: 'jpeg',  label: '🖼 JPEG image',    icon: '🖼' },
-    { value: 'png',   label: '🖼 PNG image',     icon: '🖼' },
+    { value: 'word',        label: '📝 Word (.docx)',        icon: '📝' },
+    { value: 'excel',       label: '📊 Excel (.xlsx)',       icon: '📊' },
+    { value: 'powerpoint',  label: '📊 PowerPoint (.pptx)',  icon: '📊' },
+    { value: 'jpeg',        label: '🖼 JPEG image',          icon: '🖼' },
+    { value: 'png',         label: '🖼 PNG image',           icon: '🖼' },
   ],
-  docx: [{ value: 'pdf', label: '📄 PDF', icon: '📄' }],
-  doc:  [{ value: 'pdf', label: '📄 PDF', icon: '📄' }],
-  xlsx: [{ value: 'pdf', label: '📄 PDF', icon: '📄' }],
-  xls:  [{ value: 'pdf', label: '📄 PDF', icon: '📄' }],
-  jpg:  [{ value: 'pdf', label: '📄 PDF', icon: '📄' }],
-  jpeg: [{ value: 'pdf', label: '📄 PDF', icon: '📄' }],
-  png:  [{ value: 'pdf', label: '📄 PDF', icon: '📄' }],
+  docx: [
+    { value: 'pdf',         label: '📄 PDF',                 icon: '📄' },
+    { value: 'excel',       label: '📊 Excel (.xlsx)',       icon: '📊' },
+    { value: 'powerpoint',  label: '📊 PowerPoint (.pptx)',  icon: '📊' },
+    { value: 'jpeg',        label: '🖼 JPEG image',          icon: '🖼' },
+    { value: 'png',         label: '🖼 PNG image',           icon: '🖼' },
+  ],
+  doc: [
+    { value: 'pdf',         label: '📄 PDF',                 icon: '📄' },
+    { value: 'excel',       label: '📊 Excel (.xlsx)',       icon: '📊' },
+    { value: 'powerpoint',  label: '📊 PowerPoint (.pptx)',  icon: '📊' },
+    { value: 'jpeg',        label: '🖼 JPEG image',          icon: '🖼' },
+    { value: 'png',         label: '🖼 PNG image',           icon: '🖼' },
+  ],
+  xlsx: [
+    { value: 'pdf',         label: '📄 PDF',                 icon: '📄' },
+    { value: 'word',        label: '📝 Word (.docx)',        icon: '📝' },
+    { value: 'powerpoint',  label: '📊 PowerPoint (.pptx)',  icon: '📊' },
+    { value: 'jpeg',        label: '🖼 JPEG image',          icon: '🖼' },
+    { value: 'png',         label: '🖼 PNG image',           icon: '🖼' },
+  ],
+  xls: [
+    { value: 'pdf',         label: '📄 PDF',                 icon: '📄' },
+    { value: 'word',        label: '📝 Word (.docx)',        icon: '📝' },
+    { value: 'powerpoint',  label: '📊 PowerPoint (.pptx)',  icon: '📊' },
+    { value: 'jpeg',        label: '🖼 JPEG image',          icon: '🖼' },
+    { value: 'png',         label: '🖼 PNG image',           icon: '🖼' },
+  ],
+  pptx: [
+    { value: 'pdf',         label: '📄 PDF',                 icon: '📄' },
+    { value: 'word',        label: '📝 Word (.docx)',        icon: '📝' },
+    { value: 'excel',       label: '📊 Excel (.xlsx)',       icon: '📊' },
+    { value: 'jpeg',        label: '🖼 JPEG image',          icon: '🖼' },
+    { value: 'png',         label: '🖼 PNG image',           icon: '🖼' },
+  ],
+  ppt: [
+    { value: 'pdf',         label: '📄 PDF',                 icon: '📄' },
+    { value: 'word',        label: '📝 Word (.docx)',        icon: '📝' },
+    { value: 'excel',       label: '📊 Excel (.xlsx)',       icon: '📊' },
+    { value: 'jpeg',        label: '🖼 JPEG image',          icon: '🖼' },
+    { value: 'png',         label: '🖼 PNG image',           icon: '🖼' },
+  ],
+  odt: [
+    { value: 'pdf',         label: '📄 PDF',                 icon: '📄' },
+    { value: 'word',        label: '📝 Word (.docx)',        icon: '📝' },
+    { value: 'excel',       label: '📊 Excel (.xlsx)',       icon: '📊' },
+  ],
+  ods: [
+    { value: 'pdf',         label: '📄 PDF',                 icon: '📄' },
+    { value: 'word',        label: '📝 Word (.docx)',        icon: '📝' },
+    { value: 'excel',       label: '📊 Excel (.xlsx)',       icon: '📊' },
+  ],
+  jpg: [
+    { value: 'pdf',         label: '📄 PDF',                 icon: '📄' },
+    { value: 'word',        label: '📝 Word (.docx)',        icon: '📝' },
+    { value: 'png',         label: '🖼 PNG image',           icon: '🖼' },
+  ],
+  jpeg: [
+    { value: 'pdf',         label: '📄 PDF',                 icon: '📄' },
+    { value: 'word',        label: '📝 Word (.docx)',        icon: '📝' },
+    { value: 'png',         label: '🖼 PNG image',           icon: '🖼' },
+  ],
+  png: [
+    { value: 'pdf',         label: '📄 PDF',                 icon: '📄' },
+    { value: 'word',        label: '📝 Word (.docx)',        icon: '📝' },
+    { value: 'jpeg',        label: '🖼 JPEG image',          icon: '🖼' },
+  ],
 }
 
 const SUPPORTED_EXTS = Object.keys(CONVERSION_MAP)
 
 const ACCEPT_TYPES = [
-  '.pdf', '.docx', '.doc', '.xlsx', '.xls',
-  '.jpg', '.jpeg', '.png',
+  '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.ppt',
+  '.odt', '.ods', '.jpg', '.jpeg', '.png',
 ].join(',')
 
 function getExt(filename) {
@@ -100,7 +161,7 @@ export default function DocConverter() {
           🔄 Document Converter
         </h2>
         <p className="text-xs text-gray-400 mt-0.5">
-          Convert PDF, Word, Excel, JPEG, and PNG files between formats.
+          Convert PDF, Word, Excel, PowerPoint, JPEG, and PNG files inter-changeably.
         </p>
       </div>
 
@@ -114,10 +175,12 @@ export default function DocConverter() {
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {[
-            { from: 'PDF',       to: 'Word / Excel / JPEG / PNG' },
-            { from: 'Word',      to: 'PDF' },
-            { from: 'Excel',     to: 'PDF' },
-            { from: 'JPEG/PNG',  to: 'PDF' },
+            { from: 'PDF',        to: 'Word / Excel / PowerPoint / JPEG / PNG' },
+            { from: 'Word',       to: 'PDF / Excel / PowerPoint / JPEG / PNG'  },
+            { from: 'Excel',      to: 'PDF / Word / PowerPoint / JPEG / PNG'   },
+            { from: 'PowerPoint', to: 'PDF / Word / Excel / JPEG / PNG'        },
+            { from: 'JPEG/PNG',   to: 'PDF / Word / JPEG↔PNG'                 },
+            { from: 'ODT/ODS',    to: 'PDF / Word / Excel'                     },
           ].map(({ from, to }) => (
             <span key={from} style={{
               background: '#374151', borderRadius: 6,
@@ -160,7 +223,10 @@ export default function DocConverter() {
             {file ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
                 <span style={{ fontSize: '1.5rem' }}>
-                  {ext === 'pdf' ? '📄' : ['jpg','jpeg','png'].includes(ext) ? '🖼' : '📝'}
+                  {ext === 'pdf' ? '📄'
+                    : ['jpg','jpeg','png'].includes(ext) ? '🖼'
+                    : ['pptx','ppt'].includes(ext) ? '📊'
+                    : '📝'}
                 </span>
                 <div style={{ textAlign: 'left' }}>
                   <div style={{ color: '#f3f4f6', fontSize: '0.85rem', fontWeight: 600 }}>{file.name}</div>
@@ -180,7 +246,7 @@ export default function DocConverter() {
                   Click to browse or drag &amp; drop a file here
                 </div>
                 <div style={{ color: '#4b5563', fontSize: '0.72rem', marginTop: 4 }}>
-                  PDF, DOCX, DOC, XLSX, XLS, JPEG, PNG — up to 50 MB
+                  PDF, DOCX, DOC, XLSX, XLS, PPTX, PPT, ODT, ODS, JPEG, PNG — up to 50 MB
                 </div>
               </div>
             )}
