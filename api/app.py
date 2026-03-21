@@ -1330,20 +1330,20 @@ def admin_required(f):
 def check_yt_dlp():
     """Check if yt-dlp is installed and accessible"""
     try:
-        logger.info(f"✅ yt-dlp version: {yt_dlp.version.__version__}")
+        logger.info(f"OK: yt-dlp version: {yt_dlp.version.__version__}")
         return True
     except Exception as e:
-        logger.error(f"❌ Error checking yt-dlp: {e}")
+        logger.error(f"ERROR: Error checking yt-dlp: {e}")
         return False
 
 def check_ffmpeg():
     """Check if ffmpeg is installed"""
     ffmpeg_path = shutil.which('ffmpeg')
     if ffmpeg_path:
-        logger.info(f"✅ ffmpeg found at: {ffmpeg_path}")
+        logger.info(f"OK: ffmpeg found at: {ffmpeg_path}")
         return True
     else:
-        logger.warning("⚠️ ffmpeg not found - some formats may not work")
+        logger.warning("WARNING: ffmpeg not found - some formats may not work")
         return False
 
 # =========================================================
@@ -4870,7 +4870,18 @@ async def api_doc_convert(
         strategy = _doc_conv_strategy(src_ext, target)
         err_msg = None
 
-        if strategy == "passthrough":
+        if strategy == "unsupported":
+            src_clean = src_ext.lstrip(".")
+            return JSONResponse(
+                {"error": (
+                    f"Converting a {src_clean.upper()} image to {target.upper()} is not supported. "
+                    "Images can only be converted to PDF. "
+                    "Please upload a document file (e.g. DOCX, PDF, HTML, TXT) instead."
+                )},
+                status_code=400,
+            )
+
+        elif strategy == "passthrough":
             shutil.copy2(input_path, output_path)
 
         elif strategy == "pdf2docx":
@@ -5428,13 +5439,13 @@ def cleanup_thread():
 # =========================================================
 
 logger.info("=" * 50)
-logger.info("🚀 Starting Video Downloader (Production)")
+logger.info("Starting Video Downloader (Production)")
 logger.info("=" * 50)
 
 # Warn if using the default admin password
 if Config.ADMIN_PASSWORD == "admin":
     logger.warning(
-        "⚠️  ADMIN_PASSWORD is set to the default value 'admin'. "
+        "WARNING: ADMIN_PASSWORD is set to the default value 'admin'. "
         "Set the ADMIN_PASSWORD environment variable to a strong password before deploying."
     )
 
@@ -5443,10 +5454,10 @@ check_yt_dlp()
 check_ffmpeg()
 
 # Log paths
-logger.info(f"📁 Root directory: {ROOT_DIR}")
-logger.info(f"📁 Templates directory: {TEMPLATES_DIR}")
-logger.info(f"📁 Downloads directory: {DOWNLOAD_FOLDER}")
-logger.info(f"📁 Template exists: {os.path.exists(os.path.join(TEMPLATES_DIR, 'index.html'))}")
+logger.info(f"Root directory: {ROOT_DIR}")
+logger.info(f"Templates directory: {TEMPLATES_DIR}")
+logger.info(f"Downloads directory: {DOWNLOAD_FOLDER}")
+logger.info(f"Template exists: {os.path.exists(os.path.join(TEMPLATES_DIR, 'index.html'))}")
 
 # Initialise database schema
 init_db()
@@ -5508,8 +5519,8 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     debug = os.environ.get("FLASK_DEBUG", "False").lower() == "true"
 
-    logger.info(f"🌐 Starting server on port {port}")
-    logger.info(f"🐛 Debug mode: {debug}")
+    logger.info(f"Starting server on port {port}")
+    logger.info(f"Debug mode: {debug}")
 
     uvicorn.run(
         "api.app:app",
