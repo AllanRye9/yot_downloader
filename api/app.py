@@ -3234,6 +3234,55 @@ async def admin_clear_visitors(request: Request):
     return JSONResponse({"success": True})
 
 
+@fastapi_app.delete("/admin/clear_all_data")
+@admin_required
+async def admin_clear_all_data(request: Request):
+    """Clear ALL data (downloads, visitors, and reviews) from memory and database (admin only).
+
+    Active and queued downloads are cancelled before being removed so that
+    in-flight workers receive the cancellation signal.
+    """
+    # Cancel and clear downloads
+    cancelled_ids: list[str] = []
+    with downloads_lock:
+        for did, d in list(downloads.items()):
+            status = d.get("status")
+            if status in ("starting", "fetching_info", "queued", "downloading"):
+                cancelled_ids.append(did)
+        downloads.clear()
+
+    for did in cancelled_ids:
+        emit_from_thread("cancelled", {"id": did}, room=did)
+
+    # Clear visitors
+    with visitors_lock:
+        visitors.clear()
+
+    # Clear reviews
+    with reviews_lock:
+        reviews.clear()
+
+    def _db_clear_all():
+        try:
+            with _db_lock:
+                conn = _get_db()
+                try:
+                    _execute(conn, "DELETE FROM downloads")
+                    _execute(conn, "DELETE FROM visitors")
+                    _execute(conn, "DELETE FROM reviews")
+                    conn.commit()
+                finally:
+                    conn.close()
+        except Exception as exc:
+            logger.error(f"admin_clear_all_data DB error: {exc}")
+
+    threading.Thread(target=_db_clear_all, daemon=True).start()
+    logger.info(
+        f"Admin cleared ALL data ({len(cancelled_ids)} active/queued downloads cancelled)"
+    )
+    return JSONResponse({"success": True})
+
+
 @fastapi_app.get("/admin/db/download")
 @admin_required
 async def admin_db_download(request: Request):
@@ -4095,6 +4144,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
             "/active_downloads", "/download_zip", "/reviews",
             "/admin/downloads", "/admin/visitors", "/admin/analytics",
             "/admin/cancel_download/", "/admin/delete_record/", "/admin/clear_visitors",
+            "/admin/clear_all_downloads", "/admin/clear_all_data",
             "/admin/db/", "/admin/cookies", "/admin/auth_status", "/admin/has_admin",
             "/admin/api/", "/health", "/ads.txt", "/static/", "/assets/",
             "/api/", "/yotweek.png",

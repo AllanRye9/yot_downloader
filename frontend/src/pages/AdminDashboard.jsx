@@ -4,7 +4,7 @@ import { useAuth } from '../App'
 import {
   getAdminDownloads, getAdminVisitors, getAdminAnalytics,
   adminCancelDownload, adminDeleteRecord, adminClearVisitors,
-  adminClearAllDownloads,
+  adminClearAllDownloads, adminClearAllData,
   adminLogout, adminDbDownloadUrl, adminDbUpload,
   getCookieStatus, uploadCookies, deleteCookies,
 } from '../api'
@@ -24,6 +24,74 @@ const SIDEBAR_TABS = [
   { id: 'cookies',    icon: '🍪',  label: 'Cookies'    },
 ]
 
+function ClearAllDataModal({ onBackup, onConfirm, onClose }) {
+  const [backupDone, setBackupDone] = useState(false)
+  const [confirmed, setConfirmed]   = useState(false)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl max-w-md w-full p-6">
+        <div className="flex items-start gap-3 mb-4">
+          <span className="text-3xl">⚠️</span>
+          <div>
+            <h2 className="text-lg font-bold text-white">Clear All Data</h2>
+            <p className="text-sm text-gray-400 mt-1">
+              This will permanently delete <span className="text-red-400 font-semibold">all</span> download
+              records, visitor logs, and reviews from the database.
+              This action <span className="text-red-400 font-semibold">cannot be undone</span>.
+            </p>
+          </div>
+        </div>
+
+        {/* Backup option */}
+        <div className="bg-gray-800 rounded-xl p-4 mb-4 space-y-3">
+          <p className="text-sm font-medium text-gray-200">Step 1 — Back up your data (recommended)</p>
+          <button
+            className="btn-secondary w-full text-sm"
+            onClick={() => { onBackup(); setBackupDone(true) }}
+          >
+            ⬇ Download Backup Now
+          </button>
+          {backupDone && (
+            <p className="text-xs text-green-400 flex items-center gap-1">
+              ✓ Backup download started — check your downloads folder.
+            </p>
+          )}
+        </div>
+
+        {/* Confirmation checkbox */}
+        <label className="flex items-start gap-2 mb-5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            className="mt-0.5 accent-red-500"
+            checked={confirmed}
+            onChange={e => setConfirmed(e.target.checked)}
+          />
+          <span className="text-sm text-gray-300">
+            I have backed up my data, or I do not need a backup and understand this is permanent.
+          </span>
+        </label>
+
+        {/* Action buttons */}
+        <div className="flex gap-3">
+          <button className="flex-1 btn-ghost text-sm" onClick={onClose}>Cancel</button>
+          <button
+            className={`flex-1 text-sm rounded-lg px-4 py-2 font-medium transition-colors ${
+              confirmed
+                ? 'bg-red-600 hover:bg-red-700 text-white'
+                : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+            }`}
+            disabled={!confirmed}
+            onClick={() => confirmed && onConfirm()}
+          >
+            🗑 Delete All Data
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminDashboard() {
   const { setAdmin } = useAuth()
   const navigate = useNavigate()
@@ -38,6 +106,7 @@ export default function AdminDashboard() {
   const [notice, setNotice]           = useState('')
   const [error, setError]             = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [showClearAllDataModal, setShowClearAllDataModal] = useState(false)
 
   // Compute 30-day download trend from download records
   const downloadsTrend = useMemo(() => {
@@ -109,6 +178,20 @@ export default function AdminDashboard() {
   const handleClearVisitors = async () => {
     if (!confirm('Clear all visitor records?')) return
     try { await adminClearVisitors(); setVisitors([]); setNotice('Visitors cleared') } catch (e) { setError(e.message) }
+  }
+  const handleClearAllData = async () => {
+    try {
+      await adminClearAllData()
+      setDownloads([])
+      setVisitors([])
+      setAnalytics(null)
+      setShowClearAllDataModal(false)
+      setNotice('All data cleared successfully')
+      fetchAnalytics()
+    } catch (e) {
+      setShowClearAllDataModal(false)
+      setError(e.message)
+    }
   }
 
   // DB
@@ -273,6 +356,13 @@ export default function AdminDashboard() {
           {/* Database tab */}
           {tab === 'database' && (
             <div className="max-w-md space-y-4">
+              {showClearAllDataModal && (
+                <ClearAllDataModal
+                  onBackup={handleDbDownload}
+                  onConfirm={handleClearAllData}
+                  onClose={() => setShowClearAllDataModal(false)}
+                />
+              )}
               <div className="card">
                 <h3 className="font-semibold text-white mb-3">📥 Download Backup</h3>
                 <p className="text-sm text-gray-400 mb-3">
@@ -283,7 +373,7 @@ export default function AdminDashboard() {
                 </button>
               </div>
               <div className="card">
-                <h3 className="font-semibold text-white mb-3">📤 Upload & Merge Backup</h3>
+                <h3 className="font-semibold text-white mb-3">📤 Upload &amp; Merge Backup</h3>
                 <p className="text-sm text-gray-400 mb-3">
                   Upload a previously downloaded backup file. Records will be merged (no duplicates).
                 </p>
@@ -291,6 +381,19 @@ export default function AdminDashboard() {
                   📁 Choose Backup File
                   <input type="file" className="sr-only" accept=".db,.sqlite,.json" onChange={handleDbUpload} />
                 </label>
+              </div>
+              <div className="card border-red-900/50">
+                <h3 className="font-semibold text-red-400 mb-3">⚠️ Danger Zone</h3>
+                <p className="text-sm text-gray-400 mb-3">
+                  Permanently delete <strong className="text-white">all</strong> downloads, visitors, and reviews from the database.
+                  This cannot be undone. Back up first.
+                </p>
+                <button
+                  className="btn-danger w-full"
+                  onClick={() => setShowClearAllDataModal(true)}
+                >
+                  🗑 Clear All Data
+                </button>
               </div>
             </div>
           )}
