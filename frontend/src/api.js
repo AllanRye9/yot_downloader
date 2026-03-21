@@ -104,6 +104,7 @@ export const adminCancelDownload   = (id) => request('POST', `/admin/cancel_down
 export const adminDeleteRecord     = (id) => request('DELETE', `/admin/delete_record/${id}`)
 export const adminClearVisitors    = ()   => request('DELETE', '/admin/clear_visitors')
 export const adminClearAllDownloads = ()  => request('DELETE', '/admin/clear_all_downloads')
+export const adminClearAllData      = ()  => request('DELETE', '/admin/clear_all_data')
 
 // ── Admin DB ──────────────────────────────────────────────────────────────────
 

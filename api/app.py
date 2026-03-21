@@ -3234,6 +3234,50 @@ async def admin_clear_visitors(request: Request):
     return JSONResponse({"success": True})
 
 
+@fastapi_app.delete("/admin/clear_all_data")
+@admin_required
+async def admin_clear_all_data(request: Request):
+    """Clear ALL admin data — downloads, visitors, and analytics — from memory and database.
+
+    Active and queued downloads are cancelled before removal.  This is a
+    destructive, irreversible operation; the admin UI must ask the user to
+    back up first.
+    """
+    # Cancel and clear in-memory downloads
+    cancelled_ids: list[str] = []
+    with downloads_lock:
+        for did, d in list(downloads.items()):
+            if d.get("status") in ("starting", "fetching_info", "queued", "downloading"):
+                cancelled_ids.append(did)
+        downloads.clear()
+
+    for did in cancelled_ids:
+        emit_from_thread("cancelled", {"id": did}, room=did)
+
+    # Clear in-memory visitors
+    with visitors_lock:
+        visitors.clear()
+
+    def _db_wipe():
+        try:
+            with _db_lock:
+                conn = _get_db()
+                try:
+                    _execute(conn, "DELETE FROM downloads")
+                    _execute(conn, "DELETE FROM visitors")
+                    conn.commit()
+                finally:
+                    conn.close()
+        except Exception as exc:
+            logger.error("admin_clear_all_data DB error: %s", exc)
+
+    threading.Thread(target=_db_wipe, daemon=True).start()
+    logger.info(
+        "Admin wiped ALL data (%d active/queued downloads cancelled)", len(cancelled_ids)
+    )
+    return JSONResponse({"success": True, "cancelled": len(cancelled_ids)})
+
+
 @fastapi_app.get("/admin/db/download")
 @admin_required
 async def admin_db_download(request: Request):
@@ -4172,17 +4216,27 @@ _MAX_DOC_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB max for doc conversion
 
 _DOC_CONVERSIONS = {
     # source_ext → {target_format → output_ext}
-    "pdf":  {"word": "docx", "excel": "xlsx", "jpeg": "jpg", "png": "png"},
-    "docx": {"pdf": "pdf"},
-    "doc":  {"pdf": "pdf"},
-    "xlsx": {"pdf": "pdf"},
-    "xls":  {"pdf": "pdf"},
-    "jpg":  {"pdf": "pdf"},
-    "jpeg": {"pdf": "pdf"},
-    "png":  {"pdf": "pdf"},
+    "pdf":  {"word": "docx", "excel": "xlsx", "powerpoint": "pptx", "jpeg": "jpg", "png": "png"},
+    "docx": {"pdf": "pdf", "excel": "xlsx", "powerpoint": "pptx", "jpeg": "jpg", "png": "png"},
+    "doc":  {"pdf": "pdf", "excel": "xlsx", "powerpoint": "pptx", "jpeg": "jpg", "png": "png"},
+    "xlsx": {"pdf": "pdf", "word": "docx", "powerpoint": "pptx", "jpeg": "jpg", "png": "png"},
+    "xls":  {"pdf": "pdf", "word": "docx", "powerpoint": "pptx", "jpeg": "jpg", "png": "png"},
+    "pptx": {"pdf": "pdf", "word": "docx", "excel": "xlsx", "jpeg": "jpg", "png": "png"},
+    "ppt":  {"pdf": "pdf", "word": "docx", "excel": "xlsx", "jpeg": "jpg", "png": "png"},
+    "odt":  {"pdf": "pdf", "word": "docx", "excel": "xlsx"},
+    "ods":  {"pdf": "pdf", "word": "docx", "excel": "xlsx"},
+    "jpg":  {"pdf": "pdf", "word": "docx", "png": "png"},
+    "jpeg": {"pdf": "pdf", "word": "docx", "png": "png"},
+    "png":  {"pdf": "pdf", "word": "docx", "jpeg": "jpg"},
 }
 
 _LIBREOFFICE_FORMATS = {"docx", "doc", "xlsx", "xls", "pptx", "ppt", "odt", "ods"}
+# LibreOffice target-format flags for cross-office conversions
+_LIBREOFFICE_TARGET_FMTS = {
+    "word":       ("docx:writer8", ".docx"),
+    "excel":      ("xlsx:Calc MS Excel 2007 XML", ".xlsx"),
+    "powerpoint": ("pptx:Impress MS PowerPoint 2007 XML", ".pptx"),
+}
 
 
 def _convert_pdf_to_word(src: str, dst: str) -> None:
@@ -4248,6 +4302,37 @@ def _convert_image_to_pdf(src: str, dst: str) -> None:
         pdf_f.write(img2pdf.convert(img_f))
 
 
+def _convert_libreoffice(src: str, dst_dir: str, lo_fmt: str, out_ext: str) -> str:
+    """Use LibreOffice to convert a document to any supported LibreOffice export format."""
+    import subprocess
+    subprocess.run(
+        ["libreoffice", "--headless", "--convert-to", lo_fmt, "--outdir", dst_dir, src],
+        check=True, capture_output=True, timeout=180,
+    )
+    base = os.path.splitext(os.path.basename(src))[0]
+    return os.path.join(dst_dir, base + out_ext)
+
+
+def _convert_image_to_word(src: str, dst: str) -> None:
+    """Embed an image inside a DOCX file using python-docx."""
+    from docx import Document
+    from docx.shared import Inches
+    doc = Document()
+    doc.add_picture(src, width=Inches(6))
+    doc.save(dst)
+
+
+def _convert_office_to_image(src: str, dst_dir: str, fmt: str) -> list[str]:
+    """Convert an office document to images by first exporting to PDF, then rasterising."""
+    import tempfile
+    pdf_dir = tempfile.mkdtemp(prefix="offimg_")
+    try:
+        pdf_path = _convert_to_pdf_libreoffice(src, pdf_dir)
+        return _convert_pdf_to_image(pdf_path, dst_dir, fmt)
+    finally:
+        shutil.rmtree(pdf_dir, ignore_errors=True)
+
+
 @fastapi_app.post("/api/doc/convert")
 async def api_doc_convert(
     request: Request,
@@ -4308,6 +4393,15 @@ async def api_doc_convert(
             return FileResponse(out_path, filename=f"{base_name}.xlsx",
                                 media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
+        # ── PDF → PowerPoint ────────────────────────────────────────────────────
+        elif src_ext == "pdf" and target == "powerpoint":
+            lo_fmt, out_ext = _LIBREOFFICE_TARGET_FMTS["powerpoint"]
+            out_path = await asyncio.get_event_loop().run_in_executor(
+                None, _convert_libreoffice, src_path, tmpdir, lo_fmt, out_ext,
+            )
+            return FileResponse(out_path, filename=f"{base_name}.pptx",
+                                media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+
         # ── PDF → JPEG / PNG ────────────────────────────────────────────────────
         elif src_ext == "pdf" and target in ("jpeg", "png"):
             imgs_dir = os.path.join(tmpdir, "imgs")
@@ -4318,12 +4412,10 @@ async def api_doc_convert(
             if not img_files:
                 return JSONResponse({"error": "No pages found in PDF."}, status_code=422)
             if len(img_files) == 1:
-                # Single page — return the image directly
                 ext_out = "jpg" if target == "jpeg" else "png"
                 mime    = "image/jpeg" if target == "jpeg" else "image/png"
                 return FileResponse(img_files[0], filename=f"{base_name}.{ext_out}", media_type=mime)
             else:
-                # Multiple pages — zip them up
                 zip_path = os.path.join(tmpdir, f"{base_name}_pages.zip")
                 ext_out  = "jpg" if target == "jpeg" else "png"
                 with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -4340,6 +4432,42 @@ async def api_doc_convert(
             return FileResponse(out_path, filename=f"{base_name}.pdf",
                                 media_type="application/pdf")
 
+        # ── Office → Office (cross-format via LibreOffice) ──────────────────────
+        elif target in _LIBREOFFICE_TARGET_FMTS and src_ext in _LIBREOFFICE_FORMATS:
+            lo_fmt, out_ext = _LIBREOFFICE_TARGET_FMTS[target]
+            out_path = await asyncio.get_event_loop().run_in_executor(
+                None, _convert_libreoffice, src_path, tmpdir, lo_fmt, out_ext,
+            )
+            mime_map = {
+                ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            }
+            return FileResponse(out_path, filename=f"{base_name}{out_ext}",
+                                media_type=mime_map.get(out_ext, "application/octet-stream"))
+
+        # ── Office → Image ───────────────────────────────────────────────────────
+        elif target in ("jpeg", "png") and src_ext in _LIBREOFFICE_FORMATS:
+            imgs_dir = os.path.join(tmpdir, "imgs")
+            os.makedirs(imgs_dir, exist_ok=True)
+            img_files = await asyncio.get_event_loop().run_in_executor(
+                None, _convert_office_to_image, src_path, imgs_dir, target,
+            )
+            if not img_files:
+                return JSONResponse({"error": "No pages produced from document."}, status_code=422)
+            if len(img_files) == 1:
+                ext_out = "jpg" if target == "jpeg" else "png"
+                mime    = "image/jpeg" if target == "jpeg" else "image/png"
+                return FileResponse(img_files[0], filename=f"{base_name}.{ext_out}", media_type=mime)
+            else:
+                zip_path = os.path.join(tmpdir, f"{base_name}_pages.zip")
+                ext_out  = "jpg" if target == "jpeg" else "png"
+                with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for i, p in enumerate(img_files, 1):
+                        zf.write(p, f"page_{i:03d}.{ext_out}")
+                return FileResponse(zip_path, filename=f"{base_name}_pages.zip",
+                                    media_type="application/zip")
+
         # ── Image → PDF ─────────────────────────────────────────────────────────
         elif target == "pdf" and src_ext in ("jpg", "jpeg", "png"):
             out_path = os.path.join(tmpdir, f"{base_name}.pdf")
@@ -4348,6 +4476,30 @@ async def api_doc_convert(
             )
             return FileResponse(out_path, filename=f"{base_name}.pdf",
                                 media_type="application/pdf")
+
+        # ── Image → Word ─────────────────────────────────────────────────────────
+        elif target == "word" and src_ext in ("jpg", "jpeg", "png"):
+            out_path = os.path.join(tmpdir, f"{base_name}.docx")
+            await asyncio.get_event_loop().run_in_executor(
+                None, _convert_image_to_word, src_path, out_path,
+            )
+            return FileResponse(out_path, filename=f"{base_name}.docx",
+                                media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+        # ── Image → Image (JPEG ↔ PNG) ───────────────────────────────────────────
+        elif src_ext in ("jpg", "jpeg", "png") and target in ("jpeg", "png"):
+            from PIL import Image as _PilImage
+            ext_out = "jpg" if target == "jpeg" else "png"
+            out_path = os.path.join(tmpdir, f"{base_name}.{ext_out}")
+            def _img_convert():
+                img = _PilImage.open(src_path).convert("RGB" if target == "jpeg" else "RGBA")
+                if target == "jpeg":
+                    img.save(out_path, "JPEG", quality=92)
+                else:
+                    img.save(out_path, "PNG")
+            await asyncio.get_event_loop().run_in_executor(None, _img_convert)
+            mime = "image/jpeg" if target == "jpeg" else "image/png"
+            return FileResponse(out_path, filename=f"{base_name}.{ext_out}", media_type=mime)
 
         else:
             return JSONResponse({"error": "Conversion not implemented."}, status_code=501)
