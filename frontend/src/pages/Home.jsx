@@ -258,7 +258,7 @@ export default function Home() {
       </nav>
 
       {/* ── Hero ── */}
-      <div className="bg-gradient-to-b from-gray-900 to-gray-950 border-b border-gray-800 py-5 sm:py-7 px-4">
+      <div className="bg-gradient-to-b from-gray-900 to-gray-950 border-b border-gray-800 py-[19px] sm:py-[27px] px-4">
         <div className="max-w-2xl mx-auto text-center">
           <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">
             Download <span className="gradient-text">Any Video</span> — Free &amp; Fast
@@ -287,9 +287,9 @@ export default function Home() {
       </div>
 
       {/* ── Main Content ── */}
-      <main className="flex-1 max-w-5xl mx-auto w-full px-4 pt-4 sm:pt-5 pb-20 sm:pb-8">
+      <main className="flex-1 max-w-5xl mx-auto w-full px-4 pt-[15px] sm:pt-[19px] pb-20 sm:pb-8">
         {/* Tab buttons */}
-        <div className="flex gap-2 mb-4 overflow-x-auto pb-1 scrollbar-thin">
+        <div className="flex gap-2 mb-[15px] overflow-x-auto pb-1 scrollbar-thin">
           {TABS.map(t => (
             <button
               key={t.id}
@@ -309,18 +309,18 @@ export default function Home() {
 
         {/* Active Downloads — only relevant when download tab is active */}
         {tab === 'download' && (
-          <div className="mt-5">
+          <div className="mt-[19px]">
             <ActiveDownloads ref={activeDownloadsRef} onComplete={refreshFiles} onDownloadDone={handleDownloadDone} />
           </div>
         )}
 
         {/* File List */}
-        <div className="mt-5" ref={fileListRef}>
+        <div className="mt-[19px]" ref={fileListRef}>
           <FileList version={fileListVersion} />
         </div>
 
         {/* Reviews */}
-        <div className="mt-7">
+        <div className="mt-[27px]">
           <Reviews />
         </div>
       </main>
