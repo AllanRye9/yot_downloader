@@ -1571,6 +1571,35 @@ def normalize_format_spec(fmt: str) -> str:
     return f"{fmt}/best"
 
 
+# Output extension allowlists used by the public download endpoints.
+_VALID_OUTPUT_EXTS: set[str] = {"mp4", "webm", "mkv", "avi", "mov", "ts", "3gp"}
+_AUDIO_OUTPUT_EXTS: set[str] = {"mp3", "m4a", "ogg", "wav", "opus", "flac", "aac", "weba"}
+
+
+def _normalize_output_ext(ext: str | None, *, allow_audio: bool = True) -> str:
+    """Return a supported output extension, defaulting invalid values to mp4."""
+    output_ext = ext.strip().lower() if ext else "mp4"
+    allowed_exts = set(_VALID_OUTPUT_EXTS)
+    if allow_audio:
+        allowed_exts.update(_AUDIO_OUTPUT_EXTS)
+    return output_ext if output_ext in allowed_exts else "mp4"
+
+
+def _apply_output_ext(ydl_opts: dict, output_template: str, output_ext: str) -> str:
+    """Apply container or audio-extraction options and return the final template."""
+    if output_ext in _AUDIO_OUTPUT_EXTS:
+        ydl_opts["postprocessors"] = [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": output_ext,
+            "preferredquality": "192",
+        }]
+        output_template = os.path.splitext(output_template)[0] + ".%(ext)s"
+    elif output_ext in _VALID_OUTPUT_EXTS:
+        ydl_opts["merge_output_format"] = output_ext
+    ydl_opts["outtmpl"] = output_template
+    return output_template
+
+
 def _build_info_dict(info: dict) -> dict:
     """Convert a yt-dlp info dict to the shape returned by ``get_video_info``."""
     return {
@@ -1767,19 +1796,7 @@ def download_worker(download_id, url, output_template, format_spec, output_ext=N
         "no_warnings": True,
         **_get_cookie_opts(),
     }
-
-    # Force output container format (e.g. mp4, webm, mkv) or extract audio
-    if output_ext in _AUDIO_OUTPUT_EXTS:
-        # Audio-only extraction via ffmpeg postprocessor
-        ydl_opts["postprocessors"] = [{
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": output_ext,
-            "preferredquality": "192",
-        }]
-        # Override output template extension for audio files
-        output_template = os.path.splitext(output_template)[0] + ".%(ext)s"
-    elif output_ext in _VALID_OUTPUT_EXTS:
-        ydl_opts["merge_output_format"] = output_ext
+    output_template = _apply_output_ext(ydl_opts, output_template, output_ext)
 
     # Add ffmpeg if available
     ffmpeg_path = shutil.which('ffmpeg')
@@ -2083,9 +2100,7 @@ async def video_info_endpoint(request: Request, url: str = Form(None)):
 async def start_download(request: Request, url: str = Form(None), format: str = Form("best"), ext: str = Form("mp4"), session_id: str = Form(None)):
     """Start a download with better error feedback"""
     format_spec = format
-    output_ext  = ext.strip().lower() if ext else "mp4"
-    if output_ext not in _VALID_OUTPUT_EXTS and output_ext not in _AUDIO_OUTPUT_EXTS:
-        output_ext = "mp4"
+    output_ext  = _normalize_output_ext(ext, allow_audio=True)
 
     if not url:
         return JSONResponse({"error": "URL is required"}, status_code=400)
@@ -3374,9 +3389,7 @@ async def start_playlist_download(
     """Download an entire playlist or channel (yt-dlp playlist mode)."""
     url = url.strip()
     format_spec = format
-    output_ext  = ext.strip().lower() if ext else "mp4"
-    if output_ext not in _VALID_OUTPUT_EXTS:
-        output_ext = "mp4"
+    output_ext  = _normalize_output_ext(ext, allow_audio=True)
 
     if not url:
         return JSONResponse({"error": "URL is required"}, status_code=400)
@@ -3459,8 +3472,7 @@ async def start_playlist_download(
         "no_warnings":     True,
         **_get_cookie_opts(),
     }
-    if output_ext in _VALID_OUTPUT_EXTS:
-        ydl_opts["merge_output_format"] = output_ext
+    output_template = _apply_output_ext(ydl_opts, output_template, output_ext)
     ffmpeg_path = shutil.which("ffmpeg")
     if ffmpeg_path:
         ydl_opts["ffmpeg_location"] = ffmpeg_path
@@ -3613,9 +3625,7 @@ async def start_batch_download(
     """Start individual downloads for a newline-separated list of URLs."""
     urls_text   = urls.strip()
     format_spec = format
-    output_ext  = ext.strip().lower() if ext else "mp4"
-    if output_ext not in _VALID_OUTPUT_EXTS:
-        output_ext = "mp4"
+    output_ext  = _normalize_output_ext(ext, allow_audio=True)
 
     url_list = [u.strip() for u in urls_text.splitlines() if u.strip()]
     if not url_list:

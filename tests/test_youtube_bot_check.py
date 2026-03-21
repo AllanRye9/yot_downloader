@@ -1,4 +1,4 @@
-"""Tests for YouTube bot-detection helper functions in api/app.py.
+"""Tests for YouTube helper and download validation functions in api/app.py.
 
 These tests verify that:
   - _is_auth_error() correctly identifies all known bot-detection / auth
@@ -8,10 +8,12 @@ These tests verify that:
     correctly categorises its result (mocked – no real network call).
 """
 
+import asyncio
+from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 import pytest
 
-from api.app import _is_auth_error, _AUTH_PATTERNS, check_youtube_connectivity
+from api.app import _is_auth_error, _AUTH_PATTERNS, check_youtube_connectivity, start_download
 
 
 # ---------------------------------------------------------------------------
@@ -142,3 +144,23 @@ class TestCheckYoutubeConnectivity:
         assert isinstance(result["reachable"], bool)
         assert isinstance(result["bot_detected"], bool)
         assert isinstance(result["message"], str)
+
+
+class TestStartDownloadValidation:
+    """start_download should validate input instead of raising a 500."""
+
+    def test_missing_url_returns_400(self):
+        request = SimpleNamespace(headers={}, client=SimpleNamespace(host="127.0.0.1"))
+
+        response = asyncio.run(
+            start_download(
+                request=request,
+                url=None,
+                format="best",
+                ext="mp4",
+                session_id=None,
+            )
+        )
+
+        assert response.status_code == 400
+        assert response.body == b'{"error":"URL is required"}'
