@@ -1527,6 +1527,12 @@ def _friendly_cookie_error(error_msg: str) -> str:
             "temporarily rate-limited this server. Please try again in an hour."
         )
 
+    # DRM-protected videos — cannot be decrypted/downloaded
+    if "drm protected" in lower:
+        return (
+            "This video is DRM protected and cannot be downloaded."
+        )
+
     # Private / age-restricted videos
     if "private video" in lower:
         return (
