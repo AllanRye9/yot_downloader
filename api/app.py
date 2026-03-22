@@ -1631,6 +1631,130 @@ def _build_fallback_strategies(base_opts: dict) -> list[tuple[str, dict]]:
     return [("no_extractor_args", opts_a), ("minimal", opts_b)]
 
 
+# =============================================================================
+# ALTERNATIVE DOWNLOADER CLUSTER
+# Tried as a last resort after all yt-dlp strategies have been exhausted.
+# gallery-dl is bundled in requirements.txt; you-get and streamlink are
+# optional and silently skipped when not installed on the system PATH.
+# =============================================================================
+
+# Media extensions accepted as successful output from alternative tools.
+_ALT_MEDIA_EXTS: frozenset[str] = frozenset({
+    ".mp4", ".mkv", ".webm", ".avi", ".mov", ".flv", ".m4v",
+    ".mp3", ".m4a", ".ogg", ".opus", ".aac", ".wav",
+})
+
+# (label, command-template) pairs tried in order.
+# Placeholders ``{url}`` and ``{output_dir}`` are substituted at runtime.
+_ALTERNATIVE_TOOL_COMMANDS: list[tuple[str, list[str]]] = [
+    (
+        "gallery-dl",
+        ["gallery-dl", "--no-mtime", "-d", "{output_dir}", "{url}"],
+    ),
+    (
+        "you-get",
+        ["you-get", "-o", "{output_dir}", "--no-caption", "{url}"],
+    ),
+    (
+        "streamlink",
+        ["streamlink", "--output", "{output_dir}/stream.mp4", "{url}", "best"],
+    ),
+]
+
+
+def _find_media_file(directory: str) -> str | None:
+    """Recursively find the first media file inside *directory*.
+
+    Returns the absolute path to the file, or ``None`` if no media file is
+    found.
+    """
+    for root, _dirs, files in os.walk(directory):
+        for fname in files:
+            if os.path.splitext(fname)[1].lower() in _ALT_MEDIA_EXTS:
+                return os.path.join(root, fname)
+    return None
+
+
+def _try_alternative_tools_download(url: str, output_dir: str) -> str | None:
+    """Try downloading *url* with alternative tools when yt-dlp has failed.
+
+    Iterates over :data:`_ALTERNATIVE_TOOL_COMMANDS` in order.  Each tool is
+    given an isolated temporary subdirectory so that partial output from a
+    failed attempt never interferes with subsequent tools.  Tools not present
+    on the system PATH are silently skipped.
+
+    Returns the path of the downloaded file on success, or ``None`` when every
+    alternative also fails.
+    """
+    for tool_label, cmd_template in _ALTERNATIVE_TOOL_COMMANDS:
+        exe = cmd_template[0]
+        if shutil.which(exe) is None:
+            logger.debug(
+                "Alternative tool '%s' not found on PATH — skipping", tool_label
+            )
+            continue
+
+        alt_tmp = os.path.join(output_dir, f"_alt_{uuid.uuid4().hex[:8]}")
+        os.makedirs(alt_tmp, exist_ok=True)
+        try:
+            cmd = [
+                c.replace("{url}", url).replace("{output_dir}", alt_tmp)
+                for c in cmd_template
+            ]
+            logger.info(
+                "Alternative tool '%s' — trying: %s", tool_label, " ".join(cmd)
+            )
+            # cmd is a list (not a string), so shell=False (the default) applies
+            # and shell injection via the URL is not possible.
+            proc = subprocess.run(
+                cmd,
+                timeout=300,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if proc.returncode == 0:
+                found = _find_media_file(alt_tmp)
+                if found:
+                    base = os.path.basename(found)
+                    dest = os.path.join(output_dir, base)
+                    # Avoid silently overwriting an existing file with the same name.
+                    if os.path.exists(dest):
+                        name, ext = os.path.splitext(base)
+                        dest = os.path.join(
+                            output_dir, f"{name}_{uuid.uuid4().hex[:8]}{ext}"
+                        )
+                    shutil.move(found, dest)
+                    logger.info(
+                        "Alternative tool '%s' succeeded — saved as: %s",
+                        tool_label, dest,
+                    )
+                    return dest
+                logger.info(
+                    "Alternative tool '%s' exited 0 but produced no media file",
+                    tool_label,
+                )
+            else:
+                logger.info(
+                    "Alternative tool '%s' exited %d: %s",
+                    tool_label,
+                    proc.returncode,
+                    (proc.stderr or proc.stdout or "")[:200],
+                )
+        except subprocess.TimeoutExpired:
+            logger.info(
+                "Alternative tool '%s' timed out after 300 s", tool_label
+            )
+        except Exception as exc:
+            logger.info(
+                "Alternative tool '%s' raised an exception: %s", tool_label, exc
+            )
+        finally:
+            shutil.rmtree(alt_tmp, ignore_errors=True)
+
+    return None
+
+
 def format_speed(bytes_per_sec) -> str:
     """Format bytes/s to a human-readable speed string"""
     if bytes_per_sec is None or bytes_per_sec <= 0:
@@ -2229,7 +2353,44 @@ def download_worker(download_id, url, output_template, format_spec, output_ext=N
         with downloads_lock:
             if downloads.get(download_id, {}).get("status") == "cancelled":
                 return
-        # Return a gentle, user-friendly message instead of a raw yt-dlp error
+        # --- Alternative tool cluster: try non-yt-dlp downloaders as a last resort ---
+        emit_from_thread(
+            "status_update",
+            {
+                "id": download_id,
+                "status": "downloading",
+                "message": "Trying alternative download tools…",
+            },
+            room=download_id,
+        )
+        _alt_file = _try_alternative_tools_download(url, DOWNLOAD_FOLDER)
+        if _alt_file is not None and os.path.isfile(_alt_file):
+            _alt_fname = os.path.basename(_alt_file)
+            _alt_size = os.path.getsize(_alt_file)
+            with downloads_lock:
+                downloads[download_id].update({
+                    "status": "completed",
+                    "end_time": time.time(),
+                    "percent": 100,
+                    "filename": _alt_fname,
+                    "file_size": _alt_size,
+                    "file_size_hr": format_size(_alt_size),
+                })
+            emit_from_thread(
+                "progress",
+                {"id": download_id, "line": "", "percent": 100,
+                 "speed": "", "eta": "", "size": downloads[download_id].get("size", "")},
+                room=download_id,
+            )
+            emit_from_thread("completed", {
+                "id": download_id,
+                "filename": _alt_fname,
+                "title": downloads[download_id].get("title"),
+            }, room=download_id)
+            emit_from_thread("files_updated")
+            threading.Thread(target=save_downloads_to_disk, daemon=True).start()
+            return
+        # All tools exhausted — return a gentle, user-friendly message
         error_msg = _GENTLE_FAILURE_MESSAGE
         with downloads_lock:
             downloads[download_id].update({
