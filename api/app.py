@@ -1563,6 +1563,74 @@ def _friendly_cookie_error(error_msg: str) -> str:
     return error_msg
 
 
+# Shown to the user after all fallback strategies have been exhausted.
+_GENTLE_FAILURE_MESSAGE = (
+    "We're having trouble downloading this video right now. "
+    "We tried several different methods, but none of them worked. "
+    "Please check that the URL is correct and try again later, "
+    "or try a different video."
+)
+
+# Random backoff range (seconds) applied before each generic fallback attempt.
+_FALLBACK_BACKOFF_RANGE: tuple[float, float] = (2.0, 4.0)
+
+# Keys from the base opts that the minimal fallback strategy forwards as-is.
+# These cover output destination (outtmpl), download progress reporting
+# (progress_hooks), audio/video merging (merge_output_format, postprocessors),
+# and the ffmpeg binary path (ffmpeg_location) — all required for a correct
+# download even when every other option is stripped away.
+_MINIMAL_STRATEGY_PRESERVED_KEYS: tuple[str, ...] = (
+    "outtmpl",
+    "progress_hooks",
+    "ffmpeg_location",
+    "merge_output_format",
+    "postprocessors",
+)
+
+
+def _build_fallback_strategies(base_opts: dict) -> list[tuple[str, dict]]:
+    """Build a list of (label, opts) pairs for generic fallback yt-dlp strategies.
+
+    These strategies are tried after the primary attempt and any platform-specific
+    retry (e.g. YouTube cookieless clients) have both failed.  Each strategy uses
+    progressively simpler yt-dlp settings to maximise the chance of retrieving
+    or downloading a video when earlier attempts produced errors.
+
+    Returns two strategies:
+
+      * ``"no_extractor_args"`` — strips ``extractor_args`` and ``cookiefile``,
+        falling back to yt-dlp's built-in extractor defaults.  All other options
+        (headers, retries, sleep intervals, hooks, etc.) are preserved.
+
+      * ``"minimal"`` — retains only the settings strictly required for a
+        download (output template, progress hooks, JS runtimes) and requests the
+        simplest available format.  Maximises compatibility with restrictive
+        extractors.
+    """
+    # Strategy A: strip extractor customisations, keep everything else intact
+    opts_a: dict = {
+        k: v for k, v in base_opts.items()
+        if k not in ("extractor_args", "cookiefile")
+    }
+
+    # Strategy B: bare minimum — only the keys strictly needed by yt-dlp
+    opts_b: dict = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": base_opts.get("noplaylist", True),
+        "geo_bypass": True,
+        # ⚠️ DO NOT REMOVE — Node.js fallback for JS challenge solving (PR #78)
+        "js_runtimes": {"deno": {}, "node": {}},
+    }
+    for _key in _MINIMAL_STRATEGY_PRESERVED_KEYS:
+        if _key in base_opts:
+            opts_b[_key] = base_opts[_key]
+    if "format" in base_opts:
+        opts_b["format"] = "best"
+
+    return [("no_extractor_args", opts_a), ("minimal", opts_b)]
+
+
 def format_speed(bytes_per_sec) -> str:
     """Format bytes/s to a human-readable speed string"""
     if bytes_per_sec is None or bytes_per_sec <= 0:
@@ -1812,8 +1880,22 @@ def get_video_info(url: str) -> dict:
                 logger.info("Cookieless retry also failed: %s", retry_err)
             except Exception as retry_err:
                 logger.warning("Unexpected error during cookieless retry: %s", retry_err)
-        error_msg = _friendly_cookie_error(str(e))
-        return {"error": error_msg}
+        # --- Generic fallback chain: try progressively simpler yt-dlp configs ---
+        # Attempted for any URL type so that non-YouTube platforms also benefit.
+        for _fb_label, _fb_opts in _build_fallback_strategies(_base_opts):
+            _fb_backoff = random.uniform(*_FALLBACK_BACKOFF_RANGE)
+            logger.info(
+                "Info fallback '%s' — sleeping %.1fs then retrying", _fb_label, _fb_backoff
+            )
+            time.sleep(_fb_backoff)
+            try:
+                with yt_dlp.YoutubeDL(_fb_opts) as _ydl:
+                    _info = _ydl.extract_info(url, download=False)
+                return _build_info_dict(_info)
+            except Exception as _fb_err:
+                logger.info("Info fallback '%s' also failed: %s", _fb_label, _fb_err)
+        # All strategies exhausted — return a gentle, user-friendly error
+        return {"error": _GENTLE_FAILURE_MESSAGE}
     except Exception as e:
         return {"error": _friendly_cookie_error(str(e))}
 
@@ -2094,7 +2176,61 @@ def download_worker(download_id, url, output_template, format_spec, output_ext=N
             except Exception as retry_err:
                 logger.info("Cookieless retry also failed for %s: %s", download_id, retry_err)
                 final_error = retry_err
-        error_msg = _friendly_cookie_error(str(final_error))
+        # --- Generic fallback chain: try progressively simpler yt-dlp configs ---
+        # Attempted for any URL type so that non-YouTube platforms also benefit.
+        _fallback_strategies = _build_fallback_strategies(ydl_opts)
+        _total_fallbacks = len(_fallback_strategies)
+        for _fb_idx, (_fb_label, _fb_opts) in enumerate(_fallback_strategies, start=1):
+            # Abort the chain early if the user cancelled during a prior strategy
+            with downloads_lock:
+                if downloads.get(download_id, {}).get("status") == "cancelled":
+                    break
+            _fb_backoff = random.uniform(*_FALLBACK_BACKOFF_RANGE)
+            logger.info(
+                "Download fallback '%s' for %s — sleeping %.1fs then retrying",
+                _fb_label, download_id, _fb_backoff,
+            )
+            emit_from_thread(
+                "status_update",
+                {
+                    "id": download_id,
+                    "status": "downloading",
+                    "message": (
+                        f"Retrying with a different method… "
+                        f"(attempt {_fb_idx} of {_total_fallbacks})"
+                    ),
+                },
+                room=download_id,
+            )
+            time.sleep(_fb_backoff)
+            try:
+                _do_download(_fb_opts)
+                _finalize_completed()
+                return
+            except yt_dlp.utils.DownloadCancelled:
+                logger.info(
+                    "Download cancelled via hook (fallback '%s'): %s", _fb_label, download_id
+                )
+                with downloads_lock:
+                    downloads[download_id].update({
+                        "status": "cancelled",
+                        "end_time": time.time(),
+                    })
+                emit_from_thread("cancelled", {"id": download_id}, room=download_id)
+                threading.Thread(target=save_downloads_to_disk, daemon=True).start()
+                return
+            except Exception as _fb_err:
+                logger.info(
+                    "Download fallback '%s' also failed for %s: %s",
+                    _fb_label, download_id, _fb_err,
+                )
+                final_error = _fb_err
+        # All strategies exhausted — check if the download was cancelled mid-chain
+        with downloads_lock:
+            if downloads.get(download_id, {}).get("status") == "cancelled":
+                return
+        # Return a gentle, user-friendly message instead of a raw yt-dlp error
+        error_msg = _GENTLE_FAILURE_MESSAGE
         with downloads_lock:
             downloads[download_id].update({
                 "status": "failed",
