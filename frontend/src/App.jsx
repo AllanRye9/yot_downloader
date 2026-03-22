@@ -20,12 +20,13 @@ export const THEMES = [
   { id: 'sunset', label: '🌅 Sunset', className: 'theme-sunset' },
   { id: 'purple', label: '💜 Purple', className: 'theme-purple' },
 ]
+const DEFAULT_THEME_ID = THEMES[0].id
 const ThemeCtx = createContext(null)
 export const useTheme = () => useContext(ThemeCtx)
 
-function ThemeProvider({ children }) {
+function ThemeProvider({ children, storageKey = 'yot_theme' }) {
   const [themeId, setThemeId] = useState(
-    () => localStorage.getItem('yot_theme') || 'dark'
+    () => localStorage.getItem(storageKey) || DEFAULT_THEME_ID
   )
 
   useEffect(() => {
@@ -33,8 +34,20 @@ function ThemeProvider({ children }) {
     THEMES.forEach(t => html.classList.remove(t.className))
     const theme = THEMES.find(t => t.id === themeId) || THEMES[0]
     html.classList.add(theme.className)
-    localStorage.setItem('yot_theme', themeId)
-  }, [themeId])
+    localStorage.setItem(storageKey, themeId)
+  }, [themeId, storageKey])
+
+  // When this is the admin theme provider, restore the main site theme on unmount
+  useEffect(() => {
+    if (storageKey === 'yot_theme') return
+    return () => {
+      const mainThemeId = localStorage.getItem('yot_theme') || DEFAULT_THEME_ID
+      const mainTheme = THEMES.find(t => t.id === mainThemeId) || THEMES[0]
+      const html = document.documentElement
+      THEMES.forEach(t => html.classList.remove(t.className))
+      html.classList.add(mainTheme.className)
+    }
+  }, [storageKey])
 
   return (
     <ThemeCtx.Provider value={{ themeId, setThemeId }}>
@@ -97,10 +110,18 @@ export default function App() {
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin/register" element={<AdminLogin register />} />
             <Route path="/const" element={
-              <ProtectedRoute><AdminDashboard /></ProtectedRoute>
+              <ProtectedRoute>
+                <ThemeProvider storageKey="yot_admin_theme">
+                  <AdminDashboard />
+                </ThemeProvider>
+              </ProtectedRoute>
             } />
             <Route path="/admin/dashboard" element={
-              <ProtectedRoute><AdminDashboard /></ProtectedRoute>
+              <ProtectedRoute>
+                <ThemeProvider storageKey="yot_admin_theme">
+                  <AdminDashboard />
+                </ThemeProvider>
+              </ProtectedRoute>
             } />
             {/* Catch-all → Home */}
             <Route path="*" element={<Navigate to="/" replace />} />
