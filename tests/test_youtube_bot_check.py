@@ -22,8 +22,10 @@ from api.app import (
     check_youtube_connectivity,
     start_download,
     _get_human_like_headers,
+    _get_headers_for_url,
     _random_sleep_interval,
     _CHROME_UA,
+    _is_youtube_url,
 )
 
 
@@ -279,3 +281,72 @@ class TestNewAuthPatterns:
         assert _is_auth_error(
             "An extractor error has occurred. (caused by KeyError('INNERTUBE_CONTEXT'))"
         )
+
+
+# ---------------------------------------------------------------------------
+# _is_youtube_url: URL classifier used to gate YouTube-specific headers/retry
+# ---------------------------------------------------------------------------
+
+class TestIsYoutubeUrl:
+    """_is_youtube_url must correctly distinguish YouTube from other platforms."""
+
+    @pytest.mark.parametrize("url", [
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "https://youtube.com/watch?v=dQw4w9WgXcQ",
+        "https://m.youtube.com/watch?v=dQw4w9WgXcQ",
+        "https://music.youtube.com/watch?v=dQw4w9WgXcQ",
+        "https://youtu.be/dQw4w9WgXcQ",
+        "http://www.youtube.com/watch?v=abc123",
+        "https://www.youtube.com/shorts/abc123",
+    ])
+    def test_youtube_urls_return_true(self, url):
+        assert _is_youtube_url(url), f"Expected True for YouTube URL: {url}"
+
+    @pytest.mark.parametrize("url", [
+        "https://www.tiktok.com/@user/video/7612635779323399441",
+        "https://vm.tiktok.com/ZMLxyz/",
+        "https://www.instagram.com/reel/abc123/",
+        "https://twitter.com/user/status/123456789",
+        "https://x.com/user/status/123456789",
+        "https://vimeo.com/123456789",
+        "https://www.reddit.com/r/videos/comments/abc123/",
+        "https://twitch.tv/videos/123456789",
+        "https://www.facebook.com/video/123456789",
+        "https://dailymotion.com/video/abc123",
+    ])
+    def test_non_youtube_urls_return_false(self, url):
+        assert not _is_youtube_url(url), f"Expected False for non-YouTube URL: {url}"
+
+    def test_empty_string_returns_false(self):
+        assert not _is_youtube_url("")
+
+    def test_youtube_in_path_does_not_match(self):
+        """A URL that merely mentions 'youtube' in a path should not match."""
+        assert not _is_youtube_url("https://example.com/share?ref=youtube.com")
+
+
+# ---------------------------------------------------------------------------
+# _get_headers_for_url: URL-conditional header selection
+# ---------------------------------------------------------------------------
+
+class TestGetHeadersForUrl:
+    """_get_headers_for_url must return full browser headers for YouTube and
+    User-Agent-only headers for all other platforms."""
+
+    def test_youtube_returns_full_headers(self):
+        headers = _get_headers_for_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        assert headers == _get_human_like_headers()
+
+    def test_tiktok_returns_only_user_agent(self):
+        headers = _get_headers_for_url("https://www.tiktok.com/@user/video/123456789")
+        assert headers == {"User-Agent": _CHROME_UA}
+        assert "Sec-Fetch-Mode" not in headers
+        assert "Sec-Fetch-Dest" not in headers
+
+    def test_instagram_returns_only_user_agent(self):
+        headers = _get_headers_for_url("https://www.instagram.com/reel/abc123/")
+        assert headers == {"User-Agent": _CHROME_UA}
+
+    def test_youtu_be_returns_full_headers(self):
+        headers = _get_headers_for_url("https://youtu.be/dQw4w9WgXcQ")
+        assert headers == _get_human_like_headers()
