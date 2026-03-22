@@ -1597,6 +1597,11 @@ def _get_human_like_headers() -> dict:
     avoid YouTube bot-detection heuristics that flag requests missing standard
     browser headers such as ``Accept``, ``Accept-Language``, ``DNT``, or the
     Client-Hint ``sec-ch-ua`` family.
+
+    Only use this for YouTube URLs.  For other platforms (e.g. TikTok) the
+    navigation-specific Sec-Fetch-* headers are inappropriate for API calls and
+    cause yt-dlp to receive unexpected responses.  Use ``{"User-Agent": _CHROME_UA}``
+    for non-YouTube URLs instead.
     """
     return {
         "User-Agent": _CHROME_UA,
@@ -1617,6 +1622,34 @@ def _get_human_like_headers() -> dict:
         "sec-ch-ua-mobile": "?0",
         "sec-ch-ua-platform": '"Windows"',
     }
+
+
+_YT_URL_RE = re.compile(
+    r"(?:https?://)?(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)/?",
+    re.IGNORECASE,
+)
+
+
+def _is_youtube_url(url: str) -> bool:
+    """Return ``True`` when *url* points to YouTube or YouTube Music.
+
+    Used to decide whether to apply the full browser-like header fingerprint
+    (required to evade YouTube bot-detection) or a simpler User-Agent-only
+    header set (correct for platforms like TikTok whose API calls must not
+    carry navigation Sec-Fetch-* headers).
+    """
+    return bool(_YT_URL_RE.match(url))
+
+
+def _get_headers_for_url(url: str) -> dict:
+    """Return the appropriate HTTP headers for *url*.
+
+    YouTube requires the full browser fingerprint (complete Sec-Fetch-* and
+    Client-Hint headers) to evade bot-detection.  All other platforms should
+    receive only the User-Agent so that their API calls are not disrupted by
+    navigation-specific headers that are inappropriate for non-browser requests.
+    """
+    return _get_human_like_headers() if _is_youtube_url(url) else {"User-Agent": _CHROME_UA}
 
 
 def _random_sleep_interval() -> float:
@@ -1716,6 +1749,10 @@ def get_video_info(url: str) -> dict:
     A short randomised backoff is inserted before the retry so that a temporary
     YouTube rate-limit (HTTP 429 / "try again in a few minutes") has a better
     chance of resolving before the second request is sent.
+
+    For non-YouTube URLs (e.g. TikTok) only the User-Agent header is set;
+    sending navigation Sec-Fetch-* headers to platform API endpoints causes
+    unexpected responses from those services.
     """
     _sleep = _random_sleep_interval()
     _sleep_req = random.uniform(1.0, 3.0)
@@ -1724,7 +1761,7 @@ def get_video_info(url: str) -> dict:
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
-        "http_headers": _get_human_like_headers(),
+        "http_headers": _get_headers_for_url(url),
         "extractor_retries": 5,
         "retries": 5,
         "fragment_retries": 10,
@@ -1749,7 +1786,11 @@ def get_video_info(url: str) -> dict:
     except yt_dlp.utils.DownloadError as e:
         # When bot-detection fires and there are no cookies, retry with only
         # the POT-free clients (web_embedded + tv) that work without auth.
-        if _is_auth_error(str(e)) and not os.path.isfile(COOKIES_FILE):
+        # This retry only makes sense for YouTube — applying YouTube-specific
+        # player clients to other platforms (e.g. TikTok) causes yt-dlp to
+        # send requests to YouTube endpoints for a non-YouTube URL, producing
+        # "Unexpected response from webpage request" errors.
+        if _is_auth_error(str(e)) and not os.path.isfile(COOKIES_FILE) and _is_youtube_url(url):
             # Brief randomised backoff before the retry — gives YouTube's
             # rate-limiting window a chance to clear and avoids hammering the
             # server with back-to-back requests that look even more automated.
@@ -1926,7 +1967,7 @@ def download_worker(download_id, url, output_template, format_spec, output_ext=N
         "outtmpl": output_template,
         "noplaylist": True,
         "extractor_args": _get_yt_extractor_args(),
-        "http_headers": _get_human_like_headers(),
+        "http_headers": _get_headers_for_url(url),
         "extractor_retries": 5,
         "retries": 5,
         "fragment_retries": 10,
@@ -2009,8 +2050,11 @@ def download_worker(download_id, url, output_template, format_spec, output_ext=N
     except yt_dlp.utils.DownloadError as e:
         # When bot-detection fires and no cookies are present, retry using only
         # the POT-free clients (web_embedded + tv) that work without authentication.
+        # This retry only applies to YouTube — applying YouTube-specific player
+        # clients to other platforms (e.g. TikTok) causes yt-dlp to send requests
+        # to YouTube endpoints for a non-YouTube URL, producing errors.
         final_error: Exception = e
-        if _is_auth_error(str(e)) and not os.path.isfile(COOKIES_FILE):
+        if _is_auth_error(str(e)) and not os.path.isfile(COOKIES_FILE) and _is_youtube_url(url):
             backoff = random.uniform(3.0, 8.0)
             logger.info(
                 f"Auth error without cookies for {download_id} — "
