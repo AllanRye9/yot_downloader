@@ -1807,15 +1807,15 @@ _PARTIAL_FILE_EXTS: frozenset[str] = frozenset({
 def _cleanup_partial_files(output_template: str) -> None:
     """Remove partial / temporary download files that match *output_template*.
 
-    yt-dlp typically writes ``<name>.ext.part`` and ``<name>.ext.ytdl`` while a
-    download is in progress.  When the download is cancelled these files are
-    orphaned and should be cleaned up.
+    yt-dlp typically writes ``<name>.ext.part``, ``<name>.ext.ytdl``,
+    ``<name>.ext.part-Frag0``, and ``<name>.ext.temp`` while a download is in
+    progress.  When the download is cancelled these files are orphaned and
+    should be cleaned up.
     """
     folder = os.path.dirname(output_template) or "."
     base = os.path.splitext(os.path.basename(output_template))[0]
-    # The template may contain yt-dlp placeholders like ``%(ext)s``; strip them
-    # so we match the actual filename prefix.
-    base = base.replace("%(ext)s", "").rstrip(".")
+    # Strip all yt-dlp placeholders like ``%(ext)s``, ``%(title)s``, etc.
+    base = re.sub(r"%\([^)]+\)s", "", base).rstrip(".")
     if not base:
         return
     try:
