@@ -79,18 +79,12 @@ export default function Home() {
   const [helpOpen, setHelpOpen] = useState(false)
 
   // ── Feature-card spotlight animation ──────────────────────────────────────
-  // Bounces the rainbow border glow up and down through the 3 feature cards
-  // every 2.5 seconds: 0 → 1 → 2 → 1 → 0 → 1 → 2 → …
+  // Rotates the rainbow border glow through the 3 feature cards in order
+  // every 2.5 seconds: 0 → 1 → 2 → 0 → 1 → 2 → …
   const [activeGlowIndex, setActiveGlowIndex] = useState(0)
-  const glowDirection = useRef(1) // 1 = going down, -1 = going up
   useEffect(() => {
     const interval = setInterval(() => {
-      setActiveGlowIndex(prev => {
-        let next = prev + glowDirection.current
-        if (next >= 3) { next = 1; glowDirection.current = -1 }
-        else if (next < 0) { next = 1; glowDirection.current = 1 }
-        return next
-      })
+      setActiveGlowIndex(prev => (prev + 1) % 3)
     }, 2500)
     return () => clearInterval(interval)
   }, [])
@@ -110,15 +104,15 @@ export default function Home() {
             entry.target.querySelectorAll('.feature-card-animate').forEach(card => {
               card.classList.add('in-view')
               // Once the initial fade-up animation finishes, lock the final
-              // styles as inline values.  This prevents the animation from
-              // restarting (and briefly showing opacity:0) whenever the
-              // card-glow-active class overrides and then
-              // removes the CSS animation property.
+              // position as inline styles and drop the animation class so that
+              // .card-glow-active can animate the border without conflicts.
               card.addEventListener('animationend', (e) => {
                 if (e.animationName === 'fade-up') {
                   card.style.opacity = '1'
                   card.style.transform = 'translateY(0)'
-                  card.style.animation = 'none'
+                  // Remove the fade-up animation class so .card-glow-active can
+                  // animate the border freely without any inline/class conflict.
+                  card.classList.remove('feature-card-animate', 'in-view')
                 }
               }, { once: true })
             })
