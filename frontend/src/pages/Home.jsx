@@ -586,7 +586,7 @@ export default function Home() {
                   onClick={() => { setShowAuthModal(true); setTab('rides') }}
                   className="text-xs px-3 py-1.5 rounded-lg bg-blue-700 hover:bg-blue-600 text-white transition-colors hidden sm:inline-flex items-center gap-1"
                 >
-                  🚗 Login
+                  Login / Register
                 </button>
               )}
             </div>

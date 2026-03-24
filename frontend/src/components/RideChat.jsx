@@ -5,9 +5,12 @@ import socket from '../socket'
  * RideChat — Live chat panel for a single ride.
  *
  * Props:
- *  ride   - The ride object ({ ride_id, driver_name, origin, destination })
- *  user   - The logged-in app user (or null for anonymous)
+ *  ride    - The ride object ({ ride_id, driver_name, origin, destination })
+ *  user    - The logged-in app user (or null for anonymous)
  *  onClose - Callback to close the chat panel
+ *
+ * Note: Messages are capped at 500 characters (enforced by both this component
+ * and the backend's on_ride_chat_message handler).
  */
 export default function RideChat({ ride, user, onClose }) {
   const [messages, setMessages] = useState([])
