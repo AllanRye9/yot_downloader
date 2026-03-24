@@ -497,6 +497,63 @@ class TestDriverGeolocation:
         london_nearby = [d for d in drivers if abs(d["lat"] - 51.5074) < 0.01]
         assert len(london_nearby) == 0
 
+    def test_driver_not_notified_by_broadcast(self):
+        """The broadcasting driver and other drivers must not receive driver_nearby."""
+        import asyncio as _asyncio
+        from unittest.mock import patch, AsyncMock
+        import api.app as app_module
+
+        # Register a broadcasting driver, a second driver, and a passenger
+        _, driver_email = _register_user("BcastDriver", role="driver")
+        _, driver2_email = _register_user("OtherDriver", role="driver")
+        _, pax_email = _register_user("BcastPax", role="passenger")
+
+        driver_session = _login_session(driver_email)
+        driver2_session = _login_session(driver2_email)
+        pax_session = _login_session(pax_email)
+
+        driver_id  = driver_session["app_user_id"]
+        driver2_id = driver2_session["app_user_id"]
+        pax_id     = pax_session["app_user_id"]
+
+        emitted_rooms = []
+
+        async def _run():
+            with app_module._socket_user_lock:
+                app_module._sid_to_user["bcast-driver-sid"]  = driver_id
+                app_module._user_to_sid[driver_id]           = "bcast-driver-sid"
+                app_module._sid_to_user["bcast-driver2-sid"] = driver2_id
+                app_module._user_to_sid[driver2_id]          = "bcast-driver2-sid"
+                app_module._sid_to_user["bcast-pax-sid"]     = pax_id
+                app_module._user_to_sid[pax_id]              = "bcast-pax-sid"
+
+            async def mock_emit(event, data=None, room=None):
+                if event == "driver_nearby":
+                    emitted_rooms.append(room)
+
+            req = _make_request(driver_session)
+            with patch.object(app_module.sio, "emit", side_effect=mock_emit):
+                await api_driver_location(
+                    req, _DriverLocationUpdate(lat=0.0, lng=0.0, empty=True)
+                )
+                # Yield to allow the ensure_future'd _notify() coroutine to run
+                await _asyncio.sleep(0.05)
+
+            with app_module._socket_user_lock:
+                app_module._sid_to_user.pop("bcast-driver-sid",  None)
+                app_module._user_to_sid.pop(driver_id,           None)
+                app_module._sid_to_user.pop("bcast-driver2-sid", None)
+                app_module._user_to_sid.pop(driver2_id,          None)
+                app_module._sid_to_user.pop("bcast-pax-sid",     None)
+                app_module._user_to_sid.pop(pax_id,              None)
+
+        _asyncio.run(_run())
+
+        assert "bcast-driver-sid"  not in emitted_rooms, \
+            "Broadcasting driver must not receive driver_nearby notification"
+        assert "bcast-driver2-sid" not in emitted_rooms, \
+            "Other drivers must not receive driver_nearby notification"
+
 
 # ---------------------------------------------------------------------------
 # Ride take endpoint
