@@ -39,6 +39,7 @@ import socketio as socketio_pkg
 from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse, FileResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -4235,7 +4236,18 @@ def _build_cv_pdf(
     # "?" (which happens with the Latin-1-only Helvetica core font).
     # Fall back to Helvetica + a best-effort transliteration map when the font
     # files are not present on the server.
-    _DEJAVU_DIR   = "/usr/share/fonts/truetype/dejavu"
+    #
+    # Check several common font locations across Linux distributions.
+    _DEJAVU_CANDIDATES = [
+        "/usr/share/fonts/truetype/dejavu",   # Debian/Ubuntu
+        "/usr/share/fonts/dejavu",            # Fedora/RHEL
+        "/usr/share/fonts/TTF",               # Arch Linux
+        "/usr/share/fonts/dejavu-sans-fonts", # some Alpine variants
+    ]
+    _DEJAVU_DIR = next(
+        (d for d in _DEJAVU_CANDIDATES if os.path.isdir(d)),
+        "/usr/share/fonts/truetype/dejavu",   # default (may not exist)
+    )
     _DEJAVU_REG   = os.path.join(_DEJAVU_DIR, "DejaVuSans.ttf")
     _DEJAVU_BOLD  = os.path.join(_DEJAVU_DIR, "DejaVuSans-Bold.ttf")
     _DEJAVU_OBLI  = os.path.join(_DEJAVU_DIR, "DejaVuSans-Oblique.ttf")
@@ -4243,37 +4255,110 @@ def _build_cv_pdf(
 
     # Latin-1 fallback: map common Unicode punctuation/symbols to ASCII equivalents.
     _UNICODE_MAP = str.maketrans({
+        # Dashes and hyphens
         "\u2013": " - ",   # en dash
         "\u2014": " - ",   # em dash
         "\u2015": " - ",   # horizontal bar
-        "\u2022": "*",     # bullet •
-        "\u2018": "'",     # left single quote
-        "\u2019": "'",     # right single quote
-        "\u201C": '"',     # left double quote
-        "\u201D": '"',     # right double quote
-        "\u2026": "...",   # ellipsis
-        "\u00A0": " ",     # non-breaking space
-        "\u00AB": '"',     # left guillemet
-        "\u00BB": '"',     # right guillemet
-        "\u2039": "'",     # single left angle quotation
-        "\u203A": "'",     # single right angle quotation
-        "\u2032": "'",     # prime
-        "\u2033": '"',     # double prime
-        "\u00B7": "*",     # middle dot
         "\u2010": "-",     # hyphen
         "\u2011": "-",     # non-breaking hyphen
         "\u2012": "-",     # figure dash
         "\u2212": "-",     # minus sign
+        # Bullets and dots
+        "\u2022": "*",     # bullet •
+        "\u2023": "*",     # triangular bullet
+        "\u25E6": "*",     # white bullet
+        "\u2043": "-",     # hyphen bullet
+        "\u00B7": "*",     # middle dot
+        "\u2027": ".",     # hyphenation point
+        # Quotation marks
+        "\u2018": "'",     # left single quote
+        "\u2019": "'",     # right single quote
+        "\u201A": ",",     # single low-9 quotation
+        "\u201B": "'",     # single high-reversed-9 quotation
+        "\u201C": '"',     # left double quote
+        "\u201D": '"',     # right double quote
+        "\u201E": '"',     # double low-9 quotation
+        "\u201F": '"',     # double high-reversed-9 quotation
+        "\u2039": "'",     # single left angle quotation
+        "\u203A": "'",     # single right angle quotation
+        "\u00AB": '"',     # left guillemet
+        "\u00BB": '"',     # right guillemet
+        "\u2032": "'",     # prime
+        "\u2033": '"',     # double prime
+        "\u2034": "'''",   # triple prime
+        # Spaces and whitespace
+        "\u00A0": " ",     # non-breaking space
+        "\u2002": " ",     # en space
+        "\u2003": " ",     # em space
+        "\u2004": " ",     # three-per-em space
+        "\u2005": " ",     # four-per-em space
+        "\u2009": " ",     # thin space
+        "\u200A": " ",     # hair space
+        "\u202F": " ",     # narrow no-break space
+        "\u205F": " ",     # medium mathematical space
+        "\u3000": " ",     # ideographic space
+        "\u200B": "",      # zero-width space
+        "\u200C": "",      # zero-width non-joiner
+        "\u200D": "",      # zero-width joiner
+        "\uFEFF": "",      # BOM / zero-width no-break space
+        # Ellipsis and similar
+        "\u2026": "...",   # ellipsis
+        "\u22EF": "...",   # midline horizontal ellipsis
+        # Miscellaneous symbols
+        "\u2122": "(TM)",  # trademark sign
+        "\u00AE": "(R)",   # registered sign
+        "\u00A9": "(C)",   # copyright sign
+        "\u2117": "(P)",   # sound recording copyright
+        "\u2020": "+",     # dagger
+        "\u2021": "++",    # double dagger
+        "\u00B0": " deg",  # degree sign
+        "\u00B1": "+/-",   # plus-minus sign
+        "\u00D7": "x",     # multiplication sign
+        "\u00F7": "/",     # division sign
+        "\u2248": "~",     # almost equal
+        "\u2260": "!=",    # not equal to
+        "\u2264": "<=",    # less-than or equal
+        "\u2265": ">=",    # greater-than or equal
+        "\u221E": "inf",   # infinity
+        "\u25B6": ">",     # play button / right-pointing triangle
+        "\u2713": "v",     # check mark
+        "\u2714": "v",     # heavy check mark
+        "\u2717": "x",     # ballot x
+        "\u2718": "x",     # heavy ballot x
     })
 
+    import unicodedata as _udata
+
     def _safe(text: str) -> str:
-        """Transliterate *text* to Latin-1, replacing unmapped chars with '?'.
+        """Transliterate *text* to Latin-1, replacing unmapped chars with their
+        closest ASCII equivalent using Unicode decomposition.
 
         Used only when DejaVu TTF fonts are unavailable and fpdf2 falls back to
-        the Helvetica core font (Latin-1 encoding).
+        the Helvetica core font (Latin-1 encoding).  Accented letters like
+        é, ü, ñ are handled directly by Latin-1; characters above U+00FF are
+        first decomposed (NFKD) so their base letter is preserved ("Ż" → "Z"),
+        avoiding spurious "?" placeholders.
         """
+        # Step 1: apply explicit symbol-to-ASCII substitutions.
         text = text.translate(_UNICODE_MAP)
-        return text.encode("latin-1", errors="replace").decode("latin-1")
+        # Step 2: NFKD-decompose and drop combining (non-spacing) marks so that
+        # accented letters outside Latin-1 (e.g. Polish ż→z, ł→l, Czech ě→e)
+        # are represented by their base character rather than "?".
+        result = []
+        for ch in text:
+            if ord(ch) > 0xFF:
+                # Try decomposition first
+                normalized = _udata.normalize("NFKD", ch)
+                for c in normalized:
+                    if _udata.category(c) == "Mn":
+                        continue  # skip combining marks
+                    if ord(c) <= 0xFF:
+                        result.append(c)
+                    else:
+                        result.append("?")
+            else:
+                result.append(ch)
+        return "".join(result)
 
     def _t(text: str) -> str:
         """Pass *text* through unchanged (Unicode fonts handle it natively),
@@ -4525,7 +4610,10 @@ async def api_cv_generate(
     name = name.strip()
     email = email.strip()
     theme = (theme or "").strip().lower() or "classic"
-    _VALID_THEMES = {"classic", "modern", "minimal", "executive"}
+    _VALID_THEMES = {
+        "classic", "modern", "minimal", "executive",
+        "creative", "tech", "elegant", "vibrant",
+    }
     if theme not in _VALID_THEMES:
         theme = "classic"
     if not name or not email:
@@ -4807,6 +4895,415 @@ async def api_cv_extract(
         return JSONResponse({"error": f"CV extraction failed: {exc}"}, status_code=500)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+# =========================================================
+# AI ASSISTANT MODULE
+# =========================================================
+# Free AI models are used to provide suggestions and enhancements
+# for CV fields, text polish, and download URL analysis.
+#
+# Priority order:
+#   1. Groq API (free tier, fast inference) — used when GROQ_API_KEY is set.
+#   2. Hugging Face Inference API (free public models) — used when HF_TOKEN is
+#      set or the model is public and the free anonymous tier is sufficient.
+#   3. Rule-based offline suggestions — always available as a fallback; no
+#      internet access or API key required.
+# =========================================================
+
+_GROQ_API_KEY  = os.environ.get("GROQ_API_KEY", "")
+_HF_TOKEN      = os.environ.get("HF_TOKEN", "")
+_AI_MODEL_GROQ = os.environ.get("AI_MODEL_GROQ", "llama3-8b-8192")
+_AI_MODEL_HF   = os.environ.get("AI_MODEL_HF", "mistralai/Mistral-7B-Instruct-v0.3")
+
+# ---------------------------------------------------------------------------
+# Offline / rule-based CV suggestion engine (no API key required)
+# ---------------------------------------------------------------------------
+
+_CV_VERBS = [
+    "Led", "Built", "Designed", "Developed", "Implemented", "Improved",
+    "Managed", "Delivered", "Achieved", "Reduced", "Increased", "Launched",
+    "Collaborated", "Mentored", "Optimised", "Automated", "Streamlined",
+    "Architected", "Deployed", "Migrated", "Integrated", "Analysed",
+    "Coordinated", "Established", "Transformed",
+]
+
+_WEAK_PHRASES = {
+    r"\bresponsible for\b":       "focus on measurable achievements instead (e.g. 'Led …')",
+    r"\bhelped\b":                "use a stronger action verb (e.g. 'Contributed to …', 'Collaborated on …')",
+    r"\bworked on\b":             "be specific (e.g. 'Developed …', 'Implemented …')",
+    r"\bwas involved in\b":       "describe your direct contribution",
+    r"\bduties included?\b":      "list accomplishments, not duties",
+    r"\bresponsibilities\b":      "focus on impact and results",
+    r"\b(i am a|my)\b":           "avoid first-person pronouns in CVs",
+    r"\b(very|really|quite)\b":   "remove filler adverbs for conciseness",
+    r"\b(etc\.?|and so on)\b":    "be explicit — list every item",
+}
+
+_SUMMARY_TIPS = [
+    "Start with a strong professional title and years of experience.",
+    "Mention 2–3 core technical or domain competencies.",
+    "Include a brief statement about the value you bring to employers.",
+    "Keep the summary to 3–5 sentences (50–80 words).",
+]
+
+_EXPERIENCE_TIPS = [
+    "Use the format: Company — Title — Start–End dates.",
+    "Begin each bullet point with a strong past-tense action verb.",
+    "Quantify results wherever possible (e.g. 'Reduced load time by 40%').",
+    "Focus on impact: what changed because of your work?",
+    "Separate each role with a blank line.",
+]
+
+_SKILLS_TIPS = [
+    "Group skills by category (e.g. Languages, Frameworks, Tools, Cloud).",
+    "List the most relevant skills first.",
+    "Avoid rating skills (e.g. 'Python ★★★★☆') — just list them.",
+    "Include both hard skills and relevant soft skills.",
+]
+
+
+def _rule_based_cv_suggestions(field: str, text: str) -> dict:
+    """Return offline, rule-based suggestions for a given CV *field* and *text*.
+
+    Returns a dict with keys:
+      ``suggestions``  – list of plain-English improvement hints
+      ``sample_verbs`` – list of action verbs to consider (for experience field)
+    """
+    import re as _re
+
+    suggestions = []
+
+    if not text.strip():
+        tip_map = {
+            "summary":     _SUMMARY_TIPS[:2],
+            "experience":  _EXPERIENCE_TIPS[:2],
+            "skills":      _SKILLS_TIPS[:2],
+        }
+        suggestions = tip_map.get(field, ["Add content to this section to make your CV stand out."])
+        return {"suggestions": suggestions, "sample_verbs": []}
+
+    text_lower = text.lower()
+
+    # Field-specific structural checks
+    if field == "summary":
+        word_count = len(text.split())
+        if word_count < 20:
+            suggestions.append("Your summary is quite short. Aim for 50–80 words.")
+        elif word_count > 120:
+            suggestions.append("Your summary is too long. Keep it under 100 words.")
+        for tip in _SUMMARY_TIPS:
+            suggestions.append(tip)
+
+    elif field == "experience":
+        if not _re.search(r"\d{4}", text):
+            suggestions.append("Include dates for each role (e.g. 2020–2024).")
+        bullet_count = len(_re.findall(r"^[\*\-\u2022]", text, _re.MULTILINE))
+        if bullet_count == 0:
+            suggestions.append(
+                "Add bullet points under each role to describe your achievements."
+            )
+        for tip in _EXPERIENCE_TIPS:
+            suggestions.append(tip)
+
+    elif field == "skills":
+        skill_list = [s.strip() for s in text.split(",") if s.strip()]
+        if len(skill_list) < 4:
+            suggestions.append("Consider listing at least 6–10 skills.")
+        if len(skill_list) > 30:
+            suggestions.append("You have many skills listed — consider grouping them.")
+        for tip in _SKILLS_TIPS:
+            suggestions.append(tip)
+
+    elif field == "education":
+        if not _re.search(r"\d{4}", text):
+            suggestions.append("Include graduation years for each qualification.")
+
+    # Weak phrase detection (applies to all fields)
+    for pattern, advice in _WEAK_PHRASES.items():
+        if _re.search(pattern, text_lower):
+            suggestions.append(f"Tip: {advice}.")
+
+    # Deduplicate while preserving order
+    seen: set = set()
+    unique: list = []
+    for s in suggestions:
+        if s not in seen:
+            seen.add(s)
+            unique.append(s)
+
+    return {
+        "suggestions": unique[:8],
+        "sample_verbs": _CV_VERBS[:10] if field == "experience" else [],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Groq API helper
+# ---------------------------------------------------------------------------
+
+def _call_groq(prompt: str, max_tokens: int = 400) -> str:
+    """Call the Groq chat-completion API and return the assistant reply text.
+
+    Returns an empty string on any error so callers can fall back gracefully.
+    """
+    import urllib.request
+    import urllib.error
+    import json as _json
+
+    if not _GROQ_API_KEY:
+        return ""
+    payload = _json.dumps({
+        "model": _AI_MODEL_GROQ,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+        "temperature": 0.5,
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.groq.com/openai/v1/chat/completions",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {_GROQ_API_KEY}",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = _json.loads(resp.read())
+            return data["choices"][0]["message"]["content"].strip()
+    except (urllib.error.URLError, _json.JSONDecodeError, KeyError, ValueError, OSError) as exc:
+        logger.warning("Groq API call failed: %s", exc)
+        return ""
+
+
+# ---------------------------------------------------------------------------
+# Hugging Face Inference API helper
+# ---------------------------------------------------------------------------
+
+def _call_hf_inference(prompt: str, max_new_tokens: int = 300) -> str:
+    """Call the Hugging Face Inference API (free, rate-limited) and return the
+    generated text.  Returns an empty string on any error.
+    """
+    import urllib.request
+    import urllib.error
+    import json as _json
+
+    url = f"https://api-inference.huggingface.co/models/{_AI_MODEL_HF}"
+    payload = _json.dumps({
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": max_new_tokens,
+            "temperature": 0.5,
+            "return_full_text": False,
+        },
+    }).encode()
+    headers: dict = {"Content-Type": "application/json"}
+    if _HF_TOKEN:
+        headers["Authorization"] = f"Bearer {_HF_TOKEN}"
+    req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = _json.loads(resp.read())
+            if isinstance(data, list) and data:
+                return (data[0].get("generated_text") or "").strip()
+            return ""
+    except (urllib.error.URLError, _json.JSONDecodeError, KeyError, ValueError, OSError) as exc:
+        logger.warning("HF Inference API call failed: %s", exc)
+        return ""
+
+
+# ---------------------------------------------------------------------------
+# /api/ai/cv_suggest  — main AI suggestion endpoint
+# ---------------------------------------------------------------------------
+
+class _AiCvRequest(BaseModel):
+    field: str
+    text: str = ""
+    name: str = ""
+    job_title: str = ""
+
+
+@fastapi_app.post("/api/ai/cv_suggest")
+async def api_ai_cv_suggest(body: _AiCvRequest):
+    """Return AI-powered improvement suggestions for a CV field.
+
+    Supported fields: ``summary``, ``experience``, ``education``, ``skills``,
+    ``projects``, ``publications``.
+
+    The endpoint tries (in order):
+    1. Groq API  (if ``GROQ_API_KEY`` is set in the environment)
+    2. Hugging Face Inference API  (if ``HF_TOKEN`` is set, or anonymously)
+    3. Rule-based offline suggestions  (always available)
+
+    Response JSON:
+    ```json
+    {
+      "suggestions": ["hint 1", "hint 2", ...],
+      "sample_verbs": ["Led", "Built", ...],
+      "enhanced_text": "Optional AI-rewritten version of the text",
+      "source": "groq" | "huggingface" | "offline"
+    }
+    ```
+    """
+    _VALID_FIELDS = {"summary", "experience", "education", "skills", "projects", "publications"}
+    field = (body.field or "").strip().lower()
+    if field not in _VALID_FIELDS:
+        return JSONResponse({"error": f"Invalid field '{field}'."}, status_code=400)
+
+    text = (body.text or "").strip()
+    name = (body.name or "").strip()
+    job_title = (body.job_title or "").strip()
+
+    # Try Groq first (fastest, highest quality)
+    if _GROQ_API_KEY:
+        context = f"Name: {name}\nJob title: {job_title}\n" if (name or job_title) else ""
+        prompt = (
+            f"You are a professional CV/résumé writing coach. "
+            f"Review the following '{field}' section of a CV and provide:\n"
+            f"1. Up to 5 concise, actionable improvement suggestions (one per line, "
+            f"prefixed with '- ').\n"
+            f"2. A polished, rewritten version of the text (labelled 'REWRITE:').\n\n"
+            f"{context}"
+            f"TEXT:\n{text or '(empty)'}\n\n"
+            f"Keep suggestions brief and specific."
+        )
+        ai_text = _call_groq(prompt, max_tokens=400)
+        if ai_text:
+            lines = ai_text.splitlines()
+            suggestions = [
+                l.lstrip("-– ").strip()
+                for l in lines
+                if l.strip().startswith(("-", "–", "*", "•")) and "REWRITE:" not in l
+            ]
+            rewrite = ""
+            in_rewrite = False
+            for l in lines:
+                if l.strip().upper().startswith("REWRITE:"):
+                    in_rewrite = True
+                    rewrite = l[l.upper().find("REWRITE:") + 8:].strip()
+                elif in_rewrite:
+                    rewrite += "\n" + l
+            rule = _rule_based_cv_suggestions(field, text)
+            return JSONResponse({
+                "suggestions": suggestions or rule["suggestions"],
+                "sample_verbs": rule["sample_verbs"],
+                "enhanced_text": rewrite.strip(),
+                "source": "groq",
+            })
+
+    # Try Hugging Face Inference API
+    if text:
+        hf_prompt = (
+            f"Improve the following '{field}' section of a professional CV. "
+            f"Rewrite it to be more impactful and results-oriented:\n\n{text}"
+        )
+        hf_text = _call_hf_inference(hf_prompt, max_new_tokens=250)
+        if hf_text:
+            rule = _rule_based_cv_suggestions(field, text)
+            return JSONResponse({
+                "suggestions": rule["suggestions"],
+                "sample_verbs": rule["sample_verbs"],
+                "enhanced_text": hf_text,
+                "source": "huggingface",
+            })
+
+    # Fallback: offline rule-based suggestions
+    result = _rule_based_cv_suggestions(field, text)
+    return JSONResponse({
+        "suggestions": result["suggestions"],
+        "sample_verbs": result["sample_verbs"],
+        "enhanced_text": "",
+        "source": "offline",
+    })
+
+
+# ---------------------------------------------------------------------------
+# /api/ai/enhance_text  — general text polishing endpoint
+# ---------------------------------------------------------------------------
+
+class _AiEnhanceRequest(BaseModel):
+    text: str
+    context: str = "professional CV"
+
+
+@fastapi_app.post("/api/ai/enhance_text")
+async def api_ai_enhance_text(body: _AiEnhanceRequest):
+    """Polish a block of text for clarity and professionalism.
+
+    Uses Groq → HF Inference → offline echo (no-op) as the fallback chain.
+
+    Response JSON:
+    ```json
+    {
+      "original": "...",
+      "enhanced": "...",
+      "source": "groq" | "huggingface" | "offline"
+    }
+    ```
+    """
+    text = (body.text or "").strip()
+    context = (body.context or "professional CV").strip()
+    if not text:
+        return JSONResponse({"error": "text is required."}, status_code=400)
+    if len(text) > 5000:
+        return JSONResponse({"error": "text is too long (max 5000 characters)."}, status_code=400)
+
+    if _GROQ_API_KEY:
+        prompt = (
+            f"Rewrite the following text for use in a {context}. "
+            f"Make it clearer, more concise, and more impactful. "
+            f"Return only the rewritten text, no preamble:\n\n{text}"
+        )
+        enhanced = _call_groq(prompt, max_tokens=500)
+        if enhanced:
+            return JSONResponse({"original": text, "enhanced": enhanced, "source": "groq"})
+
+    hf_prompt = (
+        f"Rewrite the following for a {context}. Return only the improved text:\n\n{text}"
+    )
+    enhanced = _call_hf_inference(hf_prompt, max_new_tokens=300)
+    if enhanced:
+        return JSONResponse({"original": text, "enhanced": enhanced, "source": "huggingface"})
+
+    # Offline: return original text unchanged
+    return JSONResponse({"original": text, "enhanced": text, "source": "offline"})
+
+
+# ---------------------------------------------------------------------------
+# /api/ai/status  — reports which AI back-end is active
+# ---------------------------------------------------------------------------
+
+@fastapi_app.get("/api/ai/status")
+async def api_ai_status():
+    """Return information about the active AI backend.
+
+    Response JSON:
+    ```json
+    {
+      "groq_available": true,
+      "hf_available": true,
+      "offline_available": true,
+      "active_backend": "groq",
+      "model": "llama3-8b-8192"
+    }
+    ```
+    """
+    groq_ok = bool(_GROQ_API_KEY)
+    hf_ok   = True  # always available (anonymous free tier)
+    if groq_ok:
+        active = "groq"
+        model  = _AI_MODEL_GROQ
+    else:
+        active = "huggingface"
+        model  = _AI_MODEL_HF
+    return JSONResponse({
+        "groq_available":    groq_ok,
+        "hf_available":      hf_ok,
+        "offline_available": True,
+        "active_backend":    active,
+        "model":             model,
+    })
 
 
 # =========================================================

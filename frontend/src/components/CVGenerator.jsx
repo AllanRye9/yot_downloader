@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { generateCV, extractCV, triggerBlobDownload } from '../api'
+import { generateCV, extractCV, triggerBlobDownload, aiCvSuggest } from '../api'
 
 const INITIAL = {
   name: '', email: '', phone: '', location: '',
@@ -285,6 +285,101 @@ function StepDots({ steps, current, onGoto }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+// AI suggestions panel shown below text areas
+function AiPanel({ field, aiState, onSuggest, onApply, onDismiss }) {
+  const { loading, suggestions, sampleVerbs, enhancedText, source, error } = aiState
+  const sourceLabel = source === 'groq' ? '⚡ Groq AI' : source === 'huggingface' ? '🤗 HuggingFace AI' : '🧠 Smart Tips'
+  const hasResults = suggestions.length > 0 || sampleVerbs.length > 0 || enhancedText
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button
+        type="button"
+        onClick={() => onSuggest(field)}
+        disabled={loading}
+        style={{
+          background: '#1f2937', border: '1px solid #374151', borderRadius: 6,
+          padding: '5px 12px', fontSize: '0.75rem', color: loading ? '#6b7280' : '#a78bfa',
+          cursor: loading ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5,
+          transition: 'all 0.15s',
+        }}
+      >
+        {loading ? '⏳ Getting AI suggestions…' : '✨ AI Enhance'}
+      </button>
+
+      {error && (
+        <div style={{ marginTop: 6, fontSize: '0.72rem', color: '#f87171' }}>❌ {error}</div>
+      )}
+
+      {hasResults && !loading && (
+        <div style={{
+          marginTop: 8, background: '#111827', border: '1px solid #374151',
+          borderRadius: 8, padding: '10px 14px',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ fontSize: '0.72rem', color: '#6b7280', fontWeight: 600 }}>{sourceLabel}</span>
+            <button type="button" onClick={onDismiss}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: '0.8rem', padding: 0 }}>
+              ✕
+            </button>
+          </div>
+
+          {suggestions.length > 0 && (
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginBottom: 4, fontWeight: 600 }}>💡 Suggestions:</div>
+              <ul style={{ margin: 0, padding: '0 0 0 14px', listStyle: 'disc' }}>
+                {suggestions.map((s, i) => (
+                  <li key={i} style={{ fontSize: '0.75rem', color: '#d1d5db', lineHeight: 1.6 }}>{s}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {sampleVerbs.length > 0 && (
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginBottom: 4, fontWeight: 600 }}>🎯 Action Verbs:</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {sampleVerbs.map((v, i) => (
+                  <span key={i} style={{
+                    background: '#1f2937', border: '1px solid #374151', borderRadius: 4,
+                    padding: '2px 8px', fontSize: '0.72rem', color: '#a78bfa', cursor: 'pointer',
+                  }}>
+                    {v}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {enhancedText && (
+            <div>
+              <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginBottom: 4, fontWeight: 600 }}>✍️ AI-Enhanced Version:</div>
+              <div style={{
+                background: '#1f2937', border: '1px solid #374151', borderRadius: 6,
+                padding: '8px 10px', fontSize: '0.75rem', color: '#e5e7eb',
+                whiteSpace: 'pre-wrap', maxHeight: 120, overflowY: 'auto',
+              }}>
+                {enhancedText}
+              </div>
+              <button
+                type="button"
+                onClick={() => onApply(field)}
+                style={{
+                  marginTop: 6, background: '#7c3aed', border: 'none', borderRadius: 6,
+                  padding: '5px 12px', fontSize: '0.75rem', color: '#fff',
+                  cursor: 'pointer', fontWeight: 600,
+                }}
+              >
+                ✅ Apply Enhancement
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function CVGenerator() {
   const [fields, setFields]       = useState(INITIAL)
   const [logoFile, setLogoFile]   = useState(null)
@@ -295,6 +390,7 @@ export default function CVGenerator() {
   const [slideDir, setSlideDir]   = useState('right')
   const [animKey, setAnimKey]     = useState(0)
   const [cvUploadStatus, setCvUploadStatus] = useState(null)
+  const [aiState, setAiState]     = useState({ loading: false, suggestions: [], sampleVerbs: [], enhancedText: '', source: '', error: '' })
   const submitRef    = useRef(null)
   const cvUploadRef  = useRef(null)
 
@@ -382,6 +478,35 @@ export default function CVGenerator() {
       if (cvUploadRef.current) cvUploadRef.current.value = ''
     }
   }
+
+  // AI suggestion handler
+  const handleAiSuggest = useCallback(async (field) => {
+    const text = fields[field] || ''
+    setAiState({ loading: true, suggestions: [], sampleVerbs: [], enhancedText: '', source: '', error: '' })
+    try {
+      const data = await aiCvSuggest(field, text, fields.name)
+      setAiState({
+        loading: false,
+        suggestions: data.suggestions || [],
+        sampleVerbs: data.sample_verbs || [],
+        enhancedText: data.enhanced_text || '',
+        source: data.source || 'offline',
+        error: '',
+      })
+    } catch (err) {
+      setAiState({ loading: false, suggestions: [], sampleVerbs: [], enhancedText: '', source: '', error: err.message || 'AI suggestion failed.' })
+    }
+  }, [fields])
+
+  const applyAiEnhancement = useCallback((field) => {
+    if (!aiState.enhancedText) return
+    setFields(f => ({ ...f, [field]: aiState.enhancedText }))
+    setAiState(s => ({ ...s, enhancedText: '' }))
+  }, [aiState.enhancedText])
+
+  const dismissAi = useCallback(() => {
+    setAiState({ loading: false, suggestions: [], sampleVerbs: [], enhancedText: '', source: '', error: '' })
+  }, [])
 
   const handleGenerate = async () => {
     const err = validate()
@@ -544,6 +669,7 @@ export default function CVGenerator() {
                   placeholder="A brief professional summary highlighting your key strengths and career goals…"
                   value={fields.summary} onChange={set('summary')} onBlur={blurSummary} />
                 <p className="text-xs text-gray-500">2–4 sentences work best.</p>
+                <AiPanel field="summary" aiState={aiState} onSuggest={handleAiSuggest} onApply={applyAiEnhancement} onDismiss={dismissAi} />
               </div>
             )}
 
@@ -555,6 +681,7 @@ export default function CVGenerator() {
                   placeholder={"Company — Title — Start–End\n• Achievement or responsibility\n\nCompany — Title — Start–End\n• Achievement"}
                   value={fields.experience} onChange={set('experience')} onBlur={blurExperience} />
                 <p className="text-xs text-gray-500">Separate roles with a blank line. Bullet lines start with • or -.</p>
+                <AiPanel field="experience" aiState={aiState} onSuggest={handleAiSuggest} onApply={applyAiEnhancement} onDismiss={dismissAi} />
               </div>
             )}
 
@@ -565,6 +692,7 @@ export default function CVGenerator() {
                 <textarea className="input resize-y font-mono text-xs" rows={4}
                   placeholder={"University — Degree — Year\nUniversity — Degree — Year"}
                   value={fields.education} onChange={set('education')} onBlur={blurEducation} />
+                <AiPanel field="education" aiState={aiState} onSuggest={handleAiSuggest} onApply={applyAiEnhancement} onDismiss={dismissAi} />
               </div>
             )}
 
@@ -576,6 +704,7 @@ export default function CVGenerator() {
                   placeholder="Python, FastAPI, React, Docker, Kubernetes, …"
                   value={fields.skills} onChange={set('skills')} onBlur={blurSkills} />
                 <p className="text-xs text-gray-500">Duplicates are removed automatically.</p>
+                <AiPanel field="skills" aiState={aiState} onSuggest={handleAiSuggest} onApply={applyAiEnhancement} onDismiss={dismissAi} />
               </div>
             )}
 
