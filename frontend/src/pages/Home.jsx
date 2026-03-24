@@ -9,6 +9,7 @@ import ThemeSelector from '../components/ThemeSelector'
 import CVGenerator from '../components/CVGenerator'
 import DocConverter from '../components/DocConverter'
 import RideShare from '../components/RideShare'
+import RideShareMap from '../components/RideShareMap'
 import UserAuth from '../components/UserAuth'
 import UserProfile from '../components/UserProfile'
 import { getStats, getUserProfile } from '../api'
@@ -654,10 +655,9 @@ export default function Home() {
           {tab === 'convert'  && <DocConverter />}
           {tab === 'rides'    && (
             <div>
-              <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <h2 className="text-lg font-bold text-white flex items-center gap-2">🚗 Ride Share</h2>
-                  <p className="text-xs text-gray-400 mt-0.5">Post shared rides, find passengers, and get driver alerts.</p>
+              <div className="mb-4 flex items-start justify-between gap-3 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <RideShareMap />
                 </div>
                 {/* User auth pill */}
                 {!userLoading && (
