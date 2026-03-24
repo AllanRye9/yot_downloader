@@ -597,10 +597,13 @@ export default function Home() {
       <div className="bg-gradient-to-b from-gray-900 to-gray-950 border-b border-gray-800 py-[19px] sm:py-[27px] px-4">
         <div className="max-w-2xl mx-auto text-center">
           <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">
-            Download <span className="gradient-text">Any Video</span> — Free &amp; Fast
+            <span className="gradient-text">yotweek</span> — Your All-in-One Free Platform
           </h1>
           <p className="text-gray-400 text-xs sm:text-sm">
-            YouTube, TikTok, Instagram, Twitter, Facebook &amp; 1,000+ sites. No sign-up required.
+            Download Any Video · Build a CV · Convert Docs · Share Rides — All Free, No Sign-up Required.
+          </p>
+          <p className="text-gray-500 text-xs mt-1">
+            YouTube, TikTok, Instagram, Twitter, Facebook &amp; 1,000+ sites. Also available as a Flutter app.
           </p>
 
           {/* Animated global stats counters */}

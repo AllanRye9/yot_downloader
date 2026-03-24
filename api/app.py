@@ -63,7 +63,7 @@ class Config:
     MAX_QUEUE_SIZE = int(os.environ.get("MAX_QUEUE_SIZE", 50))
     DOWNLOAD_TIMEOUT = 3600  # 1 hour
     CLEANUP_INTERVAL = 60    # Run cleanup every 60 seconds
-    FILE_RETENTION_MINUTES = 5  # Delete files that are older than this many minutes (up to 1 extra minute until the next cleanup cycle)
+    FILE_RETENTION_MINUTES = 1  # Delete files older than 1 minute (~60 seconds) on each cleanup cycle
     SESSION_TYPE = 'filesystem'
     PERMANENT_SESSION_LIFETIME = timedelta(hours=1)
     # Admin authentication — set ADMIN_PASSWORD env var in production
@@ -6212,13 +6212,26 @@ async def api_driver_location(request: Request, body: _DriverLocationUpdate):
         nonlocal targets_sent
         for sid, uid in identified_sids:
             u = _get_app_user(uid)
-            if u and u.get("location_lat") is not None and u.get("location_lng") is not None:
+            # Only notify passengers — skip all drivers (including the
+            # broadcasting driver, who is also a driver role).
+            if u is None or u.get("role") == "driver":
+                continue
+            if u.get("location_lat") is not None and u.get("location_lng") is not None:
                 dist = _haversine_km(body.lat, body.lng, u["location_lat"], u["location_lng"])
                 if dist <= _APP_USER_PROXIMITY_KM:
                     await sio.emit("driver_nearby", notification, room=sid)
                     targets_sent = True
         if not targets_sent:
-            # No location-aware users connected — broadcast to everyone
+            # No location-aware passengers connected — broadcast to all identified
+            # passengers (those without a stored location), skipping all drivers.
+            for sid, uid in identified_sids:
+                u = _get_app_user(uid)
+                if u is None or u.get("role") == "driver":
+                    continue
+                await sio.emit("driver_nearby", notification, room=sid)
+                targets_sent = True
+        if not targets_sent:
+            # Absolutely no identified passengers — broadcast to all anonymous sockets
             await sio.emit("driver_nearby", notification)
 
     asyncio.ensure_future(_notify())
