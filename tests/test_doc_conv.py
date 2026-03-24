@@ -6,6 +6,7 @@ These tests verify that:
     /api/cv/extract for both PDF and DOCX uploads).
   - _build_cv_pdf() generates a non-empty PDF without raising, and correctly
     handles special/Unicode characters without producing '?' placeholders.
+  - _rule_based_cv_suggestions() returns structured suggestions for CV fields.
 """
 
 import os
@@ -17,6 +18,7 @@ from api.app import (
     _DOC_CONVERSIONS,
     _parse_cv_text,
     _build_cv_pdf,
+    _rule_based_cv_suggestions,
 )
 
 
@@ -195,4 +197,68 @@ class TestBuildCvPdf:
             projects="", publications="",
         )
         assert data[:4] == b"%PDF"
+
+
+# ---------------------------------------------------------------------------
+# _rule_based_cv_suggestions: AI offline suggestion engine
+# ---------------------------------------------------------------------------
+
+class TestRuleBasedCvSuggestions:
+    """_rule_based_cv_suggestions returns structured hints for CV fields."""
+
+    def test_returns_dict_with_required_keys(self):
+        result = _rule_based_cv_suggestions("summary", "A brief summary.")
+        assert isinstance(result, dict)
+        assert "suggestions" in result
+        assert "sample_verbs" in result
+
+    def test_suggestions_is_list_of_strings(self):
+        result = _rule_based_cv_suggestions("experience", "Company — Engineer — 2020–2024")
+        assert isinstance(result["suggestions"], list)
+        for s in result["suggestions"]:
+            assert isinstance(s, str)
+
+    def test_sample_verbs_only_for_experience(self):
+        exp_result = _rule_based_cv_suggestions("experience", "Some text")
+        skl_result = _rule_based_cv_suggestions("skills", "Python, Java")
+        assert len(exp_result["sample_verbs"]) > 0
+        assert len(skl_result["sample_verbs"]) == 0
+
+    def test_empty_text_returns_suggestions(self):
+        """Empty input should still return actionable tips."""
+        result = _rule_based_cv_suggestions("summary", "")
+        assert len(result["suggestions"]) > 0
+
+    def test_weak_phrase_detected(self):
+        """Text containing 'responsible for' triggers a weak-phrase suggestion."""
+        result = _rule_based_cv_suggestions("experience", "I was responsible for managing a team.")
+        tips = " ".join(result["suggestions"]).lower()
+        assert "measurable" in tips or "stronger" in tips or "responsible" in tips
+
+    def test_skills_short_list_flagged(self):
+        """A skills list with fewer than 4 items should prompt the user to add more."""
+        result = _rule_based_cv_suggestions("skills", "Python, Java")
+        tips = " ".join(result["suggestions"]).lower()
+        assert "6" in tips or "skills" in tips
+
+    def test_summary_word_count_too_short(self):
+        result = _rule_based_cv_suggestions("summary", "Short summary.")
+        tips = " ".join(result["suggestions"]).lower()
+        assert "short" in tips or "50" in tips or "80" in tips or "summary" in tips
+
+    def test_all_supported_fields_do_not_raise(self):
+        for field in ("summary", "experience", "education", "skills", "projects", "publications"):
+            result = _rule_based_cv_suggestions(field, "Sample text for " + field)
+            assert isinstance(result["suggestions"], list)
+
+    def test_deduplication_no_repeated_suggestions(self):
+        """Suggestion list should not contain duplicates."""
+        result = _rule_based_cv_suggestions("experience", "responsible for responsible for")
+        suggestions = result["suggestions"]
+        assert len(suggestions) == len(set(suggestions))
+
+    def test_suggestions_capped_at_eight(self):
+        """Result should contain at most 8 suggestions."""
+        result = _rule_based_cv_suggestions("experience", "I was responsible for my duties. Worked on things etc.")
+        assert len(result["suggestions"]) <= 8
 

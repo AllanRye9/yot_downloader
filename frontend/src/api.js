@@ -161,7 +161,8 @@ export const adminDbUpload      = (file) => {
  * @param {Object} fields - CV fields (name, email, phone, location, link, summary,
  *   experience, education, skills, projects, publications)
  * @param {File|null} logoFile - Optional logo image file
- * @param {string} theme - Theme name ('classic', 'modern', 'minimal', 'executive')
+ * @param {string} theme - Theme name ('classic', 'modern', 'minimal', 'executive',
+ *   'creative', 'tech', 'elegant', 'vibrant')
  * @returns {Promise<Response>} Raw response (blob) — caller should call res.blob()
  */
 export const generateCV = (fields, logoFile = null, theme = 'classic') => {
@@ -173,6 +174,34 @@ export const generateCV = (fields, logoFile = null, theme = 'classic') => {
   fd.append('theme', theme)
   return request('POST', '/api/cv/generate', fd, false)
 }
+
+// ── AI Assistant ──────────────────────────────────────────────────────────────
+
+/**
+ * Get AI-powered improvement suggestions for a CV field.
+ * @param {string} field - Field name: 'summary', 'experience', 'education', 'skills', etc.
+ * @param {string} text  - Current field text to analyse
+ * @param {string} [name]      - Candidate name (optional context)
+ * @param {string} [jobTitle]  - Job title (optional context)
+ * @returns {Promise<{suggestions: string[], sample_verbs: string[], enhanced_text: string, source: string}>}
+ */
+export const aiCvSuggest = (field, text, name = '', jobTitle = '') =>
+  request('POST', '/api/ai/cv_suggest', { field, text, name, job_title: jobTitle })
+
+/**
+ * Polish a block of text for clarity and professionalism using AI.
+ * @param {string} text    - Text to enhance
+ * @param {string} context - Usage context (default: 'professional CV')
+ * @returns {Promise<{original: string, enhanced: string, source: string}>}
+ */
+export const aiEnhanceText = (text, context = 'professional CV') =>
+  request('POST', '/api/ai/enhance_text', { text, context })
+
+/**
+ * Get the current AI backend status.
+ * @returns {Promise<{groq_available: boolean, hf_available: boolean, offline_available: boolean, active_backend: string, model: string}>}
+ */
+export const getAiStatus = () => request('GET', '/api/ai/status')
 
 // ── CV Extraction ─────────────────────────────────────────────────────────────
 
