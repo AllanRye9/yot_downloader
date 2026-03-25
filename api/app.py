@@ -66,8 +66,10 @@ class Config:
     FILE_RETENTION_MINUTES = 1  # Delete files older than 1 minute (~60 seconds) on each cleanup cycle
     SESSION_TYPE = 'filesystem'
     PERMANENT_SESSION_LIFETIME = timedelta(hours=1)
-    # Admin authentication — set ADMIN_PASSWORD env var in production
-    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin")
+    # Admin authentication — set ADMIN_PASSWORD env var in production.
+    # If the env var is not provided a cryptographically random secret is
+    # generated so that every fresh deployment has a unique, strong password.
+    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or secrets.token_hex(16)
 
 # =========================================================
 # PATH SETUP
@@ -82,7 +84,20 @@ if os.path.basename(BASE_DIR) == "api":
 
 TEMPLATES_DIR = os.path.join(ROOT_DIR, Config.TEMPLATES_FOLDER)
 STATIC_DIR = os.path.join(ROOT_DIR, Config.STATIC_FOLDER)
-DOWNLOAD_FOLDER = os.path.join(ROOT_DIR, Config.DOWNLOAD_FOLDER)
+# DOWNLOAD_DIR env var lets operators point downloads at any writable path
+# (e.g. a mounted volume).  Falls back to /tmp/downloads when the default
+# app-local path cannot be created so the server stays deployable on
+# read-only or restricted file-systems (Railway, Render, Fly, etc.).
+_configured_download_folder = os.environ.get(
+    "DOWNLOAD_DIR", os.path.join(ROOT_DIR, Config.DOWNLOAD_FOLDER)
+)
+try:
+    os.makedirs(_configured_download_folder, exist_ok=True)
+    DOWNLOAD_FOLDER = _configured_download_folder
+except OSError:
+    DOWNLOAD_FOLDER = os.path.join("/tmp", "downloads")
+    os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
+
 DATA_DIR = os.path.join(ROOT_DIR, "data")
 COOKIES_FILE = os.environ.get("COOKIES_FILE", os.path.join(DATA_DIR, "cookies.txt"))
 # React frontend build output
@@ -91,12 +106,12 @@ FRONTEND_DIST = os.path.join(ROOT_DIR, "frontend_dist")
 # Avatar upload directory (served as /static/avatars/)
 AVATARS_DIR = os.path.join(STATIC_DIR, "avatars")
 
-# Create directories
-os.makedirs(TEMPLATES_DIR, exist_ok=True)
-os.makedirs(STATIC_DIR, exist_ok=True)
-os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
-os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(AVATARS_DIR, exist_ok=True)
+# Create remaining directories (non-fatal if they fail on restricted systems)
+for _d in (TEMPLATES_DIR, STATIC_DIR, DATA_DIR, AVATARS_DIR):
+    try:
+        os.makedirs(_d, exist_ok=True)
+    except OSError:
+        pass
 
 # =========================================================
 # LOGGING SETUP
@@ -107,7 +122,11 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(os.path.join(ROOT_DIR, 'app.log'))
+        *(
+            [logging.FileHandler(os.path.join(ROOT_DIR, 'app.log'))]
+            if os.access(ROOT_DIR, os.W_OK)
+            else []
+        ),
     ]
 )
 logger = logging.getLogger(__name__)
@@ -1533,7 +1552,7 @@ def check_youtube_connectivity() -> dict:
         "no_warnings": True,
         "skip_download": True,
         "extract_flat": False,
-        "extractor_args": {"youtube": {"player_client": ["web_embedded", "tv"]}},
+        "extractor_args": {"youtube": {"player_client": ["web_embedded", "tv", "mweb"]}},
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -1717,6 +1736,16 @@ def _is_http_forbidden_error(error_msg: str) -> bool:
     return any(p in lower for p in _HTTP_FORBIDDEN_PATTERNS)
 
 
+def _is_auth_or_forbidden_error(error_msg: str) -> bool:
+    """Return ``True`` when *error_msg* is a bot-detection, auth, or HTTP 403 error.
+
+    These errors will not resolve on retry, so exponential backoff should be
+    skipped and the cookieless / alternative-tool fallback path reached
+    immediately.
+    """
+    return _is_auth_error(error_msg) or _is_http_forbidden_error(error_msg)
+
+
 # ── Alternative tool fallback ─────────────────────────────────────────────────
 
 # Media file extensions that alternative tools may produce
@@ -1860,20 +1889,30 @@ def _with_exponential_backoff(
     max_retries: int = 3,
     delays: tuple[float, ...] = _RETRY_DELAYS,
     retriable_exc: tuple = (Exception,),
+    is_retriable=None,
 ):
     """Call *fn()* with up to *max_retries* retries using exponential backoff.
 
     *delays* specifies the wait time (in seconds) before each successive retry.
     Only exceptions that are instances of *retriable_exc* are retried; any
-    other exception propagates immediately.  Returns the value returned by
-    *fn()* on success, or re-raises the last exception after all retries are
-    exhausted.
+    other exception propagates immediately.
+
+    The optional *is_retriable* callable receives the caught exception and
+    returns ``True`` when the error should be retried.  Returning ``False``
+    causes the exception to propagate immediately without waiting, which is
+    useful for errors (e.g. bot-detection / auth) that will not resolve on
+    retry.  When *is_retriable* is ``None`` all matching exceptions are retried.
+
+    Returns the value returned by *fn()* on success, or re-raises the last
+    exception after all retries are exhausted.
     """
     last_exc: Exception = RuntimeError("_with_exponential_backoff: no attempts made")
     for attempt in range(max_retries + 1):
         try:
             return fn()
         except retriable_exc as exc:
+            if is_retriable is not None and not is_retriable(exc):
+                raise  # non-retriable error — propagate immediately
             last_exc = exc
             if attempt < max_retries:
                 delay = delays[attempt] if attempt < len(delays) else delays[-1]
@@ -2521,6 +2560,9 @@ def download_worker(download_id, url, output_template, format_spec, output_ext=N
         # Wrap the primary yt-dlp download with exponential backoff retry.
         # DownloadCancelled must NOT be retried (user intent), so we only retry
         # on generic DownloadError and unexpected exceptions.
+        # Auth/bot-detection errors are also not retried — they will not resolve
+        # on retry and we want to fall through to the cookieless/alternative-tool
+        # path as quickly as possible.
         def _primary_download():
             _do_download(ydl_opts)
 
@@ -2529,6 +2571,7 @@ def download_worker(download_id, url, output_template, format_spec, output_ext=N
             max_retries=3,
             delays=_RETRY_DELAYS,
             retriable_exc=(yt_dlp.utils.DownloadError, OSError),
+            is_retriable=lambda e: not _is_auth_or_forbidden_error(str(e)),
         )
         _extractor_circuit_breaker.record_success()
         _finalize_completed()
@@ -7580,11 +7623,13 @@ logger.info("=" * 50)
 logger.info("Starting Video Downloader (Production)")
 logger.info("=" * 50)
 
-# Warn if using the default admin password
-if Config.ADMIN_PASSWORD == "admin":
+# Warn if ADMIN_PASSWORD was not explicitly set
+if not os.environ.get("ADMIN_PASSWORD"):
     logger.warning(
-        "WARNING: ADMIN_PASSWORD is set to the default value 'admin'. "
-        "Set the ADMIN_PASSWORD environment variable to a strong password before deploying."
+        "WARNING: ADMIN_PASSWORD env var is not set. "
+        "A random password has been generated for this session: %s  "
+        "Set the ADMIN_PASSWORD environment variable to a persistent strong password before deploying.",
+        Config.ADMIN_PASSWORD,
     )
 
 # Check dependencies
@@ -7595,6 +7640,12 @@ check_ffmpeg()
 logger.info(f"Root directory: {ROOT_DIR}")
 logger.info(f"Templates directory: {TEMPLATES_DIR}")
 logger.info(f"Downloads directory: {DOWNLOAD_FOLDER}")
+if DOWNLOAD_FOLDER != _configured_download_folder:
+    logger.warning(
+        f"Could not create downloads directory at {_configured_download_folder!r}; "
+        f"falling back to {DOWNLOAD_FOLDER!r}. "
+        "Set the DOWNLOAD_DIR environment variable to a writable path to persist downloads."
+    )
 logger.info(f"Template exists: {os.path.exists(os.path.join(TEMPLATES_DIR, 'index.html'))}")
 
 # Initialise database schema

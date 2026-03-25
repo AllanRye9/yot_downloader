@@ -34,10 +34,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create data directory for persistent files (cookies, etc.)
+# Create downloads directory so it is always available even before the app
+# runs its os.makedirs() call (avoids permission races on some platforms).
 # Also create a writable home directory for LibreOffice's user profile cache;
 # headless LibreOffice will fail with "no export filter found" if it cannot
 # write its profile directory.
-RUN mkdir -p /app/data /home/appuser && chmod 777 /home/appuser
+RUN mkdir -p /app/data /app/downloads /home/appuser && chmod 777 /home/appuser /app/downloads
 
 # Railway injects PORT at runtime; default to 5000 for local use
 ENV PORT=5000

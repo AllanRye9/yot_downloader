@@ -267,6 +267,44 @@ class TestExponentialBackoff:
         # Third call must be at least 0.1s after second
         assert calls[2] - calls[1] >= 0.09
 
+    def test_is_retriable_false_propagates_immediately(self):
+        """When is_retriable returns False the exception must not be retried."""
+        calls = []
+
+        def fn():
+            calls.append(1)
+            raise ValueError("non-retriable")
+
+        with pytest.raises(ValueError, match="non-retriable"):
+            _with_exponential_backoff(
+                fn,
+                max_retries=3,
+                delays=(0, 0, 0),
+                retriable_exc=(ValueError,),
+                is_retriable=lambda e: False,
+            )
+        assert len(calls) == 1  # no retries
+
+    def test_is_retriable_true_retries_normally(self):
+        """When is_retriable returns True retries proceed as normal."""
+        calls = []
+
+        def fn():
+            calls.append(1)
+            if len(calls) < 3:
+                raise ValueError("transient")
+            return "ok"
+
+        result = _with_exponential_backoff(
+            fn,
+            max_retries=3,
+            delays=(0, 0, 0),
+            retriable_exc=(ValueError,),
+            is_retriable=lambda e: True,
+        )
+        assert result == "ok"
+        assert len(calls) == 3
+
 
 # ---------------------------------------------------------------------------
 # _CircuitBreaker
