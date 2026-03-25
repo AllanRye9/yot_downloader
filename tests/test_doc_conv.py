@@ -262,3 +262,78 @@ class TestRuleBasedCvSuggestions:
         result = _rule_based_cv_suggestions("experience", "I was responsible for my duties. Worked on things etc.")
         assert len(result["suggestions"]) <= 8
 
+
+# ---------------------------------------------------------------------------
+# _normalize_text_bullets  and  _extract_text_from_txt
+# ---------------------------------------------------------------------------
+
+from api.app import _normalize_text_bullets, _extract_text_from_txt
+
+
+class TestNormalizeTextBullets:
+    """_normalize_text_bullets converts various bullet characters to •."""
+
+    def test_dash_bullet_converted(self):
+        result = _normalize_text_bullets("- Item one\n- Item two")
+        assert "• Item one" in result
+        assert "• Item two" in result
+
+    def test_asterisk_bullet_converted(self):
+        result = _normalize_text_bullets("* First\n* Second")
+        assert "• First" in result
+        assert "• Second" in result
+
+    def test_unicode_bullet_normalised(self):
+        result = _normalize_text_bullets("• Already a bullet")
+        assert "• Already a bullet" in result
+
+    def test_indentation_preserved(self):
+        result = _normalize_text_bullets("  - Indented item")
+        assert result.startswith("  • ") or "  • Indented item" in result
+
+    def test_plain_text_unchanged(self):
+        text = "No bullets here.\nJust plain text."
+        assert _normalize_text_bullets(text) == text
+
+    def test_emojis_preserved(self):
+        text = "- 🎉 Celebration item\n- 🚀 Launch item"
+        result = _normalize_text_bullets(text)
+        assert "🎉" in result
+        assert "🚀" in result
+
+    def test_line_breaks_preserved(self):
+        text = "First paragraph.\n\nSecond paragraph."
+        result = _normalize_text_bullets(text)
+        assert "\n\n" in result
+
+
+class TestExtractTextFromTxt:
+    """_extract_text_from_txt reads a plain-text file preserving content."""
+
+    def test_reads_utf8_file(self, tmp_path):
+        content = "Hello world\nLine two 🎉\n• Bullet"
+        p = tmp_path / "test.txt"
+        p.write_text(content, encoding="utf-8")
+        result = _extract_text_from_txt(str(p))
+        assert result == content
+
+    def test_reads_latin1_file(self, tmp_path):
+        content = "Caf\xe9 au lait"
+        p = tmp_path / "test.txt"
+        p.write_bytes(content.encode("latin-1"))
+        result = _extract_text_from_txt(str(p))
+        assert "Caf" in result
+
+    def test_empty_file_returns_empty_string(self, tmp_path):
+        p = tmp_path / "empty.txt"
+        p.write_text("", encoding="utf-8")
+        result = _extract_text_from_txt(str(p))
+        assert result == ""
+
+    def test_multiline_preserved(self, tmp_path):
+        content = "Line 1\nLine 2\nLine 3"
+        p = tmp_path / "multi.txt"
+        p.write_text(content, encoding="utf-8")
+        result = _extract_text_from_txt(str(p))
+        assert result.count("\n") == 2
+
