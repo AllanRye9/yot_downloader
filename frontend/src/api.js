@@ -275,6 +275,23 @@ export const getUserProfile = () => request('GET', '/api/auth/me')
 export const updateUserLocation = (lat, lng, location_name = '') =>
   request('PUT', '/api/auth/profile', { lat, lng, location_name })
 
+export const updateProfileDetails = (name, bio) =>
+  request('PUT', '/api/auth/profile/details', { name, bio })
+
+export const uploadAvatar = (file) => {
+  const fd = new FormData()
+  fd.append('file', file, file.name)
+  return request('POST', '/api/auth/profile/avatar', fd, false)
+}
+
+export const getNotifications = () => request('GET', '/api/notifications')
+
+export const markNotificationRead = (notifId) =>
+  request('POST', `/api/notifications/${encodeURIComponent(notifId)}/read`, {})
+
+export const markAllNotificationsRead = () =>
+  request('POST', '/api/notifications/read_all', {})
+
 export const requestMagicLink = (email) =>
   request('POST', '/api/auth/magic_link', { email })
 

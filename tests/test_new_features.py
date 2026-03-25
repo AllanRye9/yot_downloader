@@ -34,6 +34,14 @@ from api.app import (
     _RidePostRequest,
     _DriverLocationUpdate,
     _UserLocationUpdate,
+    api_user_update_profile_details,
+    api_get_notifications,
+    api_mark_notification_read,
+    api_mark_all_notifications_read,
+    api_admin_driver_approve,
+    _create_notification,
+    _UserProfileDetailsUpdate,
+    _DriverApproveRequest,
 )
 
 
@@ -1187,3 +1195,164 @@ class TestUserDashboard:
         data = json.loads(run(api_user_dashboard(_make_request(session))).body)
         assert len(data["recent_rides"]) <= 5
 
+
+
+# ---------------------------------------------------------------------------
+# Profile details update & avatar upload
+# ---------------------------------------------------------------------------
+
+class TestProfileDetailsUpdate:
+    """Tests for PUT /api/auth/profile/details."""
+
+    def test_update_requires_login(self):
+        from api.app import api_user_update_profile_details, _UserProfileDetailsUpdate
+        req = _make_request({})
+        resp = run(api_user_update_profile_details(req, _UserProfileDetailsUpdate(name="X", bio="y")))
+        assert resp.status_code == 401
+
+    def test_update_bio(self):
+        import json
+        from api.app import api_user_update_profile_details, _UserProfileDetailsUpdate, _get_app_user
+        resp, _ = _register_user("BioPerson")
+        user_id = json.loads(resp.body)["user_id"]
+        req = _make_request({"app_user_id": user_id})
+        r = run(api_user_update_profile_details(req, _UserProfileDetailsUpdate(name="BioPerson", bio="Hello world")))
+        assert r.status_code == 200
+        data = json.loads(r.body)
+        assert data["ok"] is True
+        u = _get_app_user(user_id)
+        assert u["bio"] == "Hello world"
+
+    def test_update_name(self):
+        import json
+        from api.app import api_user_update_profile_details, _UserProfileDetailsUpdate, _get_app_user
+        resp, _ = _register_user("OldName")
+        user_id = json.loads(resp.body)["user_id"]
+        req = _make_request({"app_user_id": user_id})
+        run(api_user_update_profile_details(req, _UserProfileDetailsUpdate(name="NewName", bio="")))
+        u = _get_app_user(user_id)
+        assert u["name"] == "NewName"
+
+    def test_bio_truncated_to_500(self):
+        import json
+        from api.app import api_user_update_profile_details, _UserProfileDetailsUpdate, _get_app_user
+        resp, _ = _register_user("LongBio")
+        user_id = json.loads(resp.body)["user_id"]
+        long_bio = "x" * 1000
+        req = _make_request({"app_user_id": user_id})
+        run(api_user_update_profile_details(req, _UserProfileDetailsUpdate(name="LongBio", bio=long_bio)))
+        u = _get_app_user(user_id)
+        assert len(u["bio"]) <= 500
+
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+
+class TestNotifications:
+    """Tests for GET /api/notifications and POST /api/notifications/{id}/read."""
+
+    def test_get_notifications_requires_login(self):
+        from api.app import api_get_notifications
+        req = _make_request({})
+        resp = run(api_get_notifications(req))
+        assert resp.status_code == 401
+
+    def test_get_notifications_empty_for_new_user(self):
+        import json
+        from api.app import api_get_notifications
+        resp, _ = _register_user("NotifEmpty")
+        user_id = json.loads(resp.body)["user_id"]
+        req = _make_request({"app_user_id": user_id})
+        r = run(api_get_notifications(req))
+        assert r.status_code == 200
+        data = json.loads(r.body)
+        assert "notifications" in data
+        assert data["unread"] == 0
+
+    def test_create_and_retrieve_notification(self):
+        import json
+        from api.app import api_get_notifications, _create_notification
+        resp, _ = _register_user("NotifUser")
+        user_id = json.loads(resp.body)["user_id"]
+        _create_notification(user_id, "system", "Test Title", "Test body")
+        req = _make_request({"app_user_id": user_id})
+        data = json.loads(run(api_get_notifications(req)).body)
+        assert len(data["notifications"]) >= 1
+        n = data["notifications"][0]
+        assert n["title"] == "Test Title"
+        assert n["body"] == "Test body"
+        assert n["read"] == 0
+        assert data["unread"] >= 1
+
+    def test_mark_notification_read(self):
+        import json
+        from api.app import api_get_notifications, api_mark_notification_read, _create_notification
+        resp, _ = _register_user("NotifRead")
+        user_id = json.loads(resp.body)["user_id"]
+        notif_id = _create_notification(user_id, "system", "Hello", "Body")
+        req = _make_request({"app_user_id": user_id})
+        run(api_mark_notification_read(req, notif_id))
+        data = json.loads(run(api_get_notifications(req)).body)
+        n = next((x for x in data["notifications"] if x["notif_id"] == notif_id), None)
+        assert n is not None
+        assert n["read"] == 1
+
+    def test_mark_all_notifications_read(self):
+        import json
+        from api.app import api_get_notifications, api_mark_all_notifications_read, _create_notification
+        resp, _ = _register_user("NotifAllRead")
+        user_id = json.loads(resp.body)["user_id"]
+        for i in range(3):
+            _create_notification(user_id, "system", f"Title {i}", f"Body {i}")
+        req = _make_request({"app_user_id": user_id})
+        run(api_mark_all_notifications_read(req))
+        data = json.loads(run(api_get_notifications(req)).body)
+        assert data["unread"] == 0
+        assert all(n["read"] == 1 for n in data["notifications"])
+
+    def test_mark_read_requires_login(self):
+        from api.app import api_mark_notification_read
+        req = _make_request({})
+        resp = run(api_mark_notification_read(req, "fake-id"))
+        assert resp.status_code == 401
+
+    def test_driver_approval_creates_notification(self):
+        """Approving a driver application should create an in-app notification."""
+        import json
+        from api.app import (
+            api_admin_driver_approve, api_get_notifications,
+            _DriverApproveRequest, _create_notification
+        )
+        resp, _ = _register_user("NotifDriver")
+        user_id = json.loads(resp.body)["user_id"]
+        # Manually insert a driver application
+        from api.app import _get_db, _db_lock, USE_POSTGRES
+        import uuid, datetime
+        app_id = str(uuid.uuid4())
+        created = datetime.datetime.utcnow().isoformat()
+        with _db_lock:
+            conn = _get_db()
+            try:
+                if USE_POSTGRES:
+                    cur = conn.cursor()
+                    cur.execute(
+                        "INSERT INTO driver_applications (app_id,user_id,vehicle_make,vehicle_model,vehicle_year,vehicle_color,license_plate,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                        (app_id, user_id, "Toyota", "Camry", 2020, "Blue", "ABC123", created)
+                    )
+                else:
+                    conn.execute(
+                        "INSERT INTO driver_applications (app_id,user_id,vehicle_make,vehicle_model,vehicle_year,vehicle_color,license_plate,created_at) VALUES (?,?,?,?,?,?,?,?)",
+                        (app_id, user_id, "Toyota", "Camry", 2020, "Blue", "ABC123", created)
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+        # Approve
+        admin_req = _make_request({"admin_user": "admin"})
+        run(api_admin_driver_approve(admin_req, app_id, _DriverApproveRequest(approved=True)))
+        # Check notification was created
+        user_req = _make_request({"app_user_id": user_id})
+        data = json.loads(run(api_get_notifications(user_req)).body)
+        types = [n["type"] for n in data["notifications"]]
+        assert "driver_approved" in types
