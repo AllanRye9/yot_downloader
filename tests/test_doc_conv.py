@@ -368,7 +368,11 @@ class TestExtractTextFromRtf:
     def test_extracts_text_content(self, tmp_path):
         path = self._write_rtf(tmp_path, "Hello world")
         result = _extract_text_from_rtf(path)
-        assert "Hello" in result or "world" in result or len(result) >= 0
+        # The result should be a non-empty string; exact content depends on available
+        # RTF parser (pypandoc vs regex fallback), so we verify it's non-trivially sized
+        # or contains expected words.
+        assert isinstance(result, str)
+        assert "Hello" in result or "world" in result or len(result) > 0
 
     def test_nonexistent_file_returns_empty(self, tmp_path):
         result = _extract_text_from_rtf(str(tmp_path / "missing.rtf"))

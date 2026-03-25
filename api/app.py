@@ -4731,6 +4731,10 @@ def _build_cv_pdf(
         multi(summary.strip())
 
     # ---- helpers for optional sections ----
+    def _block_lines(block: str) -> list[str]:
+        """Return non-empty stripped lines from an experience/education block."""
+        return [l.strip() for l in block.split('\n') if l.strip()]
+
     def _render_skills():
         skill_list = [s.strip() for s in skills.split(",") if s.strip()]
         if not skill_list:
@@ -4750,7 +4754,7 @@ def _build_cv_pdf(
             return
         section_heading("Work Experience")
         for block in re.split(r'\n\s*\n', experience.strip()):
-            block_lines = [l.strip() for l in block.split('\n') if l.strip()]
+            block_lines = _block_lines(block)
             if not block_lines:
                 continue
             pdf.set_font(_FONT, "B", 9)
@@ -4770,7 +4774,7 @@ def _build_cv_pdf(
             return
         section_heading("Education")
         for block in re.split(r'\n\s*\n', education.strip()):
-            block_lines = [l.strip() for l in block.split('\n') if l.strip()]
+            block_lines = _block_lines(block)
             if not block_lines:
                 continue
             pdf.set_font(_FONT, "B", 9)
@@ -4789,7 +4793,7 @@ def _build_cv_pdf(
             return
         section_heading("Projects")
         for block in re.split(r'\n\s*\n', projects.strip()):
-            block_lines = [l.strip() for l in block.split('\n') if l.strip()]
+            block_lines = _block_lines(block)
             if not block_lines:
                 continue
             pdf.set_font(_FONT, "B", 9)
@@ -4808,7 +4812,7 @@ def _build_cv_pdf(
             return
         section_heading("Publications")
         for block in re.split(r'\n\s*\n', publications.strip()):
-            block_lines = [l.strip() for l in block.split('\n') if l.strip()]
+            block_lines = _block_lines(block)
             if not block_lines:
                 continue
             pdf.set_font(_FONT, "I", 9)

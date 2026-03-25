@@ -320,11 +320,6 @@ function TextExtractor() {
 
 // ─── Main DocConverter with sub-tabs ──────────────────────────────────────────
 
-// Formats that produce a text preview in the preview pane
-const TEXT_PREVIEW_TARGETS = new Set(['text'])
-// Formats where we can extract a text preview of the SOURCE before converting
-const TEXT_PREVIEW_SOURCES = new Set(['pdf', 'docx', 'doc', 'odt', 'txt', 'rtf'])
-
 export default function DocConverter() {
   const [subTab, setSubTab]           = useState('format')
   const [file, setFile]               = useState(null)
