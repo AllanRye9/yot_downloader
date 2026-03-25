@@ -88,11 +88,15 @@ COOKIES_FILE = os.environ.get("COOKIES_FILE", os.path.join(DATA_DIR, "cookies.tx
 # React frontend build output
 FRONTEND_DIST = os.path.join(ROOT_DIR, "frontend_dist")
 
+# Avatar upload directory (served as /static/avatars/)
+AVATARS_DIR = os.path.join(STATIC_DIR, "avatars")
+
 # Create directories
 os.makedirs(TEMPLATES_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(AVATARS_DIR, exist_ok=True)
 
 # =========================================================
 # LOGGING SETUP
@@ -462,6 +466,8 @@ def init_db():
                         location_lat REAL,
                         location_lng REAL,
                         location_name TEXT,
+                        avatar_url TEXT,
+                        bio TEXT,
                         created_at TEXT NOT NULL
                     )
                 """)
@@ -496,6 +502,24 @@ def init_db():
                         created_at TEXT NOT NULL
                     )
                 """)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS notifications (
+                        id SERIAL PRIMARY KEY,
+                        notif_id TEXT UNIQUE NOT NULL,
+                        user_id TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        body TEXT NOT NULL,
+                        read INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL
+                    )
+                """)
+                # Migrations: add new columns to existing tables if needed
+                for col, coldef in [("avatar_url", "TEXT"), ("bio", "TEXT")]:
+                    try:
+                        cur.execute(f"ALTER TABLE app_users ADD COLUMN {col} {coldef}")
+                    except Exception:
+                        pass  # column already exists
             else:
                 conn.executescript("""
                     CREATE TABLE IF NOT EXISTS downloads (
@@ -525,6 +549,8 @@ def init_db():
                         location_lat REAL,
                         location_lng REAL,
                         location_name TEXT,
+                        avatar_url TEXT,
+                        bio TEXT,
                         created_at TEXT NOT NULL
                     );
                     CREATE TABLE IF NOT EXISTS rides (
@@ -554,7 +580,23 @@ def init_db():
                         status TEXT NOT NULL DEFAULT 'pending',
                         created_at TEXT NOT NULL
                     );
+                    CREATE TABLE IF NOT EXISTS notifications (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        notif_id TEXT UNIQUE NOT NULL,
+                        user_id TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        body TEXT NOT NULL,
+                        read INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL
+                    );
                 """)
+                # SQLite migrations: add new columns to existing tables if needed
+                for col, coldef in [("avatar_url", "TEXT"), ("bio", "TEXT")]:
+                    try:
+                        conn.execute(f"ALTER TABLE app_users ADD COLUMN {col} {coldef}")
+                    except Exception:
+                        pass  # column already exists
             conn.commit()
         finally:
             conn.close()
@@ -5766,14 +5808,14 @@ def _get_app_user(user_id: str) -> dict | None:
         try:
             if USE_POSTGRES:
                 cur = conn.cursor()
-                cur.execute("SELECT user_id,name,email,role,location_lat,location_lng,location_name,created_at FROM app_users WHERE user_id=%s", (user_id,))
+                cur.execute("SELECT user_id,name,email,role,location_lat,location_lng,location_name,avatar_url,bio,created_at FROM app_users WHERE user_id=%s", (user_id,))
                 row = cur.fetchone()
             else:
-                cur = conn.execute("SELECT user_id,name,email,role,location_lat,location_lng,location_name,created_at FROM app_users WHERE user_id=?", (user_id,))
+                cur = conn.execute("SELECT user_id,name,email,role,location_lat,location_lng,location_name,avatar_url,bio,created_at FROM app_users WHERE user_id=?", (user_id,))
                 row = cur.fetchone()
             if row is None:
                 return None
-            keys = ["user_id", "name", "email", "role", "location_lat", "location_lng", "location_name", "created_at"]
+            keys = ["user_id", "name", "email", "role", "location_lat", "location_lng", "location_name", "avatar_url", "bio", "created_at"]
             return dict(zip(keys, row))
         finally:
             conn.close()
@@ -5832,6 +5874,11 @@ class _UserLocationUpdate(BaseModel):
     lat:           float
     lng:           float
     location_name: str = ""
+
+
+class _UserProfileDetailsUpdate(BaseModel):
+    name: str = ""
+    bio:  str = ""
 
 
 @fastapi_app.post("/api/auth/register")
@@ -6022,6 +6069,193 @@ async def api_user_update_profile(request: Request, body: _UserLocationUpdate):
                     "UPDATE app_users SET location_lat=?, location_lng=?, location_name=? WHERE user_id=?",
                     (body.lat, body.lng, body.location_name.strip(), user_id),
                 )
+            conn.commit()
+        finally:
+            conn.close()
+
+    return JSONResponse({"ok": True})
+
+
+@fastapi_app.put("/api/auth/profile/details")
+async def api_user_update_profile_details(request: Request, body: _UserProfileDetailsUpdate):
+    """Update the logged-in user's name and bio."""
+    user_id = request.session.get("app_user_id")
+    if not user_id:
+        return JSONResponse({"error": "Not logged in."}, status_code=401)
+
+    name = body.name.strip()
+    bio  = body.bio.strip()[:500]  # cap bio at 500 chars
+
+    updates = {}
+    if name:
+        updates["name"] = name
+    if bio is not None:
+        updates["bio"] = bio
+
+    if not updates:
+        return JSONResponse({"ok": True})
+
+    with _db_lock:
+        conn = _get_db()
+        try:
+            if USE_POSTGRES:
+                cur = conn.cursor()
+                for field, value in updates.items():
+                    cur.execute(f"UPDATE app_users SET {field}=%s WHERE user_id=%s", (value, user_id))
+            else:
+                for field, value in updates.items():
+                    conn.execute(f"UPDATE app_users SET {field}=? WHERE user_id=?", (value, user_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+    user = _get_app_user(user_id)
+    return JSONResponse({"ok": True, "user": user})
+
+
+@fastapi_app.post("/api/auth/profile/avatar")
+async def api_user_upload_avatar(request: Request, file: UploadFile = File(...)):
+    """Upload a profile avatar image for the logged-in user."""
+    user_id = request.session.get("app_user_id")
+    if not user_id:
+        return JSONResponse({"error": "Not logged in."}, status_code=401)
+
+    # Validate content type
+    allowed_types = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+    ct = (file.content_type or "").lower()
+    if ct not in allowed_types:
+        return JSONResponse({"error": "Only JPEG, PNG, GIF and WebP images are allowed."}, status_code=400)
+
+    ext_map = {"image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp"}
+    ext = ext_map.get(ct, "jpg")
+
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:  # 5 MB limit
+        return JSONResponse({"error": "Avatar image must be under 5 MB."}, status_code=400)
+
+    filename = f"{user_id}.{ext}"
+    avatar_path = os.path.join(AVATARS_DIR, filename)
+    with open(avatar_path, "wb") as fh:
+        fh.write(data)
+
+    avatar_url = f"/static/avatars/{filename}"
+
+    with _db_lock:
+        conn = _get_db()
+        try:
+            if USE_POSTGRES:
+                cur = conn.cursor()
+                cur.execute("UPDATE app_users SET avatar_url=%s WHERE user_id=%s", (avatar_url, user_id))
+            else:
+                conn.execute("UPDATE app_users SET avatar_url=? WHERE user_id=?", (avatar_url, user_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+    return JSONResponse({"ok": True, "avatar_url": avatar_url})
+
+
+# ── Notifications ──────────────────────────────────────────────────────────────
+
+def _create_notification(user_id: str, notif_type: str, title: str, body: str) -> str:
+    """Insert a notification row for a user and return the notif_id."""
+    notif_id  = str(uuid.uuid4())
+    created   = datetime.now(timezone.utc).isoformat()
+    with _db_lock:
+        conn = _get_db()
+        try:
+            if USE_POSTGRES:
+                cur = conn.cursor()
+                cur.execute(
+                    "INSERT INTO notifications (notif_id,user_id,type,title,body,created_at) VALUES (%s,%s,%s,%s,%s,%s)",
+                    (notif_id, user_id, notif_type, title, body, created),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO notifications (notif_id,user_id,type,title,body,created_at) VALUES (?,?,?,?,?,?)",
+                    (notif_id, user_id, notif_type, title, body, created),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+    return notif_id
+
+
+@fastapi_app.get("/api/notifications")
+async def api_get_notifications(request: Request):
+    """Return notifications for the logged-in user (most recent first, max 50)."""
+    user_id = request.session.get("app_user_id")
+    if not user_id:
+        return JSONResponse({"error": "Login required."}, status_code=401)
+
+    cols = ["notif_id", "type", "title", "body", "read", "created_at"]
+    with _db_lock:
+        conn = _get_db()
+        try:
+            if USE_POSTGRES:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT notif_id,type,title,body,read,created_at FROM notifications WHERE user_id=%s ORDER BY created_at DESC LIMIT 50",
+                    (user_id,),
+                )
+                rows = cur.fetchall()
+            else:
+                cur = conn.execute(
+                    "SELECT notif_id,type,title,body,read,created_at FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 50",
+                    (user_id,),
+                )
+                rows = cur.fetchall()
+        finally:
+            conn.close()
+
+    notifs = [dict(zip(cols, r)) for r in rows]
+    unread = sum(1 for n in notifs if not n["read"])
+    return JSONResponse({"notifications": notifs, "unread": unread})
+
+
+@fastapi_app.post("/api/notifications/{notif_id}/read")
+async def api_mark_notification_read(request: Request, notif_id: str):
+    """Mark a single notification as read."""
+    user_id = request.session.get("app_user_id")
+    if not user_id:
+        return JSONResponse({"error": "Login required."}, status_code=401)
+
+    with _db_lock:
+        conn = _get_db()
+        try:
+            if USE_POSTGRES:
+                cur = conn.cursor()
+                cur.execute(
+                    "UPDATE notifications SET read=1 WHERE notif_id=%s AND user_id=%s",
+                    (notif_id, user_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE notifications SET read=1 WHERE notif_id=? AND user_id=?",
+                    (notif_id, user_id),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+    return JSONResponse({"ok": True})
+
+
+@fastapi_app.post("/api/notifications/read_all")
+async def api_mark_all_notifications_read(request: Request):
+    """Mark all notifications for the logged-in user as read."""
+    user_id = request.session.get("app_user_id")
+    if not user_id:
+        return JSONResponse({"error": "Login required."}, status_code=401)
+
+    with _db_lock:
+        conn = _get_db()
+        try:
+            if USE_POSTGRES:
+                cur = conn.cursor()
+                cur.execute("UPDATE notifications SET read=1 WHERE user_id=%s", (user_id,))
+            else:
+                conn.execute("UPDATE notifications SET read=1 WHERE user_id=?", (user_id,))
             conn.commit()
         finally:
             conn.close()
@@ -6258,6 +6492,31 @@ async def api_admin_driver_approve(request: Request, app_id: str, body: _DriverA
         finally:
             conn.close()
 
+    # Send in-app notification to the affected user
+    if body.approved:
+        _create_notification(
+            target_user_id,
+            "driver_approved",
+            "🎉 Driver Application Approved",
+            "Congratulations! Your driver application has been approved. You can now post rides and use Driver Alerts.",
+        )
+        # Also emit real-time socket event if the user is connected
+        with _socket_user_lock:
+            sid = _user_to_sid.get(target_user_id)
+        if sid:
+            asyncio.ensure_future(sio.emit("notification", {
+                "type":  "driver_approved",
+                "title": "🎉 Driver Application Approved",
+                "body":  "Your driver application has been approved!",
+            }, room=sid))
+    else:
+        _create_notification(
+            target_user_id,
+            "driver_rejected",
+            "❌ Driver Application Rejected",
+            "Unfortunately, your driver application was not approved this time. You may re-apply with updated details.",
+        )
+
     return JSONResponse({"ok": True, "status": new_status})
 
 
@@ -6492,6 +6751,13 @@ async def api_ride_take(request: Request, ride_id: str):
             conn.close()
 
     asyncio.ensure_future(sio.emit("ride_taken", {"ride_id": ride_id}))
+    # Notify the ride poster
+    _create_notification(
+        user_id,
+        "ride_taken",
+        "✅ Your Ride Has Been Taken",
+        f"Good news! Your ride has been marked as taken.",
+    )
     return JSONResponse({"ok": True})
 
 

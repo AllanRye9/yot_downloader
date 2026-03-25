@@ -10,7 +10,7 @@ import RideShare from '../components/RideShare'
 import RideShareMap from '../components/RideShareMap'
 import ThemeSelector from '../components/ThemeSelector'
 import UserProfile from '../components/UserProfile'
-import { getUserProfile, userLogout, getStats } from '../api'
+import { getUserProfile, userLogout, getStats, getNotifications } from '../api'
 import socket from '../socket'
 
 // ─── Dashboard tabs ────────────────────────────────────────────────────────────
@@ -154,6 +154,7 @@ export default function UserDashboard() {
   const [fileListVersion, setFileListVersion] = useState(0)
   const [menuOpen,    setMenuOpen]    = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [unreadNotifs, setUnreadNotifs] = useState(0)
   const profileRef     = useRef(null)
   const activeDownloadsRef = useRef(null)
   const fileListRef    = useRef(null)
@@ -204,6 +205,15 @@ export default function UserDashboard() {
     const fetchStats = () => getStats().then(setStats).catch(() => {})
     fetchStats()
     const id = setInterval(fetchStats, 30_000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Poll unread notification count
+  useEffect(() => {
+    const fetchUnread = () =>
+      getNotifications().then(d => setUnreadNotifs(d.unread || 0)).catch(() => {})
+    fetchUnread()
+    const id = setInterval(fetchUnread, 30_000)
     return () => clearInterval(id)
   }, [])
 
@@ -304,12 +314,18 @@ export default function UserDashboard() {
             >
               {appUser.role === 'driver' ? '🚗' : '🧍'}
             </button>
+            {unreadNotifs > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 border border-gray-950 flex items-center justify-center text-white text-[9px] font-bold pointer-events-none">
+                {unreadNotifs > 9 ? '9+' : unreadNotifs}
+              </span>
+            )}
             {profileOpen && (
               <div className="nav-profile-dropdown absolute right-0 top-10 w-64 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">
                 <UserProfile
                   user={appUser}
                   onLogout={handleLogout}
-                  onLocationUpdate={() => {}}
+                  onLocationUpdate={(loc) => setAppUser(u => ({ ...u, ...loc }))}
+                  onUserUpdate={(u) => u && setAppUser(prev => ({ ...prev, ...u }))}
                 />
               </div>
             )}
@@ -435,6 +451,8 @@ export default function UserDashboard() {
                 <div className="mb-4">
                   <RideShareMap
                     userLocation={appUser?.lat != null ? { lat: appUser.lat, lng: appUser.lng } : null}
+                    onLocationUpdate={(loc) => setAppUser(u => ({ ...u, lat: loc.lat, lng: loc.lng }))}
+                    autoLoadDrivers={true}
                   />
                 </div>
                 <RideShare user={appUser} />
@@ -446,7 +464,8 @@ export default function UserDashboard() {
                 <UserProfile
                   user={appUser}
                   onLogout={handleLogout}
-                  onLocationUpdate={() => {}}
+                  onLocationUpdate={(loc) => setAppUser(u => ({ ...u, ...loc }))}
+                  onUserUpdate={(u) => u && setAppUser(prev => ({ ...prev, ...u }))}
                 />
               </div>
             )}

@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { getAllDriverLocations } from '../api'
+import socket from '../socket'
 
 // Fix default marker icon paths broken by bundlers
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
@@ -10,21 +12,56 @@ delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({ iconRetinaUrl: markerIcon2x, iconUrl: markerIcon, shadowUrl: markerShadow })
 
 /**
- * RideShareMap — OpenStreetMap (Leaflet) map showing available rides as markers.
+ * RideShareMap — OpenStreetMap (Leaflet) map showing available rides, driver
+ * locations and the current user's position.
  *
  * Props:
- *  rides        - Array of ride objects with origin_lat/origin_lng
- *  userLocation - { lat, lng } of the current user (optional)
+ *  rides            - Array of ride objects with origin_lat/origin_lng
+ *  userLocation     - { lat, lng } of the current user (optional)
  *  onRequestRide(ride) - called when user clicks "Request Ride" on a marker
- *  driverLocations - Array of { lat, lng, name, empty } driver positions
+ *  driverLocations  - Array of { lat, lng, name, empty } driver positions
+ *  autoLoadDrivers  - When true, polls /api/driver/locations every 15s
+ *  onLocationUpdate - Called with {lat, lng} when the map auto-detects location
  */
-export default function RideShareMap({ rides = [], userLocation, onRequestRide, driverLocations = [] }) {
+export default function RideShareMap({ rides = [], userLocation, onRequestRide, driverLocations: propDriverLocations = [], autoLoadDrivers = true, onLocationUpdate }) {
   const mapRef      = useRef(null)
   const instanceRef = useRef(null)
   const markersRef  = useRef([])
   const driverMarkersRef = useRef([])
   const userMarkerRef    = useRef(null)
+  const accuracyCircleRef = useRef(null)
   const [selectedRide, setSelectedRide] = useState(null)
+  const [driverLocations, setDriverLocations] = useState(propDriverLocations)
+  const [liveTracking, setLiveTracking] = useState(false)
+  const watchIdRef = useRef(null)
+
+  // Keep driverLocations in sync with props
+  useEffect(() => {
+    if (propDriverLocations.length > 0 || !autoLoadDrivers) {
+      setDriverLocations(propDriverLocations)
+    }
+  }, [propDriverLocations, autoLoadDrivers])
+
+  // Auto-load driver locations from API
+  const refreshDriverLocations = useCallback(() => {
+    if (!autoLoadDrivers) return
+    getAllDriverLocations()
+      .then(d => setDriverLocations(d.drivers || []))
+      .catch(() => {})
+  }, [autoLoadDrivers])
+
+  useEffect(() => {
+    refreshDriverLocations()
+    const id = setInterval(refreshDriverLocations, 15_000)
+    return () => clearInterval(id)
+  }, [refreshDriverLocations])
+
+  // Listen for driver_nearby socket events to refresh immediately
+  useEffect(() => {
+    const handler = () => refreshDriverLocations()
+    socket.on('driver_nearby', handler)
+    return () => socket.off('driver_nearby', handler)
+  }, [refreshDriverLocations])
 
   // ── Initialise map ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -134,6 +171,8 @@ export default function RideShareMap({ rides = [], userLocation, onRequestRide, 
 
     userMarkerRef.current?.remove()
     userMarkerRef.current = null
+    accuracyCircleRef.current?.remove()
+    accuracyCircleRef.current = null
 
     if (userLocation?.lat == null) return
 
@@ -145,7 +184,7 @@ export default function RideShareMap({ rides = [], userLocation, onRequestRide, 
         justify-content:center;font-size:13px;
         box-shadow:0 2px 8px rgba(0,0,0,0.5);
         border:2px solid #fff;
-      ">👤</div>`,
+      ">&#x1F464;</div>`,
       iconSize:   [26, 26],
       iconAnchor: [13, 13],
     })
@@ -153,16 +192,67 @@ export default function RideShareMap({ rides = [], userLocation, onRequestRide, 
       .addTo(map)
       .bindTooltip('Your location', { permanent: false })
 
-    map.setView([userLocation.lat, userLocation.lng], 12)
+    if (userLocation.accuracy) {
+      accuracyCircleRef.current = L.circle([userLocation.lat, userLocation.lng], {
+        radius:      userLocation.accuracy,
+        color:       '#7c3aed',
+        fillColor:   '#7c3aed',
+        fillOpacity: 0.08,
+        weight:      1,
+      }).addTo(map)
+    }
+
+    map.setView([userLocation.lat, userLocation.lng], 13)
   }, [userLocation])
+
+  // ── Live location tracking via watchPosition ────────────────────────────────
+  useEffect(() => {
+    if (!liveTracking) {
+      if (watchIdRef.current != null) {
+        navigator.geolocation?.clearWatch(watchIdRef.current)
+        watchIdRef.current = null
+      }
+      return
+    }
+    if (!navigator.geolocation) return
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      ({ coords }) => {
+        onLocationUpdate?.({ lat: coords.latitude, lng: coords.longitude, accuracy: coords.accuracy })
+      },
+      () => setLiveTracking(false),
+      { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
+    )
+    return () => {
+      if (watchIdRef.current != null) {
+        navigator.geolocation?.clearWatch(watchIdRef.current)
+        watchIdRef.current = null
+      }
+    }
+  }, [liveTracking, onLocationUpdate])
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="relative">
       <div
         ref={mapRef}
-        style={{ height: 260, borderRadius: 12, overflow: 'hidden', background: '#1a2233' }}
+        style={{ height: 300, borderRadius: 12, overflow: 'hidden', background: '#1a2233' }}
       />
+
+      {/* Live tracking toggle */}
+      <div className="absolute top-2 left-2 z-[1000]">
+        <button
+          onClick={() => setLiveTracking(t => !t)}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold shadow-lg transition-colors ${
+            liveTracking
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-900/90 text-gray-300 border border-gray-600 hover:bg-gray-800'
+          }`}
+          title={liveTracking ? 'Stop live tracking' : 'Start live location tracking'}
+        >
+          <span className={`w-2 h-2 rounded-full ${liveTracking ? 'bg-white animate-pulse' : 'bg-gray-500'}`} />
+          {liveTracking ? 'Live' : 'Track me'}
+        </button>
+      </div>
 
       {/* Side-panel card for selected ride */}
       {selectedRide && (
@@ -172,14 +262,14 @@ export default function RideShareMap({ rides = [], userLocation, onRequestRide, 
             <button
               onClick={() => setSelectedRide(null)}
               className="text-gray-500 hover:text-gray-300 text-sm leading-none"
-            >✕</button>
+            >&#x2715;</button>
           </div>
           <div className="text-xs text-gray-400 space-y-0.5">
-            <p>📍 {selectedRide.origin}</p>
-            <p>🏁 {selectedRide.destination}</p>
-            <p>🕐 {selectedRide.departure}</p>
-            <p>💺 {selectedRide.seats} seat{selectedRide.seats !== 1 ? 's' : ''}</p>
-            {selectedRide.notes && <p className="text-gray-500 text-xs truncate">📝 {selectedRide.notes}</p>}
+            <p>&#x1F4CD; {selectedRide.origin}</p>
+            <p>&#x1F3C1; {selectedRide.destination}</p>
+            <p>&#x1F550; {selectedRide.departure}</p>
+            <p>&#x1F4BA; {selectedRide.seats} seat{selectedRide.seats !== 1 ? 's' : ''}</p>
+            {selectedRide.notes && <p className="text-gray-500 text-xs truncate">&#x1F4DD; {selectedRide.notes}</p>}
           </div>
           <button
             onClick={() => { onRequestRide?.(selectedRide); setSelectedRide(null) }}
@@ -190,15 +280,22 @@ export default function RideShareMap({ rides = [], userLocation, onRequestRide, 
         </div>
       )}
 
+      {/* Driver count badge */}
+      {driverLocations.length > 0 && (
+        <div className="absolute bottom-10 right-2 z-[1000] bg-green-900/90 border border-green-700 rounded-full px-2.5 py-0.5 text-xs text-green-300 font-medium">
+          {driverLocations.filter(d => d.empty).length} driver{driverLocations.filter(d => d.empty).length !== 1 ? 's' : ''} available
+        </div>
+      )}
+
       {/* Legend */}
       <div className="absolute bottom-2 left-2 z-[1000] flex gap-1.5 flex-wrap">
         {[
-          { color: '#2563eb', icon: '🚗', label: 'Ride' },
-          { color: '#16a34a', icon: '🚙', label: 'Driver (free)' },
-          { color: '#7c3aed', icon: '👤', label: 'You' },
+          { icon: '&#x1F697;', label: 'Ride' },
+          { icon: '&#x1F699;', label: 'Driver' },
+          { icon: '&#x1F464;', label: 'You' },
         ].map(l => (
           <div key={l.label} className="flex items-center gap-1 bg-gray-900/80 rounded-full px-2 py-0.5 text-xs text-gray-300">
-            <span>{l.icon}</span>
+            <span dangerouslySetInnerHTML={{ __html: l.icon }} />
             <span>{l.label}</span>
           </div>
         ))}
