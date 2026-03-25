@@ -10,6 +10,7 @@ import RideShare from '../components/RideShare'
 import RideShareMap from '../components/RideShareMap'
 import ThemeSelector from '../components/ThemeSelector'
 import UserProfile from '../components/UserProfile'
+import PropertyManager from '../components/PropertyManager'
 import {
   getUserProfile, userLogout, getStats, getNotifications,
   markAllNotificationsRead, markNotificationRead,
@@ -22,6 +23,7 @@ import socket from '../socket'
 
 const TABS = [
   { id: 'overview',    label: '🏠 Overview',          icon: '🏠' },
+  { id: 'properties',  label: '🏢 Properties',         icon: '🏢' },
   { id: 'rides',       label: '🚗 Rides',              icon: '🚗' },
   { id: 'inbox',       label: '💬 Inbox',              icon: '💬', badge: 'chat' },
   { id: 'notifications', label: '🔔 Notifications',   icon: '🔔', badge: 'notif' },
@@ -89,10 +91,11 @@ function OverviewPanel({ user, dashStats, onSelectTab }) {
         <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Quick Actions</h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { id: 'download', icon: '⬇️', title: 'Download Video',   desc: '1,000+ sites' },
-            { id: 'cv',       icon: '📄', title: 'Build a CV',        desc: 'PDF with ATS scan' },
-            { id: 'convert',  icon: '🔄', title: 'Convert Docs',      desc: 'PDF, Word & more' },
-            { id: 'rides',    icon: '🚗', title: 'Share a Ride',       desc: 'Post or find rides' },
+            { id: 'download',   icon: '⬇️', title: 'Download Video',   desc: '1,000+ sites' },
+            { id: 'cv',         icon: '📄', title: 'Build a CV',        desc: 'PDF with ATS scan' },
+            { id: 'convert',    icon: '🔄', title: 'Convert Docs',      desc: 'PDF, Word & more' },
+            { id: 'rides',      icon: '🚗', title: 'Share a Ride',       desc: 'Post or find rides' },
+            { id: 'properties', icon: '🏢', title: 'Properties',         desc: 'Map & agent finder' },
           ].map(tile => (
             <button
               key={tile.id}
@@ -505,6 +508,14 @@ export default function UserDashboard() {
           <div ref={tabPanelRef}>
             {tab === 'overview' && (
               <OverviewPanel user={appUser} dashStats={dashStats} onSelectTab={handleSelectTab} />
+            )}
+
+            {tab === 'properties' && (
+              <div className="card">
+                <PropertyManager
+                  userLocation={appUser?.lat != null ? { lat: appUser.lat, lng: appUser.lng } : null}
+                />
+              </div>
             )}
 
             {tab === 'download' && (

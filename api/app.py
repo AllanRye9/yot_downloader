@@ -5712,6 +5712,142 @@ async def api_doc_convert(
 
 
 # =========================================================
+# DOCUMENT TEXT EXTRACTION MODULE
+# =========================================================
+
+_TEXT_EXTRACT_ACCEPT = {"pdf", "docx", "doc", "txt", "odt"}
+_TEXT_EXTRACT_MAX_BYTES = 20 * 1024 * 1024  # 20 MB
+
+# Regex that matches a leading bullet character (possibly preceded by spaces/tabs)
+_BULLET_CHARS_RE = re.compile(
+    r"^([ \t]*)([•◦▸▹►▻✓✗✦✧❖○●■□▪▫\u2013\u2014]|-{1,2}|\*{1,2})\s+",
+    re.MULTILINE,
+)
+
+
+def _normalize_text_bullets(text: str) -> str:
+    """Normalize various bullet/list characters to '•', preserving indentation."""
+    def _repl(m: re.Match) -> str:
+        return m.group(1) + "• "
+    return _BULLET_CHARS_RE.sub(_repl, text)
+
+
+def _extract_text_from_docx_rich(path: str) -> str:
+    """Extract text from DOCX preserving line breaks and normalising list bullets."""
+    try:
+        from docx import Document as _DocxDocument
+        doc = _DocxDocument(path)
+        lines: list[str] = []
+        for para in doc.paragraphs:
+            raw = para.text
+            # Detect numbered/bulleted list paragraphs via paragraph style name
+            style_name = (para.style.name or "").lower()
+            is_list = "list" in style_name or (
+                para._p.pPr is not None
+                and para._p.pPr.find(
+                    "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}numPr"
+                ) is not None
+            )
+            if is_list and raw.strip():
+                lines.append("• " + raw)
+            else:
+                lines.append(raw)
+        # Include table content
+        for tbl in doc.tables:
+            for row in tbl.rows:
+                cells = [c.text.strip() for c in row.cells if c.text.strip()]
+                if cells:
+                    lines.append("  |  ".join(cells))
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def _extract_text_from_txt(path: str) -> str:
+    """Read a plain-text file, trying UTF-8 then latin-1 fallback."""
+    for enc in ("utf-8", "latin-1"):
+        try:
+            with open(path, "r", encoding=enc) as fh:
+                return fh.read()
+        except UnicodeDecodeError:
+            continue
+    return ""
+
+
+@fastapi_app.post("/api/doc/to_text")
+async def api_doc_to_text(
+    request: Request,
+    file: UploadFile = File(...),
+):
+    """Extract clean plain text from a PDF, DOCX, DOC, ODT, or TXT file.
+
+    The returned JSON contains:
+      - ``text``: the extracted text (Unicode-safe, emojis preserved, bullets normalised)
+      - ``filename``: original filename
+      - ``truncated``: true if content was trimmed to 200 000 characters
+    """
+    import tempfile
+
+    session = request.session
+    if not session.get("user_id"):
+        return JSONResponse({"error": "Not authenticated."}, status_code=401)
+
+    filename = (file.filename or "upload").strip()
+    src_ext = os.path.splitext(filename)[1].lower().lstrip(".")
+
+    if src_ext not in _TEXT_EXTRACT_ACCEPT:
+        return JSONResponse(
+            {
+                "error": (
+                    f"Unsupported file type '.{src_ext}'. "
+                    f"Supported: {', '.join(sorted(_TEXT_EXTRACT_ACCEPT))}."
+                )
+            },
+            status_code=400,
+        )
+
+    content = await file.read()
+    if len(content) > _TEXT_EXTRACT_MAX_BYTES:
+        return JSONResponse(
+            {"error": f"File too large (max {_TEXT_EXTRACT_MAX_BYTES // (1024 * 1024)} MB)."},
+            status_code=400,
+        )
+
+    tmpdir = tempfile.mkdtemp(prefix="totext_")
+    try:
+        src_path = os.path.join(tmpdir, f"input.{src_ext}")
+        with open(src_path, "wb") as fh:
+            fh.write(content)
+
+        if src_ext == "pdf":
+            raw = _extract_text_from_pdf(src_path)
+        elif src_ext in ("docx", "doc", "odt"):
+            raw = _extract_text_from_docx_rich(src_path)
+        else:  # txt
+            raw = _extract_text_from_txt(src_path)
+
+        # Normalise bullets; emojis and line breaks are kept as-is
+        text = _normalize_text_bullets(raw)
+
+        _MAX_CHARS = 200_000
+        truncated = len(text) > _MAX_CHARS
+        if truncated:
+            text = text[:_MAX_CHARS]
+
+        return JSONResponse({"text": text, "filename": filename, "truncated": truncated})
+
+    except Exception as exc:
+        logger.error("Text extraction error: %s", exc, exc_info=True)
+        return JSONResponse({"error": f"Extraction failed: {exc}"}, status_code=500)
+    finally:
+        def _rm(p):
+            import time as _t
+            _t.sleep(_TEMP_DIR_CLEANUP_DELAY_SECS)
+            shutil.rmtree(p, ignore_errors=True)
+        threading.Thread(target=_rm, args=(tmpdir,), daemon=True).start()
+
+
+# =========================================================
 # ATS CV SCANNING MODULE
 # =========================================================
 

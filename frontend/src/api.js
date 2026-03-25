@@ -235,6 +235,23 @@ export const convertDoc = (file, target) => {
   return request('POST', '/api/doc/convert', fd, false)
 }
 
+/**
+ * Extract clean plain text from a document (PDF, DOCX, DOC, ODT, TXT).
+ * @param {File} file
+ * @returns {Promise<{text: string, filename: string, truncated: boolean}>}
+ */
+export const extractDocText = async (file) => {
+  const fd = new FormData()
+  fd.append('file', file, file.name)
+  const res = await request('POST', '/api/doc/to_text', fd, false)
+  if (!res.ok) {
+    let msg = `Server error (${res.status})`
+    try { const j = await res.json(); if (j.error) msg = j.error } catch {}
+    throw new Error(msg)
+  }
+  return res.json()
+}
+
 // ── Admin Cookies ─────────────────────────────────────────────────────────────
 
 export const getCookieStatus    = () => request('GET', '/admin/cookies/status')
