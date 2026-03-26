@@ -812,7 +812,23 @@ def load_persistence():
             visitor_order_col = "id" if USE_POSTGRES else "rowid"
             rows_v = _execute(conn, f"SELECT data FROM visitors ORDER BY {visitor_order_col}").fetchall()
             saved_v = [json.loads(r["data"]) for r in rows_v]
-        finally:
+        except Exception as exc:
+            # Catch missing-table errors from both backends so the app can
+            # still start when init_db() hasn't run yet or failed silently.
+            _is_missing_table = isinstance(exc, sqlite3.OperationalError) or (
+                psycopg2 is not None
+                and isinstance(exc, psycopg2.errors.UndefinedTable)
+            )
+            if _is_missing_table:
+                logger.warning(
+                    "downloads/visitors table does not exist yet — skipping "
+                    "load_persistence(). Tables will be created by init_db()."
+                )
+                conn.close()
+                return
+            conn.close()
+            raise
+        else:
             conn.close()
 
     with downloads_lock:
