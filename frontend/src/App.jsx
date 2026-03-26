@@ -8,6 +8,9 @@ import RidesPage from './pages/RidesPage'
 import UserDashboard from './pages/UserDashboard'
 import AdminLogin from './pages/AdminLogin'
 import AdminDashboard from './pages/AdminDashboard'
+import PropertiesPage from './pages/PropertiesPage'
+import PropertyDetailPage from './pages/PropertyDetailPage'
+import PropertyInboxPage from './pages/PropertyInboxPage'
 
 // ─── Auth Context ─────────────────────────────────────────────────────────────
 const AuthCtx = createContext(null)
@@ -111,6 +114,9 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/rides" element={<RidesPage />} />
             <Route path="/dashboard" element={<UserDashboard />} />
+            <Route path="/properties" element={<PropertiesPage />} />
+            <Route path="/properties/:propertyId" element={<PropertyDetailPage />} />
+            <Route path="/property-inbox" element={<PropertyInboxPage />} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin/register" element={<AdminLogin register />} />
             <Route path="/const" element={

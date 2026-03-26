@@ -393,3 +393,44 @@ export const dmMarkRead = (convId) =>
   request('POST', `/api/dm/read/${encodeURIComponent(convId)}`, {})
 
 export const listUsers = () => request('GET', '/api/users/list')
+
+// ── Properties ────────────────────────────────────────────────────────────────
+
+export const listProperties = (params = {}) => {
+  const qs = new URLSearchParams()
+  if (params.status)   qs.set('status',   params.status)
+  if (params.min_lat != null) qs.set('min_lat', params.min_lat)
+  if (params.max_lat != null) qs.set('max_lat', params.max_lat)
+  if (params.min_lng != null) qs.set('min_lng', params.min_lng)
+  if (params.max_lng != null) qs.set('max_lng', params.max_lng)
+  const query = qs.toString()
+  return request('GET', `/api/properties${query ? '?' + query : ''}`)
+}
+
+export const getProperty = (propertyId) =>
+  request('GET', `/api/properties/${encodeURIComponent(propertyId)}`)
+
+export const createProperty = (data) => request('POST', '/api/properties', data)
+
+export const updateProperty = (propertyId, data) =>
+  request('PUT', `/api/properties/${encodeURIComponent(propertyId)}`, data)
+
+export const deleteProperty = (propertyId) =>
+  request('DELETE', `/api/properties/${encodeURIComponent(propertyId)}`)
+
+// ── Property Conversations (Inbox) ────────────────────────────────────────────
+
+export const listPropertyConversations = () =>
+  request('GET', '/api/property_conversations')
+
+export const startPropertyConversation = (property_id, agent_id) =>
+  request('POST', '/api/property_conversations', { property_id, agent_id })
+
+export const getPropertyMessages = (convId) =>
+  request('GET', `/api/property_conversations/${encodeURIComponent(convId)}/messages`)
+
+export const sendPropertyMessage = (conv_id, content) =>
+  request('POST', '/api/property_messages', { conv_id, content })
+
+export const markPropertyConversationRead = (convId) =>
+  request('POST', `/api/property_conversations/${encodeURIComponent(convId)}/read`, {})

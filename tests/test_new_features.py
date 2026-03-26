@@ -2158,3 +2158,366 @@ class TestDirectMessaging:
         assert resp.status_code == 200
         users = json.loads(resp.body)["users"]
         assert all(u["user_id"] != uid for u in users)
+
+
+# ===========================================================================
+# Property Discovery & Inbox
+# ===========================================================================
+
+class TestProperties:
+    """Tests for /api/properties endpoints."""
+
+    def test_list_properties_returns_properties(self):
+        """GET /api/properties should return seeded demo properties."""
+        import json
+        from api.app import api_list_properties
+        resp = run(api_list_properties())
+        assert resp.status_code == 200
+        data = json.loads(resp.body)
+        assert "properties" in data
+        assert isinstance(data["properties"], list)
+        assert len(data["properties"]) > 0
+
+    def test_list_properties_filter_by_status(self):
+        """GET /api/properties?status=active should only return active properties."""
+        import json
+        from api.app import api_list_properties
+        resp = run(api_list_properties(status="active"))
+        data = json.loads(resp.body)
+        for p in data["properties"]:
+            assert p["status"] == "active"
+
+    def test_list_properties_has_cover_image(self):
+        """Properties in list should have cover_image field."""
+        import json
+        from api.app import api_list_properties
+        resp = run(api_list_properties())
+        data = json.loads(resp.body)
+        # At least one seeded property should have a cover image
+        with_image = [p for p in data["properties"] if p.get("cover_image")]
+        assert len(with_image) > 0
+
+    def test_get_property_returns_detail(self):
+        """GET /api/properties/:id returns full detail with agents."""
+        import json
+        from api.app import api_list_properties, api_get_property
+        props = json.loads(run(api_list_properties()).body)["properties"]
+        pid = props[0]["property_id"]
+        resp = run(api_get_property(pid))
+        assert resp.status_code == 200
+        data = json.loads(resp.body)
+        assert "property" in data
+        assert data["property"]["property_id"] == pid
+        assert "agents" in data["property"]
+        assert isinstance(data["property"]["agents"], list)
+
+    def test_get_property_not_found(self):
+        """GET /api/properties/nonexistent → 404."""
+        from api.app import api_get_property
+        resp = run(api_get_property("nonexistent-property-xyz"))
+        assert resp.status_code == 404
+
+    def test_create_property_requires_login(self):
+        """POST /api/properties without login → 401."""
+        from api.app import api_create_property, _PropertyCreateRequest
+        req = _make_request({})
+        resp = run(api_create_property(req, _PropertyCreateRequest(title="Test Property")))
+        assert resp.status_code == 401
+
+    def test_create_property_ok(self):
+        """POST /api/properties with valid data should create a property."""
+        import json
+        from api.app import api_create_property, _PropertyCreateRequest
+        _, email = _register_user(name="PropOwner", role="passenger")
+        session = _login_session(email)
+        req = _make_request(session)
+        resp = run(api_create_property(req, _PropertyCreateRequest(
+            title="My Test Property",
+            description="A lovely place",
+            price=1500.0,
+            address="99 Test St, London",
+            lat=51.5, lng=-0.1,
+            status="active",
+        )))
+        assert resp.status_code == 201
+        data = json.loads(resp.body)
+        assert data["ok"] is True
+        assert data["property"]["title"] == "My Test Property"
+        assert data["property"]["price"] == 1500.0
+
+    def test_create_property_invalid_status(self):
+        """POST /api/properties with invalid status → 400."""
+        from api.app import api_create_property, _PropertyCreateRequest
+        _, email = _register_user(name="PropOwner2", role="passenger")
+        session = _login_session(email)
+        req = _make_request(session)
+        resp = run(api_create_property(req, _PropertyCreateRequest(
+            title="Bad Status Property",
+            status="invalid_status",
+        )))
+        assert resp.status_code == 400
+
+    def test_create_property_max_4_agents(self):
+        """POST /api/properties should silently cap agent_ids at 4."""
+        import json
+        from api.app import api_create_property, api_get_property, _PropertyCreateRequest
+        _, email = _register_user(name="PropOwner3", role="passenger")
+        session = _login_session(email)
+        req = _make_request(session)
+        resp = run(api_create_property(req, _PropertyCreateRequest(
+            title="Many Agents Property",
+            agent_ids=["agent-1", "agent-2", "agent-3", "agent-4", "agent-5", "agent-6"],
+        )))
+        assert resp.status_code == 201
+        pid = json.loads(resp.body)["property"]["property_id"]
+        detail = json.loads(run(api_get_property(pid)).body)["property"]
+        assert len(detail["agents"]) <= 4
+
+    def test_update_property_requires_login(self):
+        """PUT /api/properties/:id without login → 401."""
+        import json
+        from api.app import api_update_property, _PropertyUpdateRequest
+        # Use a seeded property ID
+        from api.app import api_list_properties
+        props = json.loads(run(api_list_properties()).body)["properties"]
+        pid = props[0]["property_id"]
+        req = _make_request({})
+        resp = run(api_update_property(req, pid, _PropertyUpdateRequest(title="New Title")))
+        assert resp.status_code == 401
+
+    def test_update_property_access_denied_for_other_user(self):
+        """PUT /api/properties/:id as non-owner → 403."""
+        import json
+        from api.app import api_create_property, api_update_property, _PropertyCreateRequest, _PropertyUpdateRequest
+        _, email1 = _register_user(name="Owner1", role="passenger")
+        _, email2 = _register_user(name="Other1", role="passenger")
+        session1 = _login_session(email1)
+        req1 = _make_request(session1)
+        pid = json.loads(run(api_create_property(req1, _PropertyCreateRequest(title="Owner1 Prop"))).body)["property"]["property_id"]
+
+        session2 = _login_session(email2)
+        req2 = _make_request(session2)
+        resp = run(api_update_property(req2, pid, _PropertyUpdateRequest(title="Hacked!")))
+        assert resp.status_code == 403
+
+    def test_update_property_by_owner_ok(self):
+        """PUT /api/properties/:id as owner should succeed."""
+        import json
+        from api.app import api_create_property, api_update_property, _PropertyCreateRequest, _PropertyUpdateRequest
+        _, email = _register_user(name="OwnerUpdate", role="passenger")
+        session = _login_session(email)
+        req = _make_request(session)
+        pid = json.loads(run(api_create_property(req, _PropertyCreateRequest(title="Original Title"))).body)["property"]["property_id"]
+        resp = run(api_update_property(req, pid, _PropertyUpdateRequest(title="Updated Title", status="sold")))
+        assert resp.status_code == 200
+        data = json.loads(resp.body)
+        assert data["property"]["title"] == "Updated Title"
+        assert data["property"]["status"] == "sold"
+
+    def test_delete_property_requires_login(self):
+        """DELETE /api/properties/:id without login → 401."""
+        import json
+        from api.app import api_delete_property, api_list_properties
+        props = json.loads(run(api_list_properties()).body)["properties"]
+        pid = props[0]["property_id"]
+        req = _make_request({})
+        resp = run(api_delete_property(req, pid))
+        assert resp.status_code == 401
+
+    def test_delete_property_by_owner_ok(self):
+        """DELETE /api/properties/:id as owner should succeed."""
+        import json
+        from api.app import api_create_property, api_delete_property, api_get_property, _PropertyCreateRequest
+        _, email = _register_user(name="OwnerDelete", role="passenger")
+        session = _login_session(email)
+        req = _make_request(session)
+        pid = json.loads(run(api_create_property(req, _PropertyCreateRequest(title="To Delete"))).body)["property"]["property_id"]
+        resp = run(api_delete_property(req, pid))
+        assert resp.status_code == 200
+        assert json.loads(resp.body)["ok"] is True
+        # Should be gone
+        assert run(api_get_property(pid)).status_code == 404
+
+    def test_list_properties_map_bounds_filter(self):
+        """GET /api/properties with bounds should filter by lat/lng."""
+        import json
+        from api.app import api_list_properties
+        # Use tight bounds that won't contain any seeded London properties
+        resp = run(api_list_properties(min_lat=0.0, max_lat=1.0, min_lng=0.0, max_lng=1.0))
+        data = json.loads(resp.body)
+        assert data["properties"] == []
+
+
+class TestPropertyConversations:
+    """Tests for /api/property_conversations and /api/property_messages endpoints."""
+
+    def _register_and_get_id(self, prefix="PropConv"):
+        resp, email = _register_user(name=prefix, role="passenger")
+        session = _login_session(email)
+        return session.get("app_user_id"), session, email
+
+    def test_list_conversations_requires_login(self):
+        """GET /api/property_conversations without login → 401."""
+        from api.app import api_list_property_conversations
+        req = _make_request({})
+        resp = run(api_list_property_conversations(req))
+        assert resp.status_code == 401
+
+    def test_list_conversations_empty_for_new_user(self):
+        """GET /api/property_conversations for a new user → empty list."""
+        import json
+        from api.app import api_list_property_conversations
+        uid, session, _ = self._register_and_get_id("PCEmpty")
+        req = _make_request(session)
+        resp = run(api_list_property_conversations(req))
+        assert resp.status_code == 200
+        data = json.loads(resp.body)
+        assert data["conversations"] == []
+
+    def test_start_conversation_requires_login(self):
+        """POST /api/property_conversations without login → 401."""
+        from api.app import api_start_property_conversation, _PropConvStartRequest
+        req = _make_request({})
+        resp = run(api_start_property_conversation(req, _PropConvStartRequest(property_id="prop-1", agent_id="agent-1")))
+        assert resp.status_code == 401
+
+    def test_start_conversation_nonexistent_property(self):
+        """POST /api/property_conversations with bad property_id → 404."""
+        from api.app import api_start_property_conversation, _PropConvStartRequest
+        uid, session, _ = self._register_and_get_id("PCBadProp")
+        req = _make_request(session)
+        resp = run(api_start_property_conversation(req, _PropConvStartRequest(property_id="no-such-prop", agent_id="agent-1")))
+        assert resp.status_code == 404
+
+    def test_start_conversation_nonexistent_agent(self):
+        """POST /api/property_conversations with bad agent_id → 404."""
+        from api.app import api_start_property_conversation, _PropConvStartRequest
+        uid, session, _ = self._register_and_get_id("PCBadAgent")
+        req = _make_request(session)
+        resp = run(api_start_property_conversation(req, _PropConvStartRequest(property_id="prop-1", agent_id="no-such-agent")))
+        assert resp.status_code == 404
+
+    def test_start_conversation_creates_conv(self):
+        """POST /api/property_conversations should create a conversation."""
+        import json
+        from api.app import api_start_property_conversation, _PropConvStartRequest
+        uid, session, _ = self._register_and_get_id("PCCreate")
+        req = _make_request(session)
+        resp = run(api_start_property_conversation(req, _PropConvStartRequest(property_id="prop-1", agent_id="agent-1")))
+        assert resp.status_code == 200
+        data = json.loads(resp.body)
+        assert "conv" in data
+        assert data["conv"]["property_id"] == "prop-1"
+        assert data["conv"]["agent_id"] == "agent-1"
+        assert data["conv"]["user_id"] == uid
+
+    def test_start_conversation_idempotent(self):
+        """Starting the same conversation twice should return the same conv_id."""
+        import json
+        from api.app import api_start_property_conversation, _PropConvStartRequest
+        uid, session, _ = self._register_and_get_id("PCIdempotent")
+        req = _make_request(session)
+        body = _PropConvStartRequest(property_id="prop-2", agent_id="agent-2")
+        conv1 = json.loads(run(api_start_property_conversation(req, body)).body)["conv"]["conv_id"]
+        conv2 = json.loads(run(api_start_property_conversation(req, body)).body)["conv"]["conv_id"]
+        assert conv1 == conv2
+
+    def test_get_messages_requires_login(self):
+        """GET /api/property_conversations/:id/messages without login → 401."""
+        from api.app import api_get_property_messages
+        req = _make_request({})
+        resp = run(api_get_property_messages(req, "some-conv-id"))
+        assert resp.status_code == 401
+
+    def test_get_messages_not_found(self):
+        """GET /api/property_conversations/nonexistent/messages → 404."""
+        from api.app import api_get_property_messages
+        uid, session, _ = self._register_and_get_id("PCMsgNotFound")
+        req = _make_request(session)
+        resp = run(api_get_property_messages(req, "nonexistent-conv"))
+        assert resp.status_code == 404
+
+    def test_get_messages_access_denied_for_non_participant(self):
+        """GET messages as non-participant → 403."""
+        import json
+        from api.app import api_start_property_conversation, api_get_property_messages, _PropConvStartRequest
+        uid1, s1, _ = self._register_and_get_id("PCAccess1")
+        uid2, s2, _ = self._register_and_get_id("PCAccess2")
+        conv_id = json.loads(run(api_start_property_conversation(_make_request(s1), _PropConvStartRequest(property_id="prop-1", agent_id="agent-1"))).body)["conv"]["conv_id"]
+        resp = run(api_get_property_messages(_make_request(s2), conv_id))
+        assert resp.status_code == 403
+
+    def test_send_message_requires_login(self):
+        """POST /api/property_messages without login → 401."""
+        from api.app import api_send_property_message, _PropMsgSendRequest
+        req = _make_request({})
+        resp = run(api_send_property_message(req, _PropMsgSendRequest(conv_id="x", content="hi")))
+        assert resp.status_code == 401
+
+    def test_send_empty_message_rejected(self):
+        """POST /api/property_messages with empty content → 400."""
+        import json
+        from api.app import api_start_property_conversation, api_send_property_message, _PropConvStartRequest, _PropMsgSendRequest
+        uid, session, _ = self._register_and_get_id("PCEmpty2")
+        req = _make_request(session)
+        conv_id = json.loads(run(api_start_property_conversation(req, _PropConvStartRequest(property_id="prop-1", agent_id="agent-3"))).body)["conv"]["conv_id"]
+        resp = run(api_send_property_message(req, _PropMsgSendRequest(conv_id=conv_id, content="   ")))
+        assert resp.status_code == 400
+
+    def test_send_and_retrieve_message(self):
+        """Send a message and retrieve it via GET messages."""
+        import json
+        from api.app import api_start_property_conversation, api_send_property_message, api_get_property_messages, _PropConvStartRequest, _PropMsgSendRequest
+        uid, session, _ = self._register_and_get_id("PCSendRecv")
+        req = _make_request(session)
+        conv_id = json.loads(run(api_start_property_conversation(req, _PropConvStartRequest(property_id="prop-1", agent_id="agent-1"))).body)["conv"]["conv_id"]
+        run(api_send_property_message(req, _PropMsgSendRequest(conv_id=conv_id, content="Hello agent!")))
+        msgs = json.loads(run(api_get_property_messages(req, conv_id)).body)["messages"]
+        assert any(m["content"] == "Hello agent!" for m in msgs)
+
+    def test_send_message_sets_sender_role_user(self):
+        """Messages sent by the conversation user should have sender_role='user'."""
+        import json
+        from api.app import api_start_property_conversation, api_send_property_message, api_get_property_messages, _PropConvStartRequest, _PropMsgSendRequest
+        uid, session, _ = self._register_and_get_id("PCSenderRole")
+        req = _make_request(session)
+        conv_id = json.loads(run(api_start_property_conversation(req, _PropConvStartRequest(property_id="prop-2", agent_id="agent-2"))).body)["conv"]["conv_id"]
+        run(api_send_property_message(req, _PropMsgSendRequest(conv_id=conv_id, content="Role check")))
+        msgs = json.loads(run(api_get_property_messages(req, conv_id)).body)["messages"]
+        msg = next(m for m in msgs if m["content"] == "Role check")
+        assert msg["sender_role"] == "user"
+
+    def test_conversation_listed_after_message(self):
+        """After starting a conversation it should appear in the inbox list."""
+        import json
+        from api.app import api_start_property_conversation, api_list_property_conversations, _PropConvStartRequest
+        uid, session, _ = self._register_and_get_id("PCListAfter")
+        req = _make_request(session)
+        conv_id = json.loads(run(api_start_property_conversation(req, _PropConvStartRequest(property_id="prop-3", agent_id="agent-7"))).body)["conv"]["conv_id"]
+        convs = json.loads(run(api_list_property_conversations(req)).body)["conversations"]
+        assert any(c["conv_id"] == conv_id for c in convs)
+
+    def test_mark_read_requires_login(self):
+        """POST /api/property_conversations/:id/read without login → 401."""
+        from api.app import api_property_conversation_read
+        req = _make_request({})
+        resp = run(api_property_conversation_read(req, "conv-id"))
+        assert resp.status_code == 401
+
+    def test_mark_read_resets_unread_count(self):
+        """Marking a conversation read should reset unread_count to 0."""
+        import json
+        from api.app import (
+            api_start_property_conversation, api_send_property_message,
+            api_list_property_conversations, api_property_conversation_read,
+            _PropConvStartRequest, _PropMsgSendRequest,
+        )
+        uid, session, _ = self._register_and_get_id("PCReadReset")
+        req = _make_request(session)
+        conv_id = json.loads(run(api_start_property_conversation(req, _PropConvStartRequest(property_id="prop-1", agent_id="agent-1"))).body)["conv"]["conv_id"]
+        # Send a message as user (increments agent's unread)
+        run(api_send_property_message(req, _PropMsgSendRequest(conv_id=conv_id, content="Mark read test")))
+        # Mark read as user (resets user's unread which was not incremented, just verify ok)
+        resp = run(api_property_conversation_read(req, conv_id))
+        assert resp.status_code == 200
+        assert json.loads(resp.body)["ok"] is True

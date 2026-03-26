@@ -706,12 +706,18 @@ export default function Home() {
         <ServiceCards activeTab={tab} onSelectTab={handleSelectTab} />
 
         {/* Ride Share & Driver Alerts — dedicated page link */}
-        <div className="mt-2 flex justify-center">
+        <div className="mt-2 flex justify-center gap-3 flex-wrap">
           <Link
             to="/rides"
             className="text-sm px-4 py-1.5 rounded-full border transition-colors bg-gray-800/60 border-gray-700 text-gray-400 hover:bg-yellow-700 hover:border-yellow-600 hover:text-yellow-100"
           >
             🚗 Ride Share &amp; Driver Alerts
+          </Link>
+          <Link
+            to="/properties"
+            className="text-sm px-4 py-1.5 rounded-full border transition-colors bg-gray-800/60 border-gray-700 text-gray-400 hover:bg-blue-700 hover:border-blue-600 hover:text-blue-100"
+          >
+            🏠 Property Discovery
           </Link>
         </div>
 

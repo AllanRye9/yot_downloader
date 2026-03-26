@@ -642,6 +642,55 @@ def init_db():
                         created_at TEXT NOT NULL
                     )
                 """)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS properties (
+                        id SERIAL PRIMARY KEY,
+                        property_id TEXT UNIQUE NOT NULL,
+                        title TEXT NOT NULL,
+                        description TEXT,
+                        price REAL NOT NULL DEFAULT 0,
+                        address TEXT,
+                        lat REAL,
+                        lng REAL,
+                        images_json TEXT NOT NULL DEFAULT '[]',
+                        status TEXT NOT NULL DEFAULT 'active',
+                        owner_user_id TEXT,
+                        created_at TEXT NOT NULL
+                    )
+                """)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS property_agents (
+                        id SERIAL PRIMARY KEY,
+                        property_id TEXT NOT NULL,
+                        agent_id TEXT NOT NULL,
+                        position INTEGER NOT NULL DEFAULT 0,
+                        UNIQUE(property_id, agent_id)
+                    )
+                """)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS property_conversations (
+                        id SERIAL PRIMARY KEY,
+                        conv_id TEXT UNIQUE NOT NULL,
+                        property_id TEXT NOT NULL,
+                        user_id TEXT NOT NULL,
+                        agent_id TEXT NOT NULL,
+                        unread_user INTEGER NOT NULL DEFAULT 0,
+                        unread_agent INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL
+                    )
+                """)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS property_messages (
+                        id SERIAL PRIMARY KEY,
+                        msg_id TEXT UNIQUE NOT NULL,
+                        conv_id TEXT NOT NULL,
+                        sender_id TEXT NOT NULL,
+                        sender_role TEXT NOT NULL DEFAULT 'user',
+                        content TEXT NOT NULL,
+                        ts REAL NOT NULL,
+                        created_at TEXT NOT NULL
+                    )
+                """)
                 conn.commit()
                 # Migrations: add new columns to existing tables if needed
                 for col, coldef in [("avatar_url", "TEXT"), ("bio", "TEXT")]:
@@ -793,6 +842,47 @@ def init_db():
                         content TEXT NOT NULL,
                         status TEXT NOT NULL DEFAULT 'sent',
                         reply_to_id TEXT,
+                        ts REAL NOT NULL,
+                        created_at TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS properties (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        property_id TEXT UNIQUE NOT NULL,
+                        title TEXT NOT NULL,
+                        description TEXT,
+                        price REAL NOT NULL DEFAULT 0,
+                        address TEXT,
+                        lat REAL,
+                        lng REAL,
+                        images_json TEXT NOT NULL DEFAULT '[]',
+                        status TEXT NOT NULL DEFAULT 'active',
+                        owner_user_id TEXT,
+                        created_at TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS property_agents (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        property_id TEXT NOT NULL,
+                        agent_id TEXT NOT NULL,
+                        position INTEGER NOT NULL DEFAULT 0,
+                        UNIQUE(property_id, agent_id)
+                    );
+                    CREATE TABLE IF NOT EXISTS property_conversations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        conv_id TEXT UNIQUE NOT NULL,
+                        property_id TEXT NOT NULL,
+                        user_id TEXT NOT NULL,
+                        agent_id TEXT NOT NULL,
+                        unread_user INTEGER NOT NULL DEFAULT 0,
+                        unread_agent INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS property_messages (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        msg_id TEXT UNIQUE NOT NULL,
+                        conv_id TEXT NOT NULL,
+                        sender_id TEXT NOT NULL,
+                        sender_role TEXT NOT NULL DEFAULT 'user',
+                        content TEXT NOT NULL,
                         ts REAL NOT NULL,
                         created_at TEXT NOT NULL
                     );
@@ -8231,6 +8321,705 @@ async def api_get_agent_chat(request: Request, agent_id: str):
 
 
 # =========================================================
+# PROPERTY ENDPOINTS
+# =========================================================
+
+_VALID_PROPERTY_STATUSES = {"active", "sold", "rented"}
+
+# Demo property seed data (linked to the demo agents)
+_DEMO_PROPERTIES_SEED = [
+    {
+        "property_id": "prop-1",
+        "title": "Modern 2-Bed Flat – Shoreditch",
+        "description": "A bright, modern two-bedroom flat in the heart of Shoreditch. Open-plan kitchen/living area, private balcony, and secure parking.",
+        "price": 2200,
+        "address": "12 Oak Street, London E1",
+        "lat": 51.522, "lng": -0.074,
+        "images_json": '["https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800","https://images.unsplash.com/photo-1484154218962-a197022b5858?w=800"]',
+        "status": "active",
+        "agent_ids": ["agent-1", "agent-3"],
+    },
+    {
+        "property_id": "prop-2",
+        "title": "Spacious 3-Bed House – Islington",
+        "description": "Beautiful Victorian terrace with three double bedrooms, two bathrooms, and a south-facing garden. Walking distance to Angel Tube.",
+        "price": 3500,
+        "address": "8 Maple Avenue, London N1",
+        "lat": 51.533, "lng": -0.103,
+        "images_json": '["https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800","https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=800"]',
+        "status": "active",
+        "agent_ids": ["agent-2", "agent-5"],
+    },
+    {
+        "property_id": "prop-3",
+        "title": "Studio Apartment – Canary Wharf",
+        "description": "Compact but stylish studio in Canary Wharf. Floor-to-ceiling windows with river views, gym access included, concierge service.",
+        "price": 1600,
+        "address": "34 Harbour Way, London E14",
+        "lat": 51.503, "lng": -0.017,
+        "images_json": '["https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800","https://images.unsplash.com/photo-1493809842364-78817add7ffb?w=800"]',
+        "status": "active",
+        "agent_ids": ["agent-7"],
+    },
+    {
+        "property_id": "prop-4",
+        "title": "Luxury 4-Bed Villa – Richmond",
+        "description": "Stunning detached family home close to Richmond Park. Four bedrooms, three reception rooms, double garage, and landscaped garden.",
+        "price": 6500,
+        "address": "5 Elm Close, Richmond TW10",
+        "lat": 51.461, "lng": -0.301,
+        "images_json": '["https://images.unsplash.com/photo-1613977257363-707ba9348227?w=800","https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800"]',
+        "status": "active",
+        "agent_ids": ["agent-8", "agent-6", "agent-1"],
+    },
+    {
+        "property_id": "prop-5",
+        "title": "1-Bed Flat – Clapham",
+        "description": "Well-presented one-bedroom flat in popular Clapham. Recently refurbished, modern kitchen, private roof terrace, near tube and park.",
+        "price": 1800,
+        "address": "21 Birch Lane, London SW4",
+        "lat": 51.461, "lng": -0.138,
+        "images_json": '["https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=800","https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=800"]',
+        "status": "active",
+        "agent_ids": ["agent-4", "agent-2"],
+    },
+    {
+        "property_id": "prop-6",
+        "title": "2-Bed New Build – Stratford",
+        "description": "Brand-new two-bedroom apartment in Stratford development. High spec throughout, balcony overlooking park, excellent transport links.",
+        "price": 2400,
+        "address": "9 Cedar Court, London E20",
+        "lat": 51.541, "lng": -0.002,
+        "images_json": '["https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800","https://images.unsplash.com/photo-1554995207-c18c203602cb?w=800"]',
+        "status": "sold",
+        "agent_ids": ["agent-3", "agent-8"],
+    },
+]
+
+
+def _seed_properties_if_empty():
+    """Seed the properties table with demo data if it is empty."""
+    _seed_agents_if_empty()
+    with _db_lock:
+        conn = _get_db()
+        try:
+            cur = _execute(conn, "SELECT COUNT(*) FROM properties")
+            count = (cur.fetchone() or [0])[0]
+            if count == 0:
+                now = datetime.utcnow().isoformat()
+                for p in _DEMO_PROPERTIES_SEED:
+                    try:
+                        if USE_POSTGRES:
+                            conn.cursor().execute(
+                                "INSERT INTO properties (property_id,title,description,price,address,lat,lng,images_json,status,owner_user_id,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+                                (p["property_id"], p["title"], p["description"], p["price"], p["address"], p["lat"], p["lng"], p["images_json"], p["status"], None, now),
+                            )
+                        else:
+                            conn.execute(
+                                "INSERT OR IGNORE INTO properties (property_id,title,description,price,address,lat,lng,images_json,status,owner_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                                (p["property_id"], p["title"], p["description"], p["price"], p["address"], p["lat"], p["lng"], p["images_json"], p["status"], None, now),
+                            )
+                        for pos, agent_id in enumerate(p.get("agent_ids", [])):
+                            try:
+                                if USE_POSTGRES:
+                                    conn.cursor().execute(
+                                        "INSERT INTO property_agents (property_id,agent_id,position) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
+                                        (p["property_id"], agent_id, pos),
+                                    )
+                                else:
+                                    conn.execute(
+                                        "INSERT OR IGNORE INTO property_agents (property_id,agent_id,position) VALUES (?,?,?)",
+                                        (p["property_id"], agent_id, pos),
+                                    )
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                conn.commit()
+        finally:
+            conn.close()
+
+
+def _get_property_agents(property_id: str) -> list[dict]:
+    """Return up to 4 agent objects linked to a property, with review stats."""
+    with _db_lock:
+        conn = _get_db()
+        try:
+            cur = _execute(
+                conn,
+                "SELECT agent_id FROM property_agents WHERE property_id=? ORDER BY position ASC LIMIT 4"
+                if not USE_POSTGRES else
+                "SELECT agent_id FROM property_agents WHERE property_id=%s ORDER BY position ASC LIMIT 4",
+                (property_id,),
+            )
+            agent_ids = [r[0] for r in cur.fetchall()]
+        finally:
+            conn.close()
+    return [a for a in (_get_agent_row(aid) for aid in agent_ids) if a]
+
+
+def _get_property_row(property_id: str, with_agents: bool = False) -> dict | None:
+    """Fetch one property by property_id."""
+    with _db_lock:
+        conn = _get_db()
+        try:
+            cur = _execute(
+                conn,
+                "SELECT property_id,title,description,price,address,lat,lng,images_json,status,owner_user_id,created_at FROM properties WHERE property_id=?"
+                if not USE_POSTGRES else
+                "SELECT property_id,title,description,price,address,lat,lng,images_json,status,owner_user_id,created_at FROM properties WHERE property_id=%s",
+                (property_id,),
+            )
+            cols = ["property_id","title","description","price","address","lat","lng","images_json","status","owner_user_id","created_at"]
+            row = cur.fetchone()
+            if not row:
+                return None
+            prop = dict(zip(cols, row))
+        finally:
+            conn.close()
+    try:
+        prop["images"] = json.loads(prop["images_json"] or "[]")
+    except Exception:
+        prop["images"] = []
+    if with_agents:
+        prop["agents"] = _get_property_agents(property_id)
+    return prop
+
+
+class _PropertyCreateRequest(BaseModel):
+    title: str
+    description: str = ""
+    price: float = 0.0
+    address: str = ""
+    lat: float | None = None
+    lng: float | None = None
+    images: list[str] = []
+    agent_ids: list[str] = []
+    status: str = "active"
+
+
+class _PropertyUpdateRequest(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    price: float | None = None
+    address: str | None = None
+    lat: float | None = None
+    lng: float | None = None
+    images: list[str] | None = None
+    agent_ids: list[str] | None = None
+    status: str | None = None
+
+
+@fastapi_app.get("/api/properties")
+async def api_list_properties(
+    status: str | None = None,
+    min_lat: float | None = None,
+    max_lat: float | None = None,
+    min_lng: float | None = None,
+    max_lng: float | None = None,
+):
+    """List properties, optionally filtered by status and/or map bounds."""
+    _seed_properties_if_empty()
+    with _db_lock:
+        conn = _get_db()
+        try:
+            ph = "%s" if USE_POSTGRES else "?"
+            parts = []
+            params = []
+            if status:
+                parts.append(f"status={ph}")
+                params.append(status)
+            if min_lat is not None:
+                parts.append(f"lat>={ph}")
+                params.append(min_lat)
+            if max_lat is not None:
+                parts.append(f"lat<={ph}")
+                params.append(max_lat)
+            if min_lng is not None:
+                parts.append(f"lng>={ph}")
+                params.append(min_lng)
+            if max_lng is not None:
+                parts.append(f"lng<={ph}")
+                params.append(max_lng)
+            where = (" WHERE " + " AND ".join(parts)) if parts else ""
+            cols = ["property_id","title","description","price","address","lat","lng","images_json","status","owner_user_id","created_at"]
+            cur = _execute(conn, f"SELECT {','.join(cols)} FROM properties{where} ORDER BY created_at DESC", params)
+            rows = cur.fetchall()
+        finally:
+            conn.close()
+
+    properties = []
+    for row in rows:
+        p = dict(zip(["property_id","title","description","price","address","lat","lng","images_json","status","owner_user_id","created_at"], row))
+        try:
+            p["images"] = json.loads(p["images_json"] or "[]")
+        except Exception:
+            p["images"] = []
+        # Return first image as cover
+        p["cover_image"] = p["images"][0] if p["images"] else None
+        properties.append(p)
+    return JSONResponse({"properties": properties})
+
+
+@fastapi_app.get("/api/properties/{property_id}")
+async def api_get_property(property_id: str):
+    """Get full details of a property including linked agents."""
+    prop = _get_property_row(property_id, with_agents=True)
+    if not prop:
+        return JSONResponse({"error": "Property not found."}, status_code=404)
+    return JSONResponse({"property": prop})
+
+
+@fastapi_app.post("/api/properties")
+async def api_create_property(request: Request, body: _PropertyCreateRequest):
+    """Create a new property listing (authenticated users only)."""
+    user_id = request.session.get("app_user_id")
+    if not user_id:
+        return JSONResponse({"error": "Login required."}, status_code=401)
+    title = body.title.strip()[:200]
+    if not title:
+        return JSONResponse({"error": "Title is required."}, status_code=400)
+    if body.status not in _VALID_PROPERTY_STATUSES:
+        return JSONResponse({"error": f"Invalid status. Must be one of: {', '.join(sorted(_VALID_PROPERTY_STATUSES))}"}, status_code=400)
+    agent_ids = list(dict.fromkeys(body.agent_ids))[:4]  # deduplicate, max 4
+    property_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    images_json = json.dumps(body.images[:20])
+
+    with _db_lock:
+        conn = _get_db()
+        try:
+            _execute(
+                conn,
+                "INSERT INTO properties (property_id,title,description,price,address,lat,lng,images_json,status,owner_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+                if not USE_POSTGRES else
+                "INSERT INTO properties (property_id,title,description,price,address,lat,lng,images_json,status,owner_user_id,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (property_id, title, body.description.strip(), body.price, body.address.strip(), body.lat, body.lng, images_json, body.status, user_id, now),
+            )
+            for pos, agent_id in enumerate(agent_ids):
+                try:
+                    _execute(
+                        conn,
+                        "INSERT OR IGNORE INTO property_agents (property_id,agent_id,position) VALUES (?,?,?)"
+                        if not USE_POSTGRES else
+                        "INSERT INTO property_agents (property_id,agent_id,position) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
+                        (property_id, agent_id, pos),
+                    )
+                except Exception:
+                    pass
+            conn.commit()
+        finally:
+            conn.close()
+
+    prop = _get_property_row(property_id, with_agents=True)
+    return JSONResponse({"ok": True, "property": prop}, status_code=201)
+
+
+@fastapi_app.put("/api/properties/{property_id}")
+async def api_update_property(request: Request, property_id: str, body: _PropertyUpdateRequest):
+    """Update a property (owner or admin only)."""
+    user_id = request.session.get("app_user_id")
+    admin   = request.session.get("admin_user")
+    if not user_id and not admin:
+        return JSONResponse({"error": "Login required."}, status_code=401)
+
+    prop = _get_property_row(property_id)
+    if not prop:
+        return JSONResponse({"error": "Property not found."}, status_code=404)
+    if not admin and prop["owner_user_id"] != user_id:
+        return JSONResponse({"error": "Access denied."}, status_code=403)
+
+    if body.status is not None and body.status not in _VALID_PROPERTY_STATUSES:
+        return JSONResponse({"error": f"Invalid status."}, status_code=400)
+
+    updates: dict = {}
+    if body.title       is not None: updates["title"]       = body.title.strip()[:200]
+    if body.description is not None: updates["description"] = body.description.strip()
+    if body.price       is not None: updates["price"]       = body.price
+    if body.address     is not None: updates["address"]     = body.address.strip()
+    if body.lat         is not None: updates["lat"]         = body.lat
+    if body.lng         is not None: updates["lng"]         = body.lng
+    if body.status      is not None: updates["status"]      = body.status
+    if body.images      is not None: updates["images_json"] = json.dumps(body.images[:20])
+
+    if updates:
+        ph = "%s" if USE_POSTGRES else "?"
+        set_clause = ", ".join(f"{k}={ph}" for k in updates)
+        vals = list(updates.values()) + [property_id]
+        with _db_lock:
+            conn = _get_db()
+            try:
+                _execute(
+                    conn,
+                    f"UPDATE properties SET {set_clause} WHERE property_id={'%s' if USE_POSTGRES else '?'}",
+                    vals,
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    if body.agent_ids is not None:
+        agent_ids = list(dict.fromkeys(body.agent_ids))[:4]
+        with _db_lock:
+            conn = _get_db()
+            try:
+                _execute(
+                    conn,
+                    "DELETE FROM property_agents WHERE property_id=?"
+                    if not USE_POSTGRES else
+                    "DELETE FROM property_agents WHERE property_id=%s",
+                    (property_id,),
+                )
+                for pos, agent_id in enumerate(agent_ids):
+                    try:
+                        _execute(
+                            conn,
+                            "INSERT OR IGNORE INTO property_agents (property_id,agent_id,position) VALUES (?,?,?)"
+                            if not USE_POSTGRES else
+                            "INSERT INTO property_agents (property_id,agent_id,position) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
+                            (property_id, agent_id, pos),
+                        )
+                    except Exception:
+                        pass
+                conn.commit()
+            finally:
+                conn.close()
+
+    prop = _get_property_row(property_id, with_agents=True)
+    return JSONResponse({"ok": True, "property": prop})
+
+
+@fastapi_app.delete("/api/properties/{property_id}")
+async def api_delete_property(request: Request, property_id: str):
+    """Delete a property listing (owner or admin only)."""
+    user_id = request.session.get("app_user_id")
+    admin   = request.session.get("admin_user")
+    if not user_id and not admin:
+        return JSONResponse({"error": "Login required."}, status_code=401)
+
+    prop = _get_property_row(property_id)
+    if not prop:
+        return JSONResponse({"error": "Property not found."}, status_code=404)
+    if not admin and prop["owner_user_id"] != user_id:
+        return JSONResponse({"error": "Access denied."}, status_code=403)
+
+    with _db_lock:
+        conn = _get_db()
+        try:
+            _execute(
+                conn,
+                "DELETE FROM property_agents WHERE property_id=?"
+                if not USE_POSTGRES else
+                "DELETE FROM property_agents WHERE property_id=%s",
+                (property_id,),
+            )
+            _execute(
+                conn,
+                "DELETE FROM properties WHERE property_id=?"
+                if not USE_POSTGRES else
+                "DELETE FROM properties WHERE property_id=%s",
+                (property_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    return JSONResponse({"ok": True})
+
+
+# ── Property Conversations (Inbox) ─────────────────────────────────────────────
+
+class _PropConvStartRequest(BaseModel):
+    property_id: str
+    agent_id: str
+
+
+class _PropMsgSendRequest(BaseModel):
+    conv_id: str
+    content: str
+
+
+def _get_property_conversation(conv_id: str) -> dict | None:
+    """Fetch a property conversation by conv_id."""
+    with _db_lock:
+        conn = _get_db()
+        try:
+            cur = _execute(
+                conn,
+                "SELECT conv_id,property_id,user_id,agent_id,unread_user,unread_agent,created_at FROM property_conversations WHERE conv_id=?"
+                if not USE_POSTGRES else
+                "SELECT conv_id,property_id,user_id,agent_id,unread_user,unread_agent,created_at FROM property_conversations WHERE conv_id=%s",
+                (conv_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            return dict(zip(["conv_id","property_id","user_id","agent_id","unread_user","unread_agent","created_at"], row))
+        finally:
+            conn.close()
+
+
+def _find_or_create_property_conversation(property_id: str, user_id: str, agent_id: str) -> dict:
+    """Find or create a property conversation for user↔agent on a property."""
+    with _db_lock:
+        conn = _get_db()
+        try:
+            cur = _execute(
+                conn,
+                "SELECT conv_id,property_id,user_id,agent_id,unread_user,unread_agent,created_at FROM property_conversations WHERE property_id=? AND user_id=? AND agent_id=?"
+                if not USE_POSTGRES else
+                "SELECT conv_id,property_id,user_id,agent_id,unread_user,unread_agent,created_at FROM property_conversations WHERE property_id=%s AND user_id=%s AND agent_id=%s",
+                (property_id, user_id, agent_id),
+            )
+            row = cur.fetchone()
+            if row:
+                return dict(zip(["conv_id","property_id","user_id","agent_id","unread_user","unread_agent","created_at"], row))
+            conv_id = str(uuid.uuid4())
+            now = datetime.now(timezone.utc).isoformat()
+            _execute(
+                conn,
+                "INSERT INTO property_conversations (conv_id,property_id,user_id,agent_id,unread_user,unread_agent,created_at) VALUES (?,?,?,?,0,0,?)"
+                if not USE_POSTGRES else
+                "INSERT INTO property_conversations (conv_id,property_id,user_id,agent_id,unread_user,unread_agent,created_at) VALUES (%s,%s,%s,%s,0,0,%s)",
+                (conv_id, property_id, user_id, agent_id, now),
+            )
+            conn.commit()
+            return {"conv_id": conv_id, "property_id": property_id, "user_id": user_id, "agent_id": agent_id, "unread_user": 0, "unread_agent": 0, "created_at": now}
+        finally:
+            conn.close()
+
+
+@fastapi_app.get("/api/property_conversations")
+async def api_list_property_conversations(request: Request):
+    """List all property inbox conversations for the current user (as buyer or agent)."""
+    user_id = request.session.get("app_user_id")
+    if not user_id:
+        return JSONResponse({"error": "Login required."}, status_code=401)
+
+    with _db_lock:
+        conn = _get_db()
+        try:
+            cur = _execute(
+                conn,
+                "SELECT conv_id,property_id,user_id,agent_id,unread_user,unread_agent,created_at FROM property_conversations WHERE user_id=? OR agent_id=?"
+                if not USE_POSTGRES else
+                "SELECT conv_id,property_id,user_id,agent_id,unread_user,unread_agent,created_at FROM property_conversations WHERE user_id=%s OR agent_id=%s",
+                (user_id, user_id),
+            )
+            rows = cur.fetchall()
+        finally:
+            conn.close()
+
+    conversations = []
+    for row in rows:
+        conv = dict(zip(["conv_id","property_id","user_id","agent_id","unread_user","unread_agent","created_at"], row))
+        prop = _get_property_row(conv["property_id"])
+        agent = _get_agent_row(conv["agent_id"])
+        other_user = _get_app_user(conv["user_id"])
+        unread = conv["unread_user"] if conv["user_id"] == user_id else conv["unread_agent"]
+
+        # Last message
+        with _db_lock:
+            conn = _get_db()
+            try:
+                cur = _execute(
+                    conn,
+                    "SELECT msg_id,sender_id,sender_role,content,ts FROM property_messages WHERE conv_id=? ORDER BY ts DESC LIMIT 1"
+                    if not USE_POSTGRES else
+                    "SELECT msg_id,sender_id,sender_role,content,ts FROM property_messages WHERE conv_id=%s ORDER BY ts DESC LIMIT 1",
+                    (conv["conv_id"],),
+                )
+                lm = cur.fetchone()
+            finally:
+                conn.close()
+
+        last_msg = None
+        if lm:
+            last_msg = dict(zip(["msg_id","sender_id","sender_role","content","ts"], lm))
+
+        conversations.append({
+            "conv_id":      conv["conv_id"],
+            "property":     {"property_id": conv["property_id"], "title": prop["title"] if prop else conv["property_id"], "cover_image": prop["images"][0] if prop and prop.get("images") else None},
+            "agent":        {"agent_id": conv["agent_id"], "name": agent["name"] if agent else conv["agent_id"], "avatar": agent["avatar"] if agent else "👤"},
+            "other_user":   {"user_id": conv["user_id"], "name": other_user["name"] if other_user else conv["user_id"]},
+            "unread_count": unread,
+            "last_message": last_msg,
+            "created_at":   conv["created_at"],
+            "role":         "user" if conv["user_id"] == user_id else "agent",
+        })
+
+    conversations.sort(key=lambda c: (c["last_message"]["ts"] if c["last_message"] else 0), reverse=True)
+    return JSONResponse({"conversations": conversations})
+
+
+@fastapi_app.post("/api/property_conversations")
+async def api_start_property_conversation(request: Request, body: _PropConvStartRequest):
+    """Find or create a property conversation (user contacting an agent about a property)."""
+    user_id = request.session.get("app_user_id")
+    if not user_id:
+        return JSONResponse({"error": "Login required."}, status_code=401)
+    prop = _get_property_row(body.property_id)
+    if not prop:
+        return JSONResponse({"error": "Property not found."}, status_code=404)
+    agent = _get_agent_row(body.agent_id)
+    if not agent:
+        return JSONResponse({"error": "Agent not found."}, status_code=404)
+    conv = _find_or_create_property_conversation(body.property_id, user_id, body.agent_id)
+    return JSONResponse({"conv": conv})
+
+
+@fastapi_app.get("/api/property_conversations/{conv_id}/messages")
+async def api_get_property_messages(request: Request, conv_id: str):
+    """Get messages in a property conversation."""
+    user_id = request.session.get("app_user_id")
+    if not user_id:
+        return JSONResponse({"error": "Login required."}, status_code=401)
+    conv = _get_property_conversation(conv_id)
+    if not conv:
+        return JSONResponse({"error": "Conversation not found."}, status_code=404)
+    if user_id not in (conv["user_id"], conv["agent_id"]):
+        return JSONResponse({"error": "Access denied."}, status_code=403)
+
+    with _db_lock:
+        conn = _get_db()
+        try:
+            cur = _execute(
+                conn,
+                "SELECT msg_id,conv_id,sender_id,sender_role,content,ts,created_at FROM property_messages WHERE conv_id=? ORDER BY ts ASC LIMIT 200"
+                if not USE_POSTGRES else
+                "SELECT msg_id,conv_id,sender_id,sender_role,content,ts,created_at FROM property_messages WHERE conv_id=%s ORDER BY ts ASC LIMIT 200",
+                (conv_id,),
+            )
+            cols = ["msg_id","conv_id","sender_id","sender_role","content","ts","created_at"]
+            messages = [dict(zip(cols, r)) for r in cur.fetchall()]
+        finally:
+            conn.close()
+
+    return JSONResponse({"messages": messages, "conv": conv})
+
+
+@fastapi_app.post("/api/property_messages")
+async def api_send_property_message(request: Request, body: _PropMsgSendRequest):
+    """Send a message in a property conversation."""
+    user_id = request.session.get("app_user_id")
+    if not user_id:
+        return JSONResponse({"error": "Login required."}, status_code=401)
+    content = body.content.strip()[:2000]
+    if not content:
+        return JSONResponse({"error": "Message cannot be empty."}, status_code=400)
+    conv = _get_property_conversation(body.conv_id)
+    if not conv:
+        return JSONResponse({"error": "Conversation not found."}, status_code=404)
+    if user_id not in (conv["user_id"], conv["agent_id"]):
+        return JSONResponse({"error": "Access denied."}, status_code=403)
+
+    msg_id      = str(uuid.uuid4())
+    ts          = time.time()
+    now         = datetime.now(timezone.utc).isoformat()
+    sender_role = "user" if user_id == conv["user_id"] else "agent"
+
+    with _db_lock:
+        conn = _get_db()
+        try:
+            _execute(
+                conn,
+                "INSERT OR IGNORE INTO property_messages (msg_id,conv_id,sender_id,sender_role,content,ts,created_at) VALUES (?,?,?,?,?,?,?)"
+                if not USE_POSTGRES else
+                "INSERT INTO property_messages (msg_id,conv_id,sender_id,sender_role,content,ts,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (msg_id) DO NOTHING",
+                (msg_id, body.conv_id, user_id, sender_role, content, ts, now),
+            )
+            # Increment unread for the other participant
+            if sender_role == "user":
+                _execute(
+                    conn,
+                    "UPDATE property_conversations SET unread_agent=unread_agent+1 WHERE conv_id=?"
+                    if not USE_POSTGRES else
+                    "UPDATE property_conversations SET unread_agent=unread_agent+1 WHERE conv_id=%s",
+                    (body.conv_id,),
+                )
+            else:
+                _execute(
+                    conn,
+                    "UPDATE property_conversations SET unread_user=unread_user+1 WHERE conv_id=?"
+                    if not USE_POSTGRES else
+                    "UPDATE property_conversations SET unread_user=unread_user+1 WHERE conv_id=%s",
+                    (body.conv_id,),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+    msg = {
+        "msg_id":      msg_id,
+        "conv_id":     body.conv_id,
+        "sender_id":   user_id,
+        "sender_role": sender_role,
+        "content":     content,
+        "ts":          ts,
+    }
+
+    # Real-time delivery to conversation room
+    room = f"prop_conv_{body.conv_id}"
+    await sio.emit("property_message", msg, room=room)
+
+    # Notify the other participant if online
+    other_id = conv["agent_id"] if sender_role == "user" else conv["user_id"]
+    with _socket_user_lock:
+        other_sid = _user_to_sid.get(other_id)
+    if other_sid:
+        me = _get_app_user(user_id)
+        sender_name = me["name"] if me else "Someone"
+        prop = _get_property_row(conv["property_id"])
+        prop_title = prop["title"] if prop else "a property"
+        await sio.emit(
+            "property_message_notification",
+            {"conv_id": body.conv_id, "from": sender_name, "preview": content[:80], "property_title": prop_title},
+            room=other_sid,
+        )
+
+    return JSONResponse({"ok": True, "message": msg})
+
+
+@fastapi_app.post("/api/property_conversations/{conv_id}/read")
+async def api_property_conversation_read(request: Request, conv_id: str):
+    """Mark messages in a property conversation as read for the current user."""
+    user_id = request.session.get("app_user_id")
+    if not user_id:
+        return JSONResponse({"error": "Login required."}, status_code=401)
+    conv = _get_property_conversation(conv_id)
+    if not conv:
+        return JSONResponse({"error": "Conversation not found."}, status_code=404)
+    if user_id not in (conv["user_id"], conv["agent_id"]):
+        return JSONResponse({"error": "Access denied."}, status_code=403)
+
+    with _db_lock:
+        conn = _get_db()
+        try:
+            if user_id == conv["user_id"]:
+                _execute(
+                    conn,
+                    "UPDATE property_conversations SET unread_user=0 WHERE conv_id=?"
+                    if not USE_POSTGRES else
+                    "UPDATE property_conversations SET unread_user=0 WHERE conv_id=%s",
+                    (conv_id,),
+                )
+            else:
+                _execute(
+                    conn,
+                    "UPDATE property_conversations SET unread_agent=0 WHERE conv_id=?"
+                    if not USE_POSTGRES else
+                    "UPDATE property_conversations SET unread_agent=0 WHERE conv_id=%s",
+                    (conv_id,),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+    room = f"prop_conv_{conv_id}"
+    await sio.emit("property_conv_read", {"conv_id": conv_id, "reader_id": user_id}, room=room)
+    return JSONResponse({"ok": True})
+
+
+# =========================================================
 # DIRECT MESSAGING (DM) ENDPOINTS
 # =========================================================
 
@@ -9153,6 +9942,78 @@ async def on_dm_read(sid, data):
 
     room = f"dm_{conv_id}"
     await sio.emit("dm_read", {"conv_id": conv_id, "reader_id": reader_id}, room=room)
+
+
+# ── Property Conversation live-chat ─────────────────────────────────────────
+
+@sio.on("prop_conv_join")
+async def on_prop_conv_join(sid, data):
+    """Subscribe caller to a property conversation room and send recent history."""
+    if not isinstance(data, dict):
+        return
+    conv_id = data.get("conv_id")
+    if not conv_id:
+        return
+    room = f"prop_conv_{conv_id}"
+    sio.enter_room(sid, room)
+
+    history = []
+    try:
+        with _db_lock:
+            conn = _get_db()
+            try:
+                cur = _execute(
+                    conn,
+                    "SELECT msg_id,conv_id,sender_id,sender_role,content,ts FROM property_messages WHERE conv_id=? ORDER BY ts ASC LIMIT 100"
+                    if not USE_POSTGRES else
+                    "SELECT msg_id,conv_id,sender_id,sender_role,content,ts FROM property_messages WHERE conv_id=%s ORDER BY ts ASC LIMIT 100",
+                    (conv_id,),
+                )
+                cols = ["msg_id","conv_id","sender_id","sender_role","content","ts"]
+                history = [dict(zip(cols, r)) for r in cur.fetchall()]
+            finally:
+                conn.close()
+    except Exception as e:
+        logger.warning(f"Failed to load property conversation history: {e}")
+
+    await sio.emit("prop_conv_joined", {"conv_id": conv_id, "history": history}, room=sid)
+
+
+@sio.on("prop_conv_leave")
+async def on_prop_conv_leave(sid, data):
+    """Unsubscribe caller from a property conversation room."""
+    if not isinstance(data, dict):
+        return
+    conv_id = data.get("conv_id")
+    if not conv_id:
+        return
+    sio.leave_room(sid, f"prop_conv_{conv_id}")
+
+
+@sio.on("prop_conv_typing")
+async def on_prop_conv_typing(sid, data):
+    """Broadcast typing indicator to property conversation room."""
+    if not isinstance(data, dict):
+        return
+    conv_id   = data.get("conv_id")
+    sender_id = data.get("sender_id")
+    if not conv_id or not sender_id:
+        return
+    room = f"prop_conv_{conv_id}"
+    await sio.emit("prop_conv_typing", {"conv_id": conv_id, "sender_id": sender_id}, room=room, skip_sid=sid)
+
+
+@sio.on("prop_conv_stop_typing")
+async def on_prop_conv_stop_typing(sid, data):
+    """Broadcast stop-typing indicator to property conversation room."""
+    if not isinstance(data, dict):
+        return
+    conv_id   = data.get("conv_id")
+    sender_id = data.get("sender_id")
+    if not conv_id or not sender_id:
+        return
+    room = f"prop_conv_{conv_id}"
+    await sio.emit("prop_conv_stop_typing", {"conv_id": conv_id, "sender_id": sender_id}, room=room, skip_sid=sid)
 
 
 def cleanup_old_files():
