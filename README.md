@@ -1,101 +1,167 @@
-# yot_downloader
+# yot_downloader — Airport Pickup Platform
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/e5663d6c-8ee6-4439-a3db-d08c407dfadf" alt="yot_downloader logo" width="180"/>
 </p>
 
 <p align="center">
-  A simple, fast, and self-hosted web application for downloading videos from YouTube and hundreds of other sites.<br>
-  It provides a clean browser UI with real-time progress bars, audio notifications, and an instant file library to stream or save your videos.
+  This platform bridges airport travelers with verified drivers through intelligent matching, real-time tracking, and transparent fare calculation. Built for reliability, trust, and seamless mobile experience.
 </p>
 
 ---
 
-## How It Works
+## Overview
 
-```mermaid
-flowchart LR
-    A([🌐 Browser]) -->|Paste URL + Format| B[FastAPI Server]
-    B -->|yt-dlp| C[(YouTube / 1000+ sites)]
-    C -->|Video / Audio stream| B
-    B -->|Real-time progress\nvia Socket.IO| A
-    B -->|Saves file| D[📁 downloads/]
-    D -->|Stream / Save| A
+Book an airport pickup in seconds: clients select their airport and destination, the system auto-calculates the fare, and the nearest verified driver is matched instantly. Every driver is registered, reviewed, and marked with a verification badge before appearing on the live map. Real-time WebSocket tracking keeps clients informed as their driver moves, while an auto-response messaging flow ensures all booking details are collected without back-and-forth friction — all in a mobile-first layout that works perfectly on any device.
+
+---
+
+## Core Features
+
+- **Smart Fare Engine** — Distance-based auto-calculation using the Haversine formula between the pickup airport and the client's destination. No hidden fees, no surprises — the fare is shown before booking is confirmed.
+- **Verified Driver Network** — Drivers complete a registration form (personal details, vehicle info, document upload) and receive admin approval before participating. A visible ✓ verification badge appears on each approved driver's profile and map marker, building trust at a glance.
+- **Real-Time Map** — An interactive OpenStreetMap view shows all verified, available drivers with animated pulse markers. Clients can see drivers moving in real time and book the nearest one directly from the map.
+- **Auto-Response Messaging** — When a client sends their first booking message, the system immediately replies with a structured prompt: *"Please share your current location, full name, and contact number to complete your booking."* This collects all necessary details in one step, reducing friction for both sides.
+- **Mobile-First Layout** — Sticky sidebars, a scrollable central map, and a responsive design that stacks gracefully on smaller screens. Touch targets meet the 44×44 px minimum and map interactions are optimised for fingers.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React + Vite + Tailwind CSS |
+| Backend | Python + FastAPI + Socket.IO |
+| Database | PostgreSQL (production) / SQLite (development) |
+| Real-time tracking | WebSocket via Socket.IO |
+| Map integration | Leaflet + OpenStreetMap (CartoDB Voyager / OSM tiles) |
+| Mobile | Flutter (iOS & Android) |
+| Downloader | yt-dlp + ffmpeg |
+
+---
+
+## Flutter Directory
+
+> **Flutter structure reorganized — see `/lib/features/ride_sharing` for airport pickup modules, map widgets, and driver tracking logic.**
+
+```
+flutter_app/lib/
+├── features/
+│   └── ride_sharing/
+│       ├── airport_pickup/
+│       │   ├── booking_screen.dart        # Client booking flow (airport → destination)
+│       │   ├── fare_calculator.dart       # Distance-based fare engine
+│       │   └── auto_response_service.dart # Structured prompt auto-reply
+│       ├── driver_tracking/
+│       │   ├── driver_registration.dart   # Registration form + document upload
+│       │   ├── verification_badge.dart    # Badge widget for verified drivers
+│       │   └── realtime_location.dart     # WebSocket location broadcasting
+│       └── map/
+│           ├── scrollable_map.dart        # Interactive, scrollable map widget
+│           ├── driver_icons.dart          # Animated driver markers with badge overlay
+│           └── sticky_layout.dart         # 3-column sticky layout shell
+└── shared/
+    ├── widgets/                           # Reusable UI components
+    ├── services/                          # Shared API/socket service layer
+    └── models/                            # Shared data models
 ```
 
 ---
 
-## Features
+## Getting Started
 
-- **One-click downloads** – paste any URL supported by [yt-dlp](https://github.com/yt-dlp/yt-dlp) and hit *Start Download*
-- **Real-time progress bars** – live percentage, download speed, and ETA streamed to the browser via Socket.IO (no page refresh needed)
-- **Multiple simultaneous downloads** – up to 3 concurrent downloads, each with its own progress card
-- **Audio notifications** – distinct tones play when a download starts, completes, or fails (Web Audio API, no extra files required)
-- **Format selection** – pass any yt-dlp format string (e.g. `best`, `bestvideo+bestaudio`, `mp3`)
-- **Cookie support** – supply a cookies.txt path to access age-restricted or login-only content
-- **File library** – all downloaded files are listed with name, size, and date; each file can be saved directly from the browser
-- **Delete files** – remove downloaded files from the library with a single click
-- **Live stats badge** – a persistent badge shows the total storage used
-- **Toast notifications** – non-intrusive pop-up messages confirm every action
-- **Connection indicator** – live dot shows WebSocket connection status
-- **Rate limiting** – max 5 concurrent downloads per IP, max 3 system-wide
-- **No playlist downloads** – `--no-playlist` is enforced so single-video URLs are never accidentally expanded
-
----
-
-## Prerequisites
+### Prerequisites
 
 | Requirement | Version |
 |-------------|---------|
-| Python | 3.11 + |
-| [yt-dlp](https://github.com/yt-dlp/yt-dlp) | latest recommended |
-| ffmpeg *(optional)* | for merging video + audio streams |
+| Python | 3.11+ |
+| Flutter | ≥ 3.19.0 |
+| [yt-dlp](https://github.com/yt-dlp/yt-dlp) | latest |
+| ffmpeg *(optional)* | for video merging |
 
----
-
-## Installation
+### Server Setup
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/AllanRye9/yot_downloader.git
 cd yot_downloader
 
-# 2. Create and activate a virtual environment (recommended)
+# 2. Create and activate a virtual environment
 python -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
 
-# 3. Install Python dependencies
+# 3. Install dependencies
 pip install -r requirements.txt
+
+# 4. Configure environment variables (copy and edit as needed)
+#    FARE_PER_KM=1.5          — base fare rate per km
+#    MAP_API_KEY=<key>         — optional map tile API key
+#    DATABASE_URL=<postgres>   — PostgreSQL connection string (omit for SQLite)
+#    SECRET_KEY=<secret>       — session secret (set in production)
+
+# 5. Start the server
+python api/app.py
+# → http://127.0.0.1:5000
+```
+
+### Flutter Mobile App
+
+```bash
+cd flutter_app
+flutter pub get
+flutter run
+# Configure the backend URL via Settings (⚙) in the app
 ```
 
 ---
 
-## Usage
+## API Reference
 
-```bash
-python api/app.py
-```
+### Downloader
 
-The server starts at **http://127.0.0.1:5000** by default.
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/` | Serves the main UI |
+| `POST` | `/start_download` | Start a download; returns `{"download_id": "..."}` |
+| `GET` | `/status/<id>` | Progress for a specific download |
+| `GET` | `/files` | List all downloaded files |
+| `GET` | `/downloads/<filename>` | Stream a file to the browser |
+| `DELETE` | `/delete/<filename>` | Delete a downloaded file |
+| `POST` | `/cancel/<id>` | Cancel an in-progress download |
+| `GET` | `/health` | Health check |
 
-1. Open the URL in your browser.
-2. Paste a video URL into the *Video URL* field.
-3. *(Optional)* Change the **Format** string or provide a **Cookies** file path.
-4. Click **Start Download**.
-5. Watch the live progress bar and stats (speed / ETA) appear in the *Active Downloads* section.
-6. A success tone plays and the file appears in the **Downloaded Videos** list when complete.
-7. Click **Save** to download the file to your device, or the trash icon to delete it.
+### Airport Pickup Service
 
-### Format examples
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/rides/calculate_fare` | Auto-calculate fare (`?origin_lat=&origin_lng=&dest_lat=&dest_lng=`) |
+| `POST` | `/api/rides/post` | Post a pickup request (includes `fare`, `dest_lat`, `dest_lng`) |
+| `GET` | `/api/rides/list` | List all pickup requests (includes `fare` in response) |
+| `POST` | `/api/driver/location` | Broadcast driver location (verified drivers only) |
+| `GET` | `/api/driver/locations` | All active verified driver locations |
 
-| Format string | Result |
-|---------------|--------|
-| `best` | Best single-file quality (default) |
-| `bestvideo+bestaudio` | Best quality with ffmpeg merge |
-| `bestvideo[height<=720]+bestaudio` | Cap at 720p |
-| `bestvideo[height<=480]+bestaudio` | Cap at 480p |
-| `mp3` | Audio only (requires ffmpeg) |
-| `bestaudio` | Best audio stream |
+### Socket.IO Events
+
+| Direction | Event | Description |
+|-----------|-------|-------------|
+| Server → Client | `progress` | yt-dlp download progress |
+| Server → Client | `ride_chat_message` | New chat message (including auto-response system prompts) |
+| Server → Client | `driver_nearby` | Real-time driver location update |
+| Client → Server | `join_ride_chat` | Join a ride's chat room |
+| Client → Server | `ride_chat_message` | Send a chat message |
+
+---
+
+## Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SECRET_KEY` | random | Flask/FastAPI session secret — set in production |
+| `DOWNLOAD_FOLDER` | `downloads` | Directory for saved files |
+| `ALLOWED_ORIGINS` | `*` | CORS origins — restrict in production |
+| `PORT` | `5000` | Server port |
+| `FARE_PER_KM` | `1.5` | Base fare rate (USD) per kilometre |
+| `DATABASE_URL` | *(SQLite)* | PostgreSQL connection string |
 
 ---
 
@@ -108,277 +174,23 @@ docker run -p 5000:5000 yot_downloader
 
 ---
 
-## Project Structure
-
-```
-yot_downloader/
-├── api/
-│   └── app.py          # Flask application & download logic
-├── templates/
-│   └── index.html      # Single-page frontend (HTML + CSS + JS)
-├── downloads/          # Created automatically; stores downloaded files
-├── requirements.txt    # Python dependencies
-├── Dockerfile          # Docker build definition (uses Python 3.12)
-└── README.md
-```
-
----
-
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/` | Serves the main UI |
-| `POST` | `/start_download` | Starts a download; returns `{"download_id": "..."}` |
-| `GET` | `/status/<download_id>` | Returns status/progress for a specific download |
-| `GET` | `/files` | Lists all files in the downloads folder |
-| `GET` | `/active_downloads` | Returns active/queued downloads with progress details |
-| `GET` | `/stats` | Returns file count, total size, and active download count |
-| `GET` | `/downloads/<filename>` | Streams a downloaded file to the browser |
-| `DELETE` | `/delete/<filename>` | Deletes a downloaded file |
-| `POST` | `/cancel/<download_id>` | Cancels an ongoing download |
-| `GET` | `/health` | Health check endpoint |
-
-### Socket.IO events
-
-| Direction | Event | Payload | Description |
-|-----------|-------|---------|-------------|
-| Server → Client | `progress` | `{id, line, percent, speed, eta, size}` | yt-dlp progress update |
-| Server → Client | `completed` | `{id, filename, title}` | Download finished successfully |
-| Server → Client | `failed` | `{id, error}` | Download encountered an error |
-| Server → Client | `cancelled` | `{id}` | Download was cancelled |
-| Server → Client | `files_updated` | *(none)* | Broadcast when file list changes |
-| Client → Server | `subscribe` | `{download_id}` | Join a room to receive progress for a specific download |
-
----
-
-## Configuration
-
-| Variable | Location | Default | Description |
-|----------|----------|---------|-------------|
-| `SECRET_KEY` | env / `Config` | random on startup | Flask session secret – set in production |
-| `DOWNLOAD_FOLDER` | `Config` | `'downloads'` | Directory where files are saved |
-| `ALLOWED_ORIGINS` | env | `"*"` | Restrict in production to your domain |
-| `PORT` | env | `5000` | Server port |
-| `FLASK_DEBUG` | env | *(unset)* | Enable debug logging |
-
----
-
 ## Troubleshooting
 
-### ❌ "This video cannot be downloaded right now" / bot detection error
+### ❌ Bot detection / "This video cannot be downloaded right now"
 
-**Error message you may see:**
-> This video cannot be downloaded right now. Please try again in a few minutes, or try a different video.
+YouTube may challenge automated requests. The app automatically retries with alternative player clients (`web_embedded`, `tv`, `mweb`). If retries fail, upload a `cookies.txt` file via **Admin → Cookies**.
 
-**Cause:**  
-YouTube detects automated download requests and blocks them in one of two ways:
+See the [yt-dlp cookies FAQ](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp) for export instructions.
 
-- A *"Sign in to confirm you're not a bot"* challenge gate, or
-- A direct throttle response: *"This video cannot be downloaded right now. Please try again in a few minutes, or try a different video."*
+### ❌ HTTP 403 Forbidden
 
-Both forms appear when too many unauthenticated requests are made from the same IP, or when YouTube updates its bot-detection thresholds. The app automatically retries with alternative player clients when either error fires; if the retry also fails, a clear message is shown and uploading a `cookies.txt` file is the recommended fix.
-
-**Fix:**  
-Supply a `cookies.txt` file exported from a logged-in YouTube session in your browser. The app reads this file and passes it to `yt-dlp` so YouTube treats the request as a real browser session rather than a bot.
-
-**Step-by-step:**
-
-1. **Export your cookies** from a browser where you are already signed in to YouTube.  
-   Use the browser extension recommended by yt-dlp:  
-   → [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) (Chrome/Edge) or equivalent for Firefox.  
-   See the [yt-dlp cookies FAQ](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp) for full instructions.
-
-2. **Upload the file** via the Admin panel:
-   - Log in at `/admin`.
-   - Go to **Admin → Cookies** (or use the *Upload Cookies* button in the admin bar on the home page).
-   - Upload the exported `cookies.txt` file.
-
-3. **Retry the download.** The status dot in the admin bar will turn green once cookies are active, and the bot-detection error should no longer appear.
-
-> **Note:** Cookies expire. If you later see *"Your cookies file may be expired or invalid"*, simply export fresh cookies and re-upload via the Admin panel.
+The downloader retries with cookieless CDN clients and falls back to `gallery-dl`, `you-get`, and `streamlink` before reporting failure. Supplying a `cookies.txt` file resolves most persistent 403 errors.
 
 ---
 
-### ❌ "HTTP Error 403: Forbidden" when downloading
+## Impact Statement
 
-**Error message you may see:**
-> This video cannot be downloaded right now — the server received HTTP 403 Forbidden from YouTube's CDN. Please try again in a few minutes, or try a different video.
-
-**Cause:**  
-HTTP 403 Forbidden during video data download (distinct from the bot-detection sign-in gate above) occurs when YouTube's CDN servers deny the actual stream request. Common triggers:
-
-- The CDN stream URL's embedded authentication token expired between extraction and download
-- The server's IP is temporarily rate-limited or geo-blocked at the YouTube CDN level
-- The selected yt-dlp player client produces stream URLs that the CDN rejects
-
-**How the app handles it automatically:**
-
-The downloader uses a multi-stage fallback strategy when a 403 occurs:
-
-1. **Retry with cookieless player clients** (`web_embedded`, `tv`, `mweb`) — these clients produce CDN URLs that bypass many token requirements and often succeed when the default client is blocked.
-2. **Try up to 3 alternative download tools** (gallery-dl, you-get, streamlink) if yt-dlp still fails after the retry. The first tool that succeeds is used.
-3. **Fragment retry resilience** — `fragment_retries: 5` and `file_access_retries: 3` are configured so that transient 403s on individual HLS/DASH fragments are automatically retried without failing the entire download.
-
-**Manual fix (if automatic retries still fail):**
-
-Supply a `cookies.txt` file (same steps as the bot-detection fix above). An authenticated session provides YouTube CDN with a valid session token, which eliminates 403 errors for virtually all videos.
-
----
-
-## Changelog
-
-### 2026-03 — Bot-detection bypass & UI improvements
-
-#### YouTube bot-detection bypass
-
-YouTube periodically challenges automated download requests with a
-*"Sign in to confirm you're not a bot"* gate. The following changes
-eliminate this error for the vast majority of users and ensure the
-remaining edge-cases surface a clear, non-confusing message:
-
-- **Multi-client fallback**: yt-dlp is now configured with
-  `player_client: ["default", "web_embedded", "tv", "mweb"]`.  
-  `"default"` delegates to yt-dlp's own session-aware client selection
-  (which already includes `android_vr`). `web_embedded`, `tv`, and
-  `mweb` are added as explicit, PO-token-free fallbacks for environments
-  where `web_safari` would otherwise fail.  
-  `mweb` (YouTube Mobile Web) is placed last as a final bypass option:
-  its `m.youtube.com` endpoint uses different bot-detection heuristics
-  than desktop clients, so it succeeds when the others are rate-limited
-  or blocked.  
-  Together these four clients cover public, age-restricted, and
-  authenticated content without requiring manual intervention for most
-  requests.
-
-- **Cookie passthrough**: When the site administrator uploads a
-  `cookies.txt` file via **Admin → Cookies**, yt-dlp automatically
-  passes it to every download request. Cookies let YouTube treat the
-  server as a real browser session rather than a bot, which prevents
-  bot-detection errors for all users on the site.  
-  See [yt-dlp cookies FAQ](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp)
-  for how to export and upload cookies.
-
-- **User-friendly error messages**: If bot-detection still triggers
-  (e.g. no cookies configured, or cookies have expired), the error
-  shown to users is now a plain, action-oriented message —
-  *"This video cannot be downloaded right now. Please try again in a
-  few minutes, or try a different video."* — instead of confusing
-  admin-only instructions about uploading a cookies file.
-
-#### HTTP 403 Forbidden fix
-
-YouTube CDN servers can return `HTTP Error 403: Forbidden` when the
-downloader attempts to fetch the actual video stream — even when
-extraction (title, formats) succeeds. The following changes fix this
-error once and for all for the vast majority of cases:
-
-- **403 detection**: A new `_is_http_forbidden_error()` helper detects
-  the full family of 403 patterns emitted by yt-dlp:
-  `"HTTP Error 403: Forbidden"`, `"unable to download video data"`,
-  `"403: forbidden"`. The error is now correctly classified alongside
-  auth and DRM errors rather than silently surfacing as a raw exception.
-
-- **Automatic retry with cookieless clients**: When a 403 occurs,
-  the downloader immediately retries using only `web_embedded`, `tv`,
-  and `mweb` player clients. These clients produce CDN stream URLs that
-  bypass many token requirements and succeed when the default client is
-  CDN-blocked.
-
-- **Alternative tool fallback**: If the cookieless retry also fails,
-  the downloader tries up to 3 alternative tools in order —
-  `gallery-dl`, `you-get`, `streamlink` — before reporting failure.
-  This ensures the best possible chance of success without user
-  intervention.
-
-- **Fragment retry resilience**: `fragment_retries: 5` and
-  `file_access_retries: 3` are now set in yt-dlp options, so transient
-  403 responses on individual HLS/DASH fragments are retried
-  automatically rather than aborting the download.
-
-- **User-friendly 403 message**: Users now see
-  *"This video cannot be downloaded right now — the server received
-  HTTP 403 Forbidden from YouTube's CDN. Please try again in a few
-  minutes, or try a different video."* instead of the raw yt-dlp
-  exception text.
-
-#### Parallel download capacity (merged from PR #140)
-
-- `MAX_CONCURRENT_DOWNLOADS` raised from 3 → 10 (env-configurable)
-- `MAX_DOWNLOADS_PER_IP` raised from 5 → 10
-- `MAX_QUEUE_SIZE=50` (env-configurable): requests queue up instead of
-  being rejected when all slots are busy
-- `_download_queue` + `_active_semaphore` dispatcher replaces the
-  previous hard concurrency cap — downloads start in parallel as slots
-  open without blocking the API
-- Batch and playlist downloads are now dispatched to the shared queue
-  so they run in parallel with other downloads
-
-#### Font — consistent across all theme colours
-
-- The **Inter** typeface (Google Fonts) is now loaded as a `--font-family`
-  CSS custom property in every template and the React admin SPA.  
-  Because the variable lives in `:root`, it is inherited by all child
-  elements and survives theme colour changes (Dark / Light / Ocean /
-  Forest). Switching themes only updates colour variables; the font
-  remains Inter throughout.
-
----
-
-
-- **Backend** – Python, FastAPI, uvicorn
-- **Downloader** – yt-dlp
-- **Frontend** – React + Vite + Tailwind CSS (admin SPA), Vanilla HTML/CSS/JS (main UI), Socket.IO client
-- **Audio** – Web Audio API (no external audio files)
-- **Icons** – Font Awesome 6
-
----
-
-## Airport Pickup Service
-
-The platform includes a full **Airport Pickup Service** at `/rides`:
-
-```mermaid
-flowchart LR
-    C([✈️ Client at Airport]) -->|Finds nearest driver| D[Airport Pickup Board]
-    D -->|Books via chat| DV[🚗 Verified Driver]
-    DV -->|Real-time location| M[🗺️ Live Map]
-    M -->|Tracks driver| C
-```
-
-### Features
-
-- **Driver registration & verification** — Drivers must submit a vehicle application and be approved by an admin before they can post their location. Verified drivers display a ✓ badge on the map.
-- **Live driver map** — OpenStreetMap shows all active, verified drivers with animated pulse markers indicating availability. Non-verified drivers cannot broadcast.
-- **Auto-calculated fares** — Fares are computed using the Haversine formula between pickup airport and destination at a configurable rate per km (`FARE_PER_KM` env var, default `1.5`).
-- **Nearest-driver search** — Clients find the nearest available driver at their airport sorted by proximity.
-- **Booking chat with auto-response** — When a client opens a chat, a pre-filled message prompts them to share their current location, full name, and contact details.
-- **3-column responsive layout** — Left sidebar (sticky): dashboard & driver alerts. Center (scrollable): post form at top + live map. Right sidebar (sticky): 🗺️ Airport Pickups list.
-- **Mobile responsive** — Columns stack vertically on mobile; left sidebar hidden on tablet.
-
-### Layout
-
-| Column | Content | Behaviour |
-|--------|---------|-----------|
-| Left (280 px) | 📊 Dashboard + 📡 Driver Broadcast | Sticky |
-| Center (flex) | ✈️ Post Airport Pickup form + 🗺️ Map | Scrollable |
-| Right (340 px) | 🗺️ Airport Pickups list | Sticky |
-
-### API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/rides/calculate_fare` | Auto-calculate fare: `?origin_lat=&origin_lng=&dest_lat=&dest_lng=` |
-| `POST` | `/api/rides/post` | Post an airport pickup (includes `fare`, `dest_lat`, `dest_lng`) |
-| `GET` | `/api/rides/list` | List all airport pickups (includes `fare` in response) |
-| `POST` | `/api/driver/location` | Broadcast driver location (requires verified application) |
-| `GET` | `/api/driver/locations` | All active verified driver locations (includes `verified` flag) |
-
-### Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `FARE_PER_KM` | `1.5` | Base fare rate per km for auto-calculated fares |
+Designed to make airport travel effortless — one tap, verified driver, clear fare, live tracking. Travelers gain trust and transparency through driver verification badges and auto-calculated fares. Drivers receive credibility through structured onboarding and a visible verification badge. The map-first layout keeps essential actions visible while exploration stays fluid. Mobile responsiveness ensures the service works where it matters most — on the go. The Flutter directory restructuring sets a scalable foundation for future enhancements across the ride-sharing platform.
 
 ---
 

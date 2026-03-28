@@ -864,12 +864,18 @@ class TestRideChatSocket:
 
         _asyncio.run(_run())
         msgs = [e for e in emitted if e[0] == "ride_chat_message"]
-        assert len(msgs) == 1
+        # First message is the passenger's, second is the auto-response prompt.
+        assert len(msgs) == 2
         payload = msgs[0][1]
         assert payload["ride_id"] == ride_id
         assert payload["name"]    == "Bob"
         assert payload["text"]    == "Hello, anyone there?"
         assert msgs[0][2]         == f"ride_chat_{ride_id}"
+        # Verify auto-response was emitted as the second message.
+        auto = msgs[1][1]
+        assert auto["name"] == "System"
+        assert "location" in auto["text"].lower()
+        assert msgs[1][2] == f"ride_chat_{ride_id}"
 
     def test_ride_chat_message_empty_text_ignored(self):
         """on_ride_chat_message should not broadcast empty or whitespace messages."""
@@ -913,7 +919,8 @@ class TestRideChatSocket:
 
         _asyncio.run(_run())
         msgs = [e for e in emitted if e[0] == "ride_chat_message"]
-        assert len(msgs) == 1
+        # First message is the passenger's (truncated), second is the auto-response.
+        assert len(msgs) == 2
         assert len(msgs[0][1]["text"]) == 500
 
     def test_leave_ride_chat(self):
@@ -996,7 +1003,9 @@ class TestRideChatSocket:
 
         _asyncio.run(_run())
         msgs = [e for e in emitted if e[0] == "ride_chat_message"]
-        assert len(msgs) == 1
+        # First message is the passenger's (with stripped media_type),
+        # second is the auto-response prompt.
+        assert len(msgs) == 2
         assert msgs[0][1]["media_type"] is None
 
     def test_ride_chat_message_location_accepted(self):

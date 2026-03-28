@@ -356,4 +356,84 @@ class ApiService {
     final res = await http.delete(_uri('/api/rides/$rideId'));
     await _parseResponse(res);
   }
+
+  // ── Airport Pickup ────────────────────────────────────────────────────────
+
+  /// Search for available drivers near an airport, auto-calculating the fare.
+  Future<Map<String, dynamic>> searchAirportPickup({
+    required String airport,
+    required String destination,
+  }) async {
+    final res = await http.get(_uri('/api/rides/list', {
+      'origin': airport,
+      'destination': destination,
+    }));
+    return (await _parseResponse(res)) as Map<String, dynamic>;
+  }
+
+  /// Calculate the estimated fare between two coordinates.
+  Future<double> calculateFare({
+    required double originLat,
+    required double originLng,
+    required double destLat,
+    required double destLng,
+  }) async {
+    final res = await _get('/api/rides/calculate_fare', {
+      'origin_lat': originLat.toString(),
+      'origin_lng': originLng.toString(),
+      'dest_lat': destLat.toString(),
+      'dest_lng': destLng.toString(),
+    });
+    return (res['fare'] as num).toDouble();
+  }
+
+  // ── Driver Registration & Tracking ───────────────────────────────────────
+
+  /// Submit a driver registration application.
+  Future<void> registerDriver({
+    required String name,
+    required String phone,
+    required String vehicle,
+    required String plate,
+    int seats = 4,
+  }) async {
+    final res = await http.post(
+      _uri('/api/driver/register'),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({
+        'name': name,
+        'phone': phone,
+        'vehicle': vehicle,
+        'plate': plate,
+        'seats': seats,
+      }),
+    );
+    await _parseResponse(res);
+  }
+
+  /// Broadcast the driver's current location to the server.
+  ///
+  /// Only verified drivers can call this endpoint successfully.
+  Future<void> broadcastDriverLocation({
+    required int seats,
+    double? lat,
+    double? lng,
+  }) async {
+    final body = <String, dynamic>{'seats': seats};
+    if (lat != null) body['lat'] = lat;
+    if (lng != null) body['lng'] = lng;
+    final res = await http.post(
+      _uri('/api/driver/location'),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode(body),
+    );
+    await _parseResponse(res);
+  }
+
+  /// Fetch all active verified driver locations.
+  Future<List<Map<String, dynamic>>> getDriverLocations() async {
+    final res = await http.get(_uri('/api/driver/locations'));
+    final data = (await _parseResponse(res)) as Map<String, dynamic>;
+    return List<Map<String, dynamic>>.from(data['drivers'] as List? ?? []);
+  }
 }

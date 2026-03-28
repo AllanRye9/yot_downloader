@@ -10054,6 +10054,84 @@ async def on_ride_chat_message(sid, data):
     log_preview = text[:80] if text else f"[{media_type}]"
     logger.info(f"Ride chat [{ride_id}] from {name}: {log_preview}")
 
+    # Auto-response: when a passenger sends their first message in the chat,
+    # immediately reply with a structured booking prompt so the driver (or
+    # system) collects all required details without back-and-forth friction.
+    if role != "driver" and text:
+        try:
+            with _db_lock:
+                conn = _get_db()
+                try:
+                    if USE_POSTGRES:
+                        cur = conn.cursor()
+                        cur.execute(
+                            "SELECT COUNT(*) FROM ride_chat_messages"
+                            " WHERE ride_id=%s AND sender_role != 'driver'",
+                            (ride_id,),
+                        )
+                        passenger_msg_count = cur.fetchone()[0]
+                    else:
+                        cur = conn.execute(
+                            "SELECT COUNT(*) FROM ride_chat_messages"
+                            " WHERE ride_id=? AND sender_role != 'driver'",
+                            (ride_id,),
+                        )
+                        passenger_msg_count = cur.fetchone()[0]
+                finally:
+                    conn.close()
+
+            if passenger_msg_count == 1:
+                # This is the passenger's first message — send the auto-response.
+                auto_id = f"auto-{ride_id}-{time.time()}"
+                auto_msg = {
+                    "ride_id":    ride_id,
+                    "name":       "System",
+                    "text":       (
+                        "Please share your current location, full name, and "
+                        "contact number to complete your booking."
+                    ),
+                    "ts":         time.time(),
+                    "role":       "system",
+                    "id":         auto_id,
+                    "media_type": None,
+                    "media_data": None,
+                    "lat":        None,
+                    "lng":        None,
+                }
+                auto_created = datetime.now(timezone.utc).isoformat()
+                with _db_lock:
+                    conn = _get_db()
+                    try:
+                        if USE_POSTGRES:
+                            cur = conn.cursor()
+                            cur.execute(
+                                "INSERT INTO ride_chat_messages"
+                                " (msg_id,ride_id,sender_name,sender_role,text,"
+                                "  media_type,media_data,lat,lng,ts,created_at)"
+                                " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+                                " ON CONFLICT (msg_id) DO NOTHING",
+                                (auto_id, ride_id, "System", "system",
+                                 auto_msg["text"], None, None,
+                                 None, None, auto_msg["ts"], auto_created),
+                            )
+                        else:
+                            conn.execute(
+                                "INSERT OR IGNORE INTO ride_chat_messages"
+                                " (msg_id,ride_id,sender_name,sender_role,text,"
+                                "  media_type,media_data,lat,lng,ts,created_at)"
+                                " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                                (auto_id, ride_id, "System", "system",
+                                 auto_msg["text"], None, None,
+                                 None, None, auto_msg["ts"], auto_created),
+                            )
+                        conn.commit()
+                    finally:
+                        conn.close()
+                await sio.emit("ride_chat_message", auto_msg, room=room)
+                logger.info(f"Ride chat [{ride_id}] auto-response sent to {name}")
+        except Exception as e:
+            logger.warning(f"Failed to send auto-response for ride {ride_id}: {e}")
+
 
 @sio.on("ride_chat_typing")
 async def on_ride_chat_typing(sid, data):
