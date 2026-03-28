@@ -256,48 +256,62 @@ function AgentProfileModal({ agent, onClose, onStatusChange }) {
     <div
       style={{
         position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'rgba(0,0,0,0.7)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '16px',
+        background: 'rgba(0,0,0,0.75)',
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+        overflowY: 'auto',
       }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
       <div style={{
-        background: '#1f2937', border: '1px solid #374151', borderRadius: 14,
-        width: '100%', maxWidth: 560, maxHeight: '90vh',
-        overflowY: 'auto', position: 'relative',
+        background: '#1f2937', border: '1px solid #374151',
+        width: '100%', minHeight: '100vh',
+        position: 'relative',
         boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
       }}>
-        {/* Close */}
-        <button
-          type="button"
-          onClick={onClose}
-          style={{
-            position: 'absolute', top: 12, right: 14,
-            background: '#374151', border: 'none', borderRadius: '50%',
-            width: 30, height: 30, cursor: 'pointer',
-            color: '#9ca3af', fontSize: '1rem', fontWeight: 700,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          ✕
-        </button>
+        {/* ── Header bar with X ── */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 20px', borderBottom: '1px solid #374151',
+          background: '#111827', position: 'sticky', top: 0, zIndex: 10,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: '1.2rem' }}>🧑‍💼</span>
+            <span style={{ color: '#f3f4f6', fontWeight: 700, fontSize: '1rem' }}>Agent Profile</span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              background: '#374151', border: '1px solid #4b5563', borderRadius: '50%',
+              width: 36, height: 36, cursor: 'pointer',
+              color: '#e5e7eb', fontSize: '1.1rem', fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#ef4444'; e.currentTarget.style.color = '#fff' }}
+            onMouseLeave={e => { e.currentTarget.style.background = '#374151'; e.currentTarget.style.color = '#e5e7eb' }}
+          >
+            ✕
+          </button>
+        </div>
 
-        <div style={{ padding: '24px 24px 0' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto', padding: '28px 24px 0' }}>
           {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
             <div style={{
-              width: 64, height: 64, borderRadius: '50%',
-              background: '#374151', fontSize: '2rem',
+              width: 72, height: 72, borderRadius: '50%',
+              background: '#374151', fontSize: '2.4rem',
               display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              border: `3px solid ${AVAIL_COLOR[localStatus] ?? '#6b7280'}`,
             }}>
               {agent.avatar}
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                <span style={{ color: '#f3f4f6', fontSize: '1.05rem', fontWeight: 700 }}>{agent.name}</span>
+                <span style={{ color: '#f3f4f6', fontSize: '1.15rem', fontWeight: 700 }}>{agent.name}</span>
                 <AvailDot status={localStatus} />
-                <span style={{ color: AVAIL_COLOR[localStatus], fontSize: '0.75rem', fontWeight: 600 }}>
+                <span style={{ color: AVAIL_COLOR[localStatus], fontSize: '0.78rem', fontWeight: 600 }}>
                   {AVAIL_LABEL[localStatus]}
                 </span>
               </div>
@@ -311,24 +325,34 @@ function AgentProfileModal({ agent, onClose, onStatusChange }) {
           </div>
 
           {/* Bio */}
-          <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginBottom: 14, lineHeight: 1.5 }}>{agent.bio}</p>
+          <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginBottom: 16, lineHeight: 1.5 }}>{agent.bio}</p>
 
-          {/* Status dropdown */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-            <span style={{ color: '#6b7280', fontSize: '0.78rem' }}>Set availability:</span>
-            <select
-              value={localStatus}
-              onChange={e => handleStatusChange(e.target.value)}
-              style={{
-                background: '#111827', border: '1px solid #374151', borderRadius: 6,
-                color: AVAIL_COLOR[localStatus], fontSize: '0.78rem', padding: '4px 8px',
-                cursor: 'pointer',
-              }}
-            >
-              {Object.keys(AVAIL_LABEL).map(s => (
-                <option key={s} value={s} style={{ color: AVAIL_COLOR[s] }}>{AVAIL_LABEL[s]}</option>
+          {/* ── Availability Settings ── */}
+          <div style={{
+            background: '#111827', border: '1px solid #374151', borderRadius: 10,
+            padding: '14px 16px', marginBottom: 20,
+          }}>
+            <div style={{ color: '#d1d5db', fontSize: '0.88rem', fontWeight: 700, marginBottom: 12 }}>
+              🟢 Availability Settings
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              {Object.entries(AVAIL_LABEL).map(([s, label]) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => handleStatusChange(s)}
+                  style={{
+                    padding: '8px 18px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 600,
+                    cursor: 'pointer', transition: 'all 0.15s',
+                    background: localStatus === s ? `${AVAIL_COLOR[s]}22` : '#1f2937',
+                    border: localStatus === s ? `2px solid ${AVAIL_COLOR[s]}` : '1.5px solid #374151',
+                    color: localStatus === s ? AVAIL_COLOR[s] : '#9ca3af',
+                  }}
+                >
+                  <AvailDot status={s} /> {label}
+                </button>
               ))}
-            </select>
+            </div>
           </div>
 
           {/* Action buttons */}
@@ -349,7 +373,7 @@ function AgentProfileModal({ agent, onClose, onStatusChange }) {
         </div>
 
         {/* Inline Chat */}
-        <div style={{ padding: '0 24px', marginBottom: 20 }}>
+        <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 24px 20px' }}>
           <div style={{
             border: '1px solid #374151', borderRadius: 10,
             background: '#111827', overflow: 'hidden',
@@ -426,7 +450,7 @@ function AgentProfileModal({ agent, onClose, onStatusChange }) {
         </div>
 
         {/* Reviews */}
-        <div style={{ padding: '0 24px 24px' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 24px 32px' }}>
           <div style={{ color: '#d1d5db', fontSize: '0.88rem', fontWeight: 700, marginBottom: 10 }}>
             Reviews ({reviews.length})
           </div>

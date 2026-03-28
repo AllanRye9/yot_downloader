@@ -50,7 +50,7 @@ function _countdown(departure) {
  *  autoLoadDrivers  - When true, polls /api/driver/locations every 15s
  *  onLocationUpdate - Called with {lat, lng} when the map auto-detects location
  */
-export default function RideShareMap({ rides = [], userLocation, onRequestRide, onOpenChat, driverLocations: propDriverLocations = [], autoLoadDrivers = true, onLocationUpdate }) {
+export default function RideShareMap({ rides = [], userLocation, onRequestRide, onOpenChat, driverLocations: propDriverLocations = [], autoLoadDrivers = true, onLocationUpdate, mapHeight = 300 }) {
   const mapRef      = useRef(null)
   const instanceRef = useRef(null)
   const tileLayerRef = useRef(null)
@@ -360,11 +360,11 @@ export default function RideShareMap({ rides = [], userLocation, onRequestRide, 
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="relative ride-map-container" style={{ isolation: 'isolate' }}>
+    <div className="relative ride-map-container" style={{ isolation: 'isolate', height: typeof mapHeight === 'string' && mapHeight !== '300' ? mapHeight : undefined }}>
       <div
         ref={mapRef}
         className="ride-map-element"
-        style={{ height: 300, borderRadius: 12, overflow: 'hidden', background: '#1a2233', position: 'relative', zIndex: 0 }}
+        style={{ height: mapHeight, borderRadius: 0, overflow: 'hidden', background: '#1a2233', position: 'relative', zIndex: 0 }}
       />
 
       {/* Live tracking toggle */}

@@ -38,8 +38,10 @@ export default function RidesPage() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  const openRides = rides.filter(r => r.status === 'open')
+
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col">
+    <div style={{ minHeight: '100vh', background: '#030712', display: 'flex', flexDirection: 'column' }}>
       {/* Auth modal */}
       {showAuthModal && !appUser && (
         <UserAuth
@@ -50,7 +52,7 @@ export default function RidesPage() {
 
       {/* ── Navbar ── */}
       <nav className="sticky top-0 z-50 bg-gray-950/95 backdrop-blur border-b border-gray-800">
-        <div className="max-w-7xl mx-auto px-4 flex items-center h-14 gap-4">
+        <div className="max-w-full px-4 flex items-center h-14 gap-4">
           {/* Back to home */}
           <Link
             to="/"
@@ -125,68 +127,128 @@ export default function RidesPage() {
       </nav>
 
       {/* ── Page header ── */}
-      <div className="bg-gradient-to-b from-gray-900 to-gray-950 border-b border-gray-800 py-4 px-4">
-        <div className="max-w-3xl mx-auto">
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            🚗 Ride Share &amp; Driver Alerts
-          </h1>
-          <p className="text-xs text-gray-400 mt-0.5">
+      <div style={{ padding: '12px 20px', borderBottom: '1px solid #1f2937', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <h1 style={{ color: '#f3f4f6', fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>🚗 Ride Share &amp; Driver Alerts</h1>
+          <p style={{ color: '#6b7280', fontSize: '0.82rem', margin: '2px 0 0' }}>
             Post shared rides, find passengers, and receive real-time driver alerts.
           </p>
         </div>
       </div>
 
       {/* ── Main content ── */}
-      <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-4">
-        {userLoading ? (
-          <div className="flex justify-center py-16">
-            <div className="spinner w-10 h-10" />
+      {userLoading ? (
+        <div className="flex justify-center py-16">
+          <div className="spinner w-10 h-10" />
+        </div>
+      ) : !appUser ? (
+        /* ── Auth gate ── */
+        <div className="flex flex-col items-center justify-center py-16 gap-6 text-center flex-1">
+          <div className="text-5xl">🔒</div>
+          <div>
+            <h2 className="text-xl font-bold text-white mb-2">Login Required</h2>
+            <p className="text-gray-400 text-sm max-w-xs">
+              Please login or create a free account to view rides, post a ride, and receive driver alerts.
+            </p>
           </div>
-        ) : !appUser ? (
-          /* ── Auth gate ── */
-          <div className="flex flex-col items-center justify-center py-16 gap-6 text-center">
-            <div className="text-5xl">🔒</div>
-            <div>
-              <h2 className="text-xl font-bold text-white mb-2">Login Required</h2>
-              <p className="text-gray-400 text-sm max-w-xs">
-                Please login or create a free account to view rides, post a ride, and receive driver alerts.
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowAuthModal(true)}
-                className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-colors"
-              >
-                Login / Register
-              </button>
-              <Link
-                to="/"
-                className="px-5 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white text-sm transition-colors"
-              >
-                Back to Home
-              </Link>
-            </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowAuthModal(true)}
+              className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-colors"
+            >
+              Login / Register
+            </button>
+            <Link
+              to="/"
+              className="px-5 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white text-sm transition-colors"
+            >
+              Back to Home
+            </Link>
           </div>
-        ) : (
-          /* ── Authenticated view ── */
-          <div className="space-y-4">
-            {/* Live map — receives rides for rich markers */}
+        </div>
+      ) : (
+        /* ── 3-column authenticated layout ── */
+        <div style={{ flex: 1, display: 'flex', height: 'calc(100vh - 110px)', minHeight: 0 }}>
+
+          {/* ── Left: Available Rides ── */}
+          <aside style={{
+            width: 280, flexShrink: 0,
+            borderRight: '1px solid #1f2937',
+            overflowY: 'auto',
+            background: '#111827',
+            display: 'flex', flexDirection: 'column',
+          }}>
+            <div style={{ padding: '12px 14px', borderBottom: '1px solid #1f2937' }}>
+              <div style={{ color: '#d1d5db', fontSize: '0.85rem', fontWeight: 700 }}>🚗 Available Rides</div>
+              <div style={{ color: '#6b7280', fontSize: '0.72rem', marginTop: 2 }}>{openRides.length} open ride{openRides.length !== 1 ? 's' : ''}</div>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
+              {openRides.length === 0 ? (
+                <div style={{ color: '#4b5563', textAlign: 'center', padding: '24px 8px', fontSize: '0.82rem' }}>
+                  No open rides yet. Post one!
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {openRides.map(ride => (
+                    <div key={ride.ride_id} style={{
+                      background: '#1f2937', border: '1px solid #374151', borderRadius: 10,
+                      padding: '10px 12px',
+                    }}>
+                      <div style={{ color: '#f3f4f6', fontSize: '0.82rem', fontWeight: 600, marginBottom: 2 }}>
+                        {ride.origin} → {ride.destination}
+                      </div>
+                      <div style={{ color: '#9ca3af', fontSize: '0.72rem', marginBottom: 4 }}>
+                        🕐 {ride.departure ? new Date(ride.departure).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <span style={{ color: '#86efac', fontSize: '0.72rem' }}>💺 {ride.seats} seat{ride.seats !== 1 ? 's' : ''}</span>
+                        <span style={{ color: '#6b7280', fontSize: '0.72rem' }}>👤 {ride.driver_name ?? ride.user_name ?? 'Driver'}</span>
+                      </div>
+                      {ride.notes && (
+                        <div style={{ color: '#6b7280', fontSize: '0.7rem', marginTop: 4, fontStyle: 'italic' }}>
+                          {ride.notes.length > 60 ? ride.notes.slice(0, 60) + '…' : ride.notes}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </aside>
+
+          {/* ── Center: Map ── */}
+          <main style={{ flex: 1, minWidth: 0, height: '100%', background: '#030712', display: 'flex', flexDirection: 'column' }}>
             <RideShareMap
               rides={rides}
               userLocation={appUser?.lat != null ? { lat: appUser.lat, lng: appUser.lng } : null}
               onOpenChat={(ride, defaultMsg) => setMapChatRequest({ ride, defaultMsg })}
+              mapHeight="100%"
             />
+          </main>
 
-            {/* Ride share panel */}
-            <RideShare
-              user={appUser}
-              onRidesChange={setRides}
-              requestedRide={mapChatRequest}
-              onRequestedRideHandled={() => setMapChatRequest(null)}
-            />
-          </div>
-        )}
-      </main>
+          {/* ── Right: Ride Dashboard ── */}
+          <aside style={{
+            width: 340, flexShrink: 0,
+            borderLeft: '1px solid #1f2937',
+            overflowY: 'auto',
+            background: '#111827',
+            display: 'flex', flexDirection: 'column',
+          }}>
+            <div style={{ padding: '12px 14px', borderBottom: '1px solid #1f2937' }}>
+              <div style={{ color: '#d1d5db', fontSize: '0.85rem', fontWeight: 700 }}>📊 Ride Dashboard</div>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 10px' }}>
+              <RideShare
+                user={appUser}
+                onRidesChange={setRides}
+                requestedRide={mapChatRequest}
+                onRequestedRideHandled={() => setMapChatRequest(null)}
+              />
+            </div>
+          </aside>
+
+        </div>
+      )}
 
       {/* ── Footer ── */}
       <footer className="border-t border-gray-800 py-4 px-4 text-center text-xs text-gray-600">
