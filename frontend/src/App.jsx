@@ -11,6 +11,7 @@ import AdminDashboard from './pages/AdminDashboard'
 import PropertiesPage from './pages/PropertiesPage'
 import PropertyDetailPage from './pages/PropertyDetailPage'
 import PropertyInboxPage from './pages/PropertyInboxPage'
+import UnifiedMapPage from './pages/UnifiedMapPage'
 
 // ─── Auth Context ─────────────────────────────────────────────────────────────
 const AuthCtx = createContext(null)
@@ -117,6 +118,7 @@ export default function App() {
             <Route path="/properties" element={<PropertiesPage />} />
             <Route path="/properties/:propertyId" element={<PropertyDetailPage />} />
             <Route path="/property-inbox" element={<PropertyInboxPage />} />
+            <Route path="/map" element={<UnifiedMapPage />} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin/register" element={<AdminLogin register />} />
             <Route path="/const" element={
