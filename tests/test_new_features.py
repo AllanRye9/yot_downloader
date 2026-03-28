@@ -2521,3 +2521,70 @@ class TestPropertyConversations:
         resp = run(api_property_conversation_read(req, conv_id))
         assert resp.status_code == 200
         assert json.loads(resp.body)["ok"] is True
+
+
+# ---------------------------------------------------------------------------
+# Unified Map Nearby endpoint
+# ---------------------------------------------------------------------------
+
+class TestUnifiedMapNearby:
+    """Tests for GET /api/unified_map/nearby."""
+
+    def test_drivers_mode_returns_correct_structure(self):
+        """GET /api/unified_map/nearby?mode=drivers returns {"items": [...], "mode": "drivers"}."""
+        import json
+        from api.app import api_unified_map_nearby
+        resp = run(api_unified_map_nearby(lat=51.5, lng=-0.1, radius_km=25.0, mode="drivers"))
+        assert resp.status_code == 200
+        body = json.loads(resp.body)
+        assert "items" in body
+        assert body["mode"] == "drivers"
+        assert isinstance(body["items"], list)
+
+    def test_properties_mode_returns_correct_structure(self):
+        """GET /api/unified_map/nearby?mode=properties returns {"items": [...], "mode": "properties"}."""
+        import json
+        from api.app import api_unified_map_nearby
+        resp = run(api_unified_map_nearby(lat=51.5, lng=-0.1, radius_km=25.0, mode="properties"))
+        assert resp.status_code == 200
+        body = json.loads(resp.body)
+        assert "items" in body
+        assert body["mode"] == "properties"
+        assert isinstance(body["items"], list)
+
+    def test_properties_sorted_by_distance(self):
+        """Items in properties mode are sorted by distance_km ascending."""
+        import json
+        from api.app import api_unified_map_nearby
+        resp = run(api_unified_map_nearby(lat=51.5, lng=-0.1, radius_km=500.0, mode="properties"))
+        body = json.loads(resp.body)
+        items = body["items"]
+        if len(items) >= 2:
+            distances = [item["distance_km"] for item in items]
+            assert distances == sorted(distances), "Properties should be sorted by distance_km ascending"
+
+    def test_properties_have_distance_km_field(self):
+        """Each property item has a distance_km field."""
+        import json
+        from api.app import api_unified_map_nearby
+        resp = run(api_unified_map_nearby(lat=51.5, lng=-0.1, radius_km=500.0, mode="properties"))
+        body = json.loads(resp.body)
+        for item in body["items"]:
+            assert "distance_km" in item, f"Item missing distance_km: {item}"
+
+    def test_drivers_no_active_returns_empty(self):
+        """mode=drivers with no active drivers returns empty items list."""
+        import json
+        from api.app import api_unified_map_nearby, _driver_locations, _driver_loc_lock
+        # Temporarily clear driver locations
+        with _driver_loc_lock:
+            saved = dict(_driver_locations)
+            _driver_locations.clear()
+        try:
+            resp = run(api_unified_map_nearby(lat=51.5, lng=-0.1, radius_km=25.0, mode="drivers"))
+            body = json.loads(resp.body)
+            assert body["items"] == []
+            assert body["mode"] == "drivers"
+        finally:
+            with _driver_loc_lock:
+                _driver_locations.update(saved)

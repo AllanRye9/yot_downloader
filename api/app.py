@@ -8245,6 +8245,64 @@ async def api_driver_locations():
     return JSONResponse({"drivers": active})
 
 
+@fastapi_app.get("/api/unified_map/nearby")
+async def api_unified_map_nearby(lat: float, lng: float, radius_km: float = 25.0, mode: str = "drivers"):
+    """Return nearby drivers or properties sorted by distance, for the unified map."""
+    if mode == "drivers":
+        now = time.time()
+        with _driver_loc_lock:
+            active = [
+                {**d, "ts": None}
+                for d in _driver_locations.values()
+                if now - d["ts"] <= _DRIVER_LOC_TTL_SECS
+            ]
+        items = []
+        for d in active:
+            dist = _haversine_km(lat, lng, d["lat"], d["lng"])
+            if dist <= radius_km:
+                items.append({
+                    "id": d.get("user_id"),
+                    "name": d.get("name", "Driver"),
+                    "lat": d["lat"],
+                    "lng": d["lng"],
+                    "distance_km": round(dist, 2),
+                    "empty": d.get("empty", True),
+                    "seats": d.get("seats", 0),
+                    "vehicle": d.get("vehicle", ""),
+                    "avatar": d.get("avatar", "🚗"),
+                    "rating": d.get("rating"),
+                })
+        items.sort(key=lambda x: x["distance_km"])
+        return JSONResponse({"items": items, "mode": mode})
+    else:
+        # Properties mode
+        _seed_properties_if_empty()
+        with _db_lock:
+            conn = _get_db()
+            try:
+                cols = ["property_id","title","description","price","address","lat","lng","images_json","status","owner_user_id","created_at"]
+                cur = _execute(conn, f"SELECT {','.join(cols)} FROM properties ORDER BY created_at DESC")
+                rows = cur.fetchall()
+            finally:
+                conn.close()
+        items = []
+        for row in rows:
+            p = dict(zip(["property_id","title","description","price","address","lat","lng","images_json","status","owner_user_id","created_at"], row))
+            if p["lat"] is None or p["lng"] is None:
+                continue
+            dist = _haversine_km(lat, lng, p["lat"], p["lng"])
+            if dist <= radius_km:
+                try:
+                    p["images"] = json.loads(p["images_json"] or "[]")
+                except Exception:
+                    p["images"] = []
+                p["cover_image"] = p["images"][0] if p["images"] else None
+                p["distance_km"] = round(dist, 2)
+                items.append(p)
+        items.sort(key=lambda x: x["distance_km"])
+        return JSONResponse({"items": items, "mode": mode})
+
+
 # =========================================================
 # REAL ESTATE AGENT ENDPOINTS
 # =========================================================

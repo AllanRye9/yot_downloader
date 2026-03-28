@@ -719,6 +719,12 @@ export default function Home() {
           >
             🏠 Property Discovery
           </Link>
+          <Link
+            to="/map"
+            className="text-sm px-4 py-1.5 rounded-full border transition-colors bg-gray-800/60 border-gray-700 text-gray-400 hover:bg-green-700 hover:border-green-600 hover:text-green-100"
+          >
+            🗺 Unified Map
+          </Link>
         </div>
 
         <div className="h-4" />

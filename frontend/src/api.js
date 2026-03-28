@@ -434,3 +434,11 @@ export const sendPropertyMessage = (conv_id, content) =>
 
 export const markPropertyConversationRead = (convId) =>
   request('POST', `/api/property_conversations/${encodeURIComponent(convId)}/read`, {})
+
+// ── Unified Map ───────────────────────────────────────────────────────────────
+
+export const listAgents = (status = null) =>
+  request('GET', `/api/agents${status ? `?status=${encodeURIComponent(status)}` : ''}`)
+
+export const getUnifiedMapNearby = (lat, lng, radius_km = 25, mode = 'drivers') =>
+  request('GET', `/api/unified_map/nearby?lat=${lat}&lng=${lng}&radius_km=${radius_km}&mode=${encodeURIComponent(mode)}`)
