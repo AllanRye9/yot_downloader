@@ -13,7 +13,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../App'
 import UserAuth from '../components/UserAuth'
 import UserProfile from '../components/UserProfile'
-import { listProperties, getUserProfile } from '../api'
+import { listProperties, listAgents, getUserProfile } from '../api'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -28,6 +28,17 @@ L.Icon.Default.mergeOptions({ iconRetinaUrl: markerIcon2x, iconUrl: markerIcon, 
 const STATUS_COLOR = { active: '#22c55e', sold: '#ef4444', rented: '#f59e0b' }
 const STATUS_LABEL = { active: 'Active', sold: 'Sold', rented: 'Rented' }
 const STATUS_BG    = { active: '#22c55e22', sold: '#ef444422', rented: '#f59e0b22' }
+
+const AVAIL_COLOR = { available: '#22c55e', busy: '#f59e0b', offline: '#6b7280' }
+const AVAIL_LABEL = { available: 'Available', busy: 'Busy', offline: 'Offline' }
+
+function _haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371
+  const dLat = ((lat2 - lat1) * Math.PI) / 180
+  const dLng = ((lng2 - lng1) * Math.PI) / 180
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
 
 function formatPrice(price) {
   if (!price) return 'POA'
@@ -266,6 +277,86 @@ function PropertyPreviewCard({ property, onClose, onViewDetail }) {
   )
 }
 
+// ─── Nearest Agents Panel ────────────────────────────────────────────────────
+
+function NearestAgentsPanel({ userLocation }) {
+  const [agents, setAgents] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    listAgents()
+      .then(d => setAgents(d.agents ?? []))
+      .catch(() => setAgents([]))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const sorted = [...agents]
+    .map(a => ({
+      ...a,
+      _dist: userLocation && a.lat != null
+        ? _haversineKm(userLocation.lat, userLocation.lng, a.lat, a.lng)
+        : null,
+    }))
+    .sort((a, b) => {
+      const order = { available: 0, busy: 1, offline: 2 }
+      const oa = order[a.availability_status] ?? 3
+      const ob = order[b.availability_status] ?? 3
+      if (oa !== ob) return oa - ob
+      return (a._dist ?? 9999) - (b._dist ?? 9999)
+    })
+
+  return (
+    <div>
+      <h3 style={{ color: '#d1d5db', fontSize: '0.9rem', fontWeight: 700, margin: '0 0 10px' }}>
+        🧑‍💼 Nearest Agents
+      </h3>
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+          <div className="spinner w-6 h-6" />
+        </div>
+      ) : sorted.length === 0 ? (
+        <div style={{ color: '#4b5563', fontSize: '0.78rem', textAlign: 'center', padding: '16px 0' }}>
+          No agents available.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {sorted.slice(0, 6).map(a => (
+            <div key={a.agent_id ?? a.id} style={{
+              background: '#1f2937', border: '1px solid #374151', borderRadius: 10,
+              padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <div style={{
+                width: 38, height: 38, borderRadius: '50%', background: '#374151',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '1.3rem', flexShrink: 0, position: 'relative',
+              }}>
+                {a.avatar ?? '🧑‍💼'}
+                <span style={{
+                  position: 'absolute', bottom: 0, right: 0,
+                  width: 10, height: 10, borderRadius: '50%',
+                  background: AVAIL_COLOR[a.availability_status] ?? '#6b7280',
+                  border: '2px solid #1f2937',
+                }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: '#f3f4f6', fontSize: '0.82rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {a.name}
+                </div>
+                <div style={{ color: AVAIL_COLOR[a.availability_status] ?? '#6b7280', fontSize: '0.72rem', fontWeight: 600 }}>
+                  {AVAIL_LABEL[a.availability_status] ?? a.availability_status}
+                </div>
+                {a._dist != null && (
+                  <div style={{ color: '#6b7280', fontSize: '0.7rem' }}>📍 {a._dist.toFixed(1)} km</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PropertiesPage() {
@@ -283,7 +374,6 @@ export default function PropertiesPage() {
   const [statusFilter, setStatusFilter] = useState('')  // '' = all
   const [selectedId, setSelectedId]     = useState(null)
   const [previewProp, setPreviewProp]   = useState(null)
-  const [viewMode, setViewMode]         = useState('map')  // 'map' | 'grid'
   const [userLocation, setUserLocation] = useState(null)
 
   // Load user
@@ -340,7 +430,7 @@ export default function PropertiesPage() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col">
+    <div style={{ minHeight: '100vh', background: '#030712', display: 'flex', flexDirection: 'column' }}
       {showAuthModal && !appUser && (
         <UserAuth
           onSuccess={u => { setAppUser(u); setShowAuthModal(false) }}
@@ -413,10 +503,10 @@ export default function PropertiesPage() {
       </header>
 
       {/* ── Page header ── */}
-      <div style={{ padding: '20px 24px 0', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+      <div style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, borderBottom: '1px solid #1f2937' }}>
         <div>
-          <h1 style={{ color: '#f3f4f6', fontSize: '1.5rem', fontWeight: 800, margin: 0 }}>Property Discovery</h1>
-          <p style={{ color: '#6b7280', fontSize: '0.85rem', margin: '4px 0 0' }}>
+          <h1 style={{ color: '#f3f4f6', fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>🏠 Property Discovery</h1>
+          <p style={{ color: '#6b7280', fontSize: '0.82rem', margin: '2px 0 0' }}>
             {properties.length} propert{properties.length !== 1 ? 'ies' : 'y'} found
           </p>
         </div>
@@ -427,7 +517,7 @@ export default function PropertiesPage() {
             onChange={e => setStatusFilter(e.target.value)}
             style={{
               background: '#1f2937', color: '#d1d5db', border: '1px solid #374151',
-              borderRadius: 8, padding: '7px 12px', fontSize: '0.82rem', cursor: 'pointer',
+              borderRadius: 8, padding: '6px 10px', fontSize: '0.8rem', cursor: 'pointer',
             }}
           >
             <option value="">All Status</option>
@@ -435,90 +525,76 @@ export default function PropertiesPage() {
             <option value="sold">Sold</option>
             <option value="rented">Rented</option>
           </select>
-          {/* View toggle */}
-          <div style={{ display: 'flex', gap: 2, background: '#1f2937', border: '1px solid #374151', borderRadius: 8, overflow: 'hidden' }}>
-            {[['map','🗺 Map'], ['grid','⊞ Grid']].map(([mode, label]) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setViewMode(mode)}
-                style={{
-                  background: viewMode === mode ? '#3b82f6' : 'transparent',
-                  color: viewMode === mode ? '#fff' : '#9ca3af',
-                  border: 'none', padding: '7px 14px', fontSize: '0.82rem',
-                  fontWeight: 600, cursor: 'pointer',
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
         </div>
       </div>
 
-      {/* ── Main content ── */}
-      <div style={{ flex: 1, display: 'flex', gap: 0, padding: '16px 24px 24px', minHeight: 0 }}>
-        {loading ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-            <div className="spinner w-10 h-10" />
+      {/* ── 3-column layout ── */}
+      <div style={{ flex: 1, display: 'flex', minHeight: 0, height: 'calc(100vh - 110px)' }}>
+        {/* ── Left: Available Properties ── */}
+        <aside style={{
+          width: 280, flexShrink: 0,
+          borderRight: '1px solid #1f2937',
+          overflowY: 'auto',
+          background: '#111827',
+          display: 'flex', flexDirection: 'column',
+        }}>
+          <div style={{ padding: '12px 14px', borderBottom: '1px solid #1f2937' }}>
+            <div style={{ color: '#d1d5db', fontSize: '0.85rem', fontWeight: 700 }}>📋 Available Properties</div>
           </div>
-        ) : viewMode === 'map' ? (
-          /* ── Map + list layout ── */
-          <div style={{ display: 'flex', gap: 16, flex: 1, minHeight: 0, alignItems: 'flex-start' }}>
-            {/* Map */}
-            <div style={{ flex: '1 1 55%', position: 'relative', borderRadius: 14, overflow: 'hidden', minHeight: 480, border: '1px solid #374151' }}>
-              <PropertyMap
-                properties={properties}
-                selectedId={selectedId}
-                onSelectProperty={handleMarkerClick}
-                userLocation={userLocation}
-              />
-              <PropertyPreviewCard
-                property={previewProp}
-                onClose={() => setPreviewProp(null)}
-                onViewDetail={() => navigate(`/properties/${previewProp.property_id}`)}
-              />
-            </div>
-
-            {/* Sidebar list */}
-            <div style={{ flex: '0 0 320px', display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 600, overflowY: 'auto' }}>
-              {properties.length === 0 ? (
-                <div style={{ color: '#6b7280', textAlign: 'center', padding: '40px 16px' }}>
-                  No properties found.
-                </div>
-              ) : properties.map(prop => (
-                <PropertyCard
-                  key={prop.property_id}
-                  property={prop}
-                  isSelected={prop.property_id === selectedId}
-                  onClick={() => handleCardClick(prop)}
-                />
-              ))}
-            </div>
-          </div>
-        ) : (
-          /* ── Grid layout ── */
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-            gap: 16,
-            flex: 1,
-            alignContent: 'start',
-          }}>
-            {properties.length === 0 ? (
-              <div style={{ color: '#6b7280', textAlign: 'center', padding: '40px 16px', gridColumn: '1/-1' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
+            {loading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
+                <div className="spinner w-7 h-7" />
+              </div>
+            ) : properties.length === 0 ? (
+              <div style={{ color: '#4b5563', textAlign: 'center', padding: '24px 8px', fontSize: '0.82rem' }}>
                 No properties found.
               </div>
-            ) : properties.map(prop => (
-              <PropertyCard
-                key={prop.property_id}
-                property={prop}
-                isSelected={prop.property_id === selectedId}
-                onClick={() => handleCardClick(prop)}
-              />
-            ))}
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {properties.map(prop => (
+                  <PropertyCard
+                    key={prop.property_id}
+                    property={prop}
+                    isSelected={prop.property_id === selectedId}
+                    onClick={() => handleCardClick(prop)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        )}
+        </aside>
+
+        {/* ── Center: Map ── */}
+        <main style={{ flex: 1, position: 'relative', minWidth: 0, height: '100%' }}>
+          <PropertyMap
+            properties={properties}
+            selectedId={selectedId}
+            onSelectProperty={handleMarkerClick}
+            userLocation={userLocation}
+          />
+          <PropertyPreviewCard
+            property={previewProp}
+            onClose={() => setPreviewProp(null)}
+            onViewDetail={() => navigate(`/properties/${previewProp.property_id}`)}
+          />
+        </main>
+
+        {/* ── Right: Nearest Agents ── */}
+        <aside style={{
+          width: 280, flexShrink: 0,
+          borderLeft: '1px solid #1f2937',
+          overflowY: 'auto',
+          background: '#111827',
+          display: 'flex', flexDirection: 'column',
+        }}>
+          <div style={{ padding: '12px 14px', borderBottom: '1px solid #1f2937' }}>
+            <div style={{ color: '#d1d5db', fontSize: '0.85rem', fontWeight: 700 }}>📊 Nearest Agents</div>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '12px 10px' }}>
+            <NearestAgentsPanel userLocation={userLocation} />
+          </div>
+        </aside>
       </div>
     </div>
   )

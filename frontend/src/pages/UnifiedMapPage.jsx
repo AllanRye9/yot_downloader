@@ -282,6 +282,10 @@ export default function UnifiedMapPage() {
   const hasMore = allItems.length > page * PAGE_SIZE
 
   const handleSelectItem = useCallback((item) => {
+    if (!appUser) {
+      setShowAuthModal(true)
+      return
+    }
     const id = item.property_id ?? item.id ?? item.user_id
     setSelectedId(id)
     setSelectedItem(item)
@@ -290,9 +294,13 @@ export default function UnifiedMapPage() {
       const el = listRef.current?.querySelector(`[data-item-id="${id}"]`)
       el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }, 100)
-  }, [])
+  }, [appUser])
 
   const handleListClick = (item) => {
+    if (!appUser) {
+      setShowAuthModal(true)
+      return
+    }
     const id = item.property_id ?? item.id ?? item.user_id
     setSelectedId(id)
     setSelectedItem(item)
@@ -395,6 +403,7 @@ export default function UnifiedMapPage() {
           onSelectItem={handleSelectItem}
           userLocation={userLocation}
           onLocationUpdate={setUserLocation}
+          isAuth={!!appUser}
         />
 
         {/* Below-map list */}

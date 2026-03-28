@@ -83,7 +83,7 @@ const TILE_LAYERS = {
   },
 }
 
-export default function UnifiedMap({ mode, items = [], selectedId, onSelectItem, userLocation, onLocationUpdate }) {
+export default function UnifiedMap({ mode, items = [], selectedId, onSelectItem, userLocation, onLocationUpdate, isAuth = true }) {
   const mapRef = useRef(null)
   const instanceRef = useRef(null)
   const markersRef = useRef({})
@@ -144,7 +144,9 @@ export default function UnifiedMap({ mode, items = [], selectedId, onSelectItem,
       const marker = L.marker([item.lat, item.lng], { icon })
       // Tooltip
       let tooltip = ''
-      if (mode === 'drivers') {
+      if (!isAuth) {
+        tooltip = `<strong>🔒 Login to view details</strong><br><span style="color:#9ca3af;font-size:11px">Click to sign in / register</span>`
+      } else if (mode === 'drivers') {
         tooltip = `<strong>${item.name || 'Driver'}</strong><br>${item.empty !== false ? '🟢 Available' : '🔴 Occupied'}${item.seats ? `<br>💺 ${item.seats} seat${item.seats !== 1 ? 's' : ''}` : ''}${item.distance_km != null ? `<br>📍 ${item.distance_km} km` : ''}`
       } else if (item.property_id) {
         const sl = { active: '🟢 Active', sold: '🔴 Sold', rented: '🟡 Rented', empty: '⚪ Empty', occupied: '🔴 Occupied', soon_empty: '🟢 Soon Empty' }
@@ -157,7 +159,7 @@ export default function UnifiedMap({ mode, items = [], selectedId, onSelectItem,
       marker.addTo(map)
       markersRef.current[id] = marker
     })
-  }, [items, mode, selectedId, onSelectItem])
+  }, [items, mode, selectedId, onSelectItem, isAuth])
 
   // Pan to selected item
   useEffect(() => {

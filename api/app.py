@@ -2745,6 +2745,16 @@ def _normalize_output_ext(ext: str | None, *, allow_audio: bool = True) -> str:
     return output_ext if output_ext in allowed_exts else "mp4"
 
 
+
+# Formats that must be produced via post-processing conversion rather than
+# direct container muxing.  AVI does not support the VP9/Opus/AAC codec
+# combinations commonly returned by yt-dlp, so using merge_output_format=avi
+# causes "ERROR: Postprocessing: Conversion failed!".  Instead we let yt-dlp
+# download in its preferred container (e.g. mp4/mkv) and then invoke
+# FFmpegVideoConvertor to remux/transcode into the requested format.
+_CONVERT_OUTPUT_EXTS: set[str] = {"avi"}
+
+
 def _apply_output_ext(ydl_opts: dict, output_template: str, output_ext: str) -> str:
     """Apply container or audio-extraction options and return the final template."""
     if output_ext in _AUDIO_OUTPUT_EXTS:
@@ -2752,6 +2762,15 @@ def _apply_output_ext(ydl_opts: dict, output_template: str, output_ext: str) -> 
             "key": "FFmpegExtractAudio",
             "preferredcodec": output_ext,
             "preferredquality": "192",
+        }]
+        output_template = os.path.splitext(output_template)[0] + ".%(ext)s"
+    elif output_ext in _CONVERT_OUTPUT_EXTS:
+        # Use FFmpegVideoConvertor so that yt-dlp downloads in its native best
+        # format first and then converts, avoiding merge failures caused by
+        # codec incompatibility with the AVI container.
+        ydl_opts["postprocessors"] = [{
+            "key": "FFmpegVideoConvertor",
+            "preferedformat": output_ext,
         }]
         output_template = os.path.splitext(output_template)[0] + ".%(ext)s"
     elif output_ext in _VALID_OUTPUT_EXTS:
