@@ -430,7 +430,7 @@ export default function PropertiesPage() {
   }, [])
 
   return (
-    <div style={{ minHeight: '100vh', background: '#030712', display: 'flex', flexDirection: 'column' }}
+    <div style={{ minHeight: '100vh', background: '#030712', display: 'flex', flexDirection: 'column' }}>
       {showAuthModal && !appUser && (
         <UserAuth
           onSuccess={u => { setAppUser(u); setShowAuthModal(false) }}
