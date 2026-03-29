@@ -242,7 +242,7 @@ export default function RideShare({ user, onRidesChange, requestedRide, onReques
   const pagedRides = filteredRides.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   // Reset to page 1 when filters change
-  useMemo(() => { setPage(1) }, [locationFilter, rideTypeFilter, sortBy]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setPage(1) }, [locationFilter, rideTypeFilter, sortBy])
 
   // Available origin locations for autocomplete suggestions
   const locationSuggestions = useMemo(() => {
