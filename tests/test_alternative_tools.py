@@ -211,26 +211,44 @@ class TestFriendlyCookieErrorHttp403:
 
 
 # ---------------------------------------------------------------------------
-# _get_yt_extractor_args / _get_cookieless_extractor_args: mweb included
+# _get_yt_extractor_args / _get_cookieless_extractor_args: mweb excluded
 # ---------------------------------------------------------------------------
 
 class TestExtractorArgs:
-    """mweb must be present in both primary and cookieless extractor args."""
+    """As of yt-dlp 2026.3.x, mweb requires a GVS PO Token for all streaming
+    protocols.  Without a POT provider every mweb format is skipped and yt-dlp
+    emits a user-visible warning, so mweb must NOT appear in either extractor
+    args helper.  android_vr (POT-free, JS-free) must be present in the
+    cookieless args as the reliable no-POT fallback client."""
 
-    def test_primary_args_includes_mweb(self):
+    def test_primary_args_excludes_mweb(self):
         args = _get_yt_extractor_args()
         clients = args["youtube"]["player_client"]
-        assert "mweb" in clients, "mweb must be in primary player_client list"
+        assert "mweb" not in clients, (
+            "mweb must NOT be in primary player_client list — "
+            "it requires GVS PO Token and would produce only skipped formats"
+        )
 
     def test_primary_args_keeps_default(self):
         args = _get_yt_extractor_args()
         clients = args["youtube"]["player_client"]
         assert "default" in clients, "'default' must remain in primary player_client list"
 
-    def test_cookieless_args_includes_mweb(self):
+    def test_cookieless_args_excludes_mweb(self):
         args = _get_cookieless_extractor_args()
         clients = args["youtube"]["player_client"]
-        assert "mweb" in clients, "mweb must be in cookieless player_client list"
+        assert "mweb" not in clients, (
+            "mweb must NOT be in cookieless player_client list — "
+            "it requires GVS PO Token and would produce only skipped formats"
+        )
+
+    def test_cookieless_args_includes_android_vr(self):
+        args = _get_cookieless_extractor_args()
+        clients = args["youtube"]["player_client"]
+        assert "android_vr" in clients, (
+            "android_vr must be in cookieless player_client list — "
+            "it is the only POT-free, JS-free client that always works without a POT provider"
+        )
 
     def test_cookieless_args_no_default(self):
         args = _get_cookieless_extractor_args()
