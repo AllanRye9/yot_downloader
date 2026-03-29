@@ -1981,9 +1981,14 @@ def check_youtube_connectivity() -> dict:
       * ``bot_detected`` (bool) – True if a bot/auth-detection error fired.
       * ``message`` (str) – Human-readable summary.
 
-    The probe uses only the ``web_embedded`` and ``tv`` player clients so that
-    it does not require cookies or a PO token (matching the cookieless fallback
-    path used by the downloader in ``_get_cookieless_extractor_args()``).
+    The probe delegates to :func:`_get_cookieless_extractor_args` for its
+    extractor args, using ``android_vr``, ``web_embedded``, and ``tv`` player
+    clients.  ``android_vr`` requires no JS runtime and no PO Token, making it
+    the most reliable client for an unauthenticated server environment.
+    ``web_embedded`` and ``tv`` are included as higher-quality fallbacks when a
+    JS runtime is available.  ``mweb`` is intentionally omitted: as of
+    yt-dlp 2026.3.x it requires a GVS PO Token, so all its formats would be
+    skipped and it would produce a spurious user-visible warning.
     """
     # A short, well-known public-domain video used solely as a reachability probe.
     _PROBE_URL = "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
@@ -1993,7 +1998,7 @@ def check_youtube_connectivity() -> dict:
         "no_warnings": True,
         "skip_download": True,
         "extract_flat": False,
-        "extractor_args": {"youtube": {"player_client": ["web_embedded", "tv", "mweb"]}},
+        "extractor_args": _get_cookieless_extractor_args(),
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -2064,28 +2069,37 @@ def _get_yt_extractor_args() -> dict:
     clients for unauthenticated sessions where ``web_safari`` would otherwise
     fail without a POT provider.
 
+    ``mweb`` is intentionally excluded: as of yt-dlp 2026.3.x it requires a
+    GVS PO Token for all streaming protocols.  Without a POT provider every
+    ``mweb`` format is skipped and yt-dlp emits a spurious user-visible warning,
+    making ``mweb`` useless in a server environment with no POT provider.
+
     See https://github.com/yt-dlp/yt-dlp/wiki/Extractors#youtube for details.
     """
     # ⚠️ DO NOT REMOVE "default" — see docstring above and PR #78
     # web_embedded + tv: no POT required, SUPPORTS_COOKIES=True — reliable fallbacks
-    # mweb (Mobile Web, m.youtube.com): POT-free with distinct bot-detection heuristics
-    args: dict = {"player_client": ["default", "web_embedded", "tv", "mweb"]}
+    # mweb omitted: requires GVS PO Token in yt-dlp 2026.3.x, all formats skipped without POT provider
+    args: dict = {"player_client": ["default", "web_embedded", "tv"]}
     return {"youtube": args}
 
 
 def _get_cookieless_extractor_args() -> dict:
     """Build YouTube extractor args using only clients that work without authentication.
 
-    ``web_embedded``, ``tv``, and ``mweb`` require no PO tokens and no cookies to
-    fetch publicly available videos.  These clients are used as a last-resort fallback
-    when the normal extraction attempt triggers bot-detection and no cookies file
-    is available, giving the best chance of downloading without authentication.
+    ``android_vr`` is the most reliable POT-free, JS-free client — it requires
+    neither a PO Token nor a JavaScript runtime and can always fetch publicly
+    available videos without cookies.
 
-    ``mweb`` (Mobile Web, m.youtube.com) is included for its distinct
-    bot-detection heuristics — it uses different rate-limiting thresholds and
-    is POT-free, making it a useful additional fallback.
+    ``web_embedded`` and ``tv`` are added as higher-quality fallbacks: both
+    require no PO Token and support cookies, so they provide better format
+    selection when a JS runtime (Node.js / Deno) is present.
+
+    ``mweb`` is intentionally excluded: as of yt-dlp 2026.3.x it requires a
+    GVS PO Token for all streaming protocols.  Without a POT provider every
+    ``mweb`` format is skipped, and yt-dlp emits a user-visible warning,
+    making ``mweb`` worse than useless in a cookieless fallback path.
     """
-    return {"youtube": {"player_client": ["web_embedded", "tv", "mweb"]}}
+    return {"youtube": {"player_client": ["android_vr", "web_embedded", "tv"]}}
 
 
 def _get_cookie_opts() -> dict:
