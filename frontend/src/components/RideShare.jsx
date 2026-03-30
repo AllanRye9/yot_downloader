@@ -686,7 +686,9 @@ export default function RideShare({ user, onRidesChange, requestedRide, onReques
         {/* ── Fare Estimation Panel ── */}
         {showEstimator && (
           <div className="rounded-xl border border-indigo-700/50 bg-indigo-900/10 p-4 space-y-3">
-            <p className="text-xs font-semibold text-indigo-300 flex items-center gap-1.5">💰 Fare Estimator · $1/km</p>
+            <p className="text-xs font-semibold text-indigo-300 flex items-center gap-1.5">
+              💰 Fare Estimator{estimateResult ? ` · $${estimateResult.rate_per_km}/km` : ' · $1/km'}
+            </p>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div>
                 <label className="text-xs text-gray-400 mb-1 block">Start Location</label>
@@ -755,7 +757,8 @@ export default function RideShare({ user, onRidesChange, requestedRide, onReques
                     @ ${estimateResult.rate_per_km}/km
                   </span>
                 </div>
-                {(estimateStart !== estimateResult.start || estimateDest !== estimateResult.destination) && (
+                {/* Show a note when the result is for a different route than currently typed */}
+                {(estimateStart.trim() !== estimateResult.start || estimateDest.trim() !== estimateResult.destination) && (
                   <p className="text-xs text-amber-400">⚠️ This is an estimate. Actual fare may vary based on driver's confirmed route.</p>
                 )}
               </div>

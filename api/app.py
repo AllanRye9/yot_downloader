@@ -8999,9 +8999,15 @@ async def api_shared_fare(
     })
 
 
-# Nominatim geocoding base URL (uses OpenStreetMap data, no API key required)
+# Nominatim geocoding base URL (uses OpenStreetMap data, no API key required).
+# NOTE: Nominatim usage policy requires a descriptive User-Agent including a
+# project name and contact URL/email, and enforces a rate limit of 1 req/second.
+# Override _NOMINATIM_URL via the NOMINATIM_URL env var to use a self-hosted
+# instance or a commercial provider with higher rate limits.
 _NOMINATIM_URL = os.environ.get("NOMINATIM_URL", "https://nominatim.openstreetmap.org/search")
 _NOMINATIM_TIMEOUT_SECS = 5
+# Contact email shown in the User-Agent (configurable via env var)
+_NOMINATIM_CONTACT = os.environ.get("NOMINATIM_CONTACT", "contact@yotweek.app")
 
 
 def _geocode_address(address: str) -> dict | None:
@@ -9009,6 +9015,10 @@ def _geocode_address(address: str) -> dict | None:
 
     Returns ``{"lat": float, "lng": float, "display_name": str}`` or ``None``
     if the address cannot be resolved.
+
+    Nominatim policy requires 1 request/second and a descriptive User-Agent
+    with contact information. For high-volume production use, configure a
+    self-hosted Nominatim instance via the NOMINATIM_URL environment variable.
     """
     import urllib.request
     import urllib.parse
@@ -9022,7 +9032,10 @@ def _geocode_address(address: str) -> dict | None:
     })
     url = f"{_NOMINATIM_URL}?{params}"
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "yotweek-platform/1.0"})
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": f"yotweek-platform/1.0 ({_NOMINATIM_CONTACT})"},
+        )
         with urllib.request.urlopen(req, timeout=_NOMINATIM_TIMEOUT_SECS) as resp:
             data = _json.loads(resp.read().decode())
         if not data:
