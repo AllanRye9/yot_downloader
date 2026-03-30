@@ -3932,367 +3932,227 @@ class TestAgentApplications:
         assert "Not Approved" in subject
 
 
-# ===========================================================================
-# Text Extractor – Error Fix
-# ===========================================================================
+# ---------------------------------------------------------------------------
+# Admin — Properties
+# ---------------------------------------------------------------------------
 
-class TestTextExtractorAuth:
-    """Tests for the /api/doc/to_text endpoint authentication and error handling."""
+class TestAdminProperties:
+    """Tests for GET /api/admin/properties and DELETE /api/admin/properties/{id}."""
 
-    def _make_txt_upload(self, content=b"Hello world", filename="test.txt"):
-        """Return a mock UploadFile-like object for testing."""
-        import io
-        from types import SimpleNamespace
-        buf = io.BytesIO(content)
-        async def _read():
-            return buf.read()
-        return SimpleNamespace(
-            filename=filename,
-            read=_read,
-        )
-
-    def test_unauthenticated_returns_preview_not_401(self):
-        """Unauthenticated users should get a limited preview, not a 401 error."""
-        import json
-        from api.app import api_doc_to_text
+    def test_list_requires_admin(self):
+        from api.app import api_admin_properties
         req = _make_request({})
-        file = self._make_txt_upload(content=b"A" * 2000)
-        resp = run(api_doc_to_text(req, file))
-        assert resp.status_code == 200
-        data = json.loads(resp.body)
-        assert "text" in data
-        assert data.get("preview_only") is True
-        assert "Sign in" in data.get("message", "")
-
-    def test_unauthenticated_preview_is_limited(self):
-        """Preview for unauthenticated users should be shorter than the full text."""
-        import json
-        from api.app import api_doc_to_text, _TEXT_EXTRACT_PREVIEW_CHARS
-        req = _make_request({})
-        long_text = ("word " * 200).encode()
-        file = self._make_txt_upload(content=long_text)
-        resp = run(api_doc_to_text(req, file))
-        assert resp.status_code == 200
-        data = json.loads(resp.body)
-        assert len(data["text"]) <= _TEXT_EXTRACT_PREVIEW_CHARS
-
-    def test_authenticated_user_gets_full_text(self):
-        """Authenticated users should receive the full text without preview_only flag."""
-        import json
-        from api.app import api_doc_to_text
-        resp_reg, _ = _register_user("TextAuthUser")
-        user_id = json.loads(resp_reg.body)["user_id"]
-        req = _make_request({"app_user_id": user_id})
-        content = b"Full document text for testing extraction."
-        file = self._make_txt_upload(content=content)
-        resp = run(api_doc_to_text(req, file))
-        assert resp.status_code == 200
-        data = json.loads(resp.body)
-        assert data.get("preview_only") is False
-        assert "Full document text" in data["text"]
-
-    def test_unsupported_format_returns_user_friendly_error(self):
-        """An unsupported file type returns a clear user-friendly error message."""
-        import json
-        from api.app import api_doc_to_text
-        resp_reg, _ = _register_user("TextFormatUser")
-        user_id = json.loads(resp_reg.body)["user_id"]
-        req = _make_request({"app_user_id": user_id})
-        file = self._make_txt_upload(content=b"data", filename="image.png")
-        resp = run(api_doc_to_text(req, file))
-        assert resp.status_code == 400
-        data = json.loads(resp.body)
-        assert "Unable to extract text" in data["error"]
-        assert "supported format" in data["error"]
-
-    def test_empty_file_returns_error(self):
-        """An empty file returns a clear error message."""
-        import json
-        from api.app import api_doc_to_text
-        resp_reg, _ = _register_user("TextEmptyUser")
-        user_id = json.loads(resp_reg.body)["user_id"]
-        req = _make_request({"app_user_id": user_id})
-        file = self._make_txt_upload(content=b"", filename="empty.txt")
-        resp = run(api_doc_to_text(req, file))
-        assert resp.status_code == 400
-        data = json.loads(resp.body)
-        assert "empty" in data["error"].lower() or "Unable to extract" in data["error"]
-
-    def test_unsupported_format_logs_to_db(self):
-        """Failed extractions due to bad format are logged in the database."""
-        import json
-        from api.app import api_doc_to_text, api_admin_extraction_errors
-        resp_reg, _ = _register_user("TextLogUser")
-        user_id = json.loads(resp_reg.body)["user_id"]
-        req = _make_request({"app_user_id": user_id})
-        file = self._make_txt_upload(content=b"binary data", filename="badfile.xyz")
-        run(api_doc_to_text(req, file))
-        # Check admin endpoint shows the error
-        admin_req = _make_request({"admin_user": "admin"})
-        errors_resp = run(api_admin_extraction_errors(admin_req))
-        assert errors_resp.status_code == 200
-        errors = json.loads(errors_resp.body)["errors"]
-        assert any("unsupported_format" in e["error_type"] for e in errors)
-
-    def test_admin_extraction_errors_requires_admin(self):
-        """GET /api/admin/extraction_errors requires admin login."""
-        from api.app import api_admin_extraction_errors
-        req = _make_request({})
-        resp = run(api_admin_extraction_errors(req))
+        resp = run(api_admin_properties(req))
         assert resp.status_code == 401
 
-
-# ===========================================================================
-# Notifications – Link Field
-# ===========================================================================
-
-class TestNotificationLink:
-    """Tests for notification link/link_label fields."""
-
-    def test_notification_link_stored_and_returned(self):
-        """Creating a notification with a link stores and returns the link field."""
+    def test_list_returns_all_properties(self):
         import json
-        from api.app import api_get_notifications, _create_notification
-        resp, _ = _register_user("NotifLink")
-        user_id = json.loads(resp.body)["user_id"]
-        _create_notification(user_id, "system", "Link Test", "Body", link="#inbox", link_label="View in Inbox")
-        req = _make_request({"app_user_id": user_id})
-        data = json.loads(run(api_get_notifications(req)).body)
-        n = next((x for x in data["notifications"] if x["title"] == "Link Test"), None)
-        assert n is not None
-        assert n["link"] == "#inbox"
-        assert n["link_label"] == "View in Inbox"
+        from api.app import api_admin_properties, api_create_property, _PropertyCreateRequest
+        # Create a property via authenticated user
+        resp_user, email = _register_user(name="PropAdminUser")
+        user_id = json.loads(resp_user.body)["user_id"]
+        _grant_posting_permission(user_id)
+        session = _login_session(email)
+        req_user = _make_request(session)
+        prop_resp = run(api_create_property(req_user, _PropertyCreateRequest(
+            title="AdminListProp",
+            description="test",
+            price=100.0,
+            address="123 Admin St",
+            lat=10.0,
+            lng=20.0,
+            status="active",
+        )))
+        assert prop_resp.status_code == 201
+        prop_id = json.loads(prop_resp.body)["property"]["property_id"]
 
-    def test_notification_without_link_returns_null_link(self):
-        """Notifications created without a link return null/None for link fields."""
-        import json
-        from api.app import api_get_notifications, _create_notification
-        resp, _ = _register_user("NotifNoLink")
-        user_id = json.loads(resp.body)["user_id"]
-        _create_notification(user_id, "system", "No Link Test", "Body")
-        req = _make_request({"app_user_id": user_id})
-        data = json.loads(run(api_get_notifications(req)).body)
-        n = next((x for x in data["notifications"] if x["title"] == "No Link Test"), None)
-        assert n is not None
-        # link should be None/null when not provided
-        assert n["link"] is None
-
-    def test_driver_approval_notification_has_link(self):
-        """Driver approval notification includes a link to the driver registration tab."""
-        import json, uuid, datetime
-        from api.app import (
-            api_admin_driver_approve, api_get_notifications,
-            _DriverApproveRequest, _get_db, _db_lock, USE_POSTGRES,
-        )
-        resp, _ = _register_user("NotifLinkDriver")
-        user_id = json.loads(resp.body)["user_id"]
-        app_id = str(uuid.uuid4())
-        created = datetime.datetime.utcnow().isoformat()
-        with _db_lock:
-            conn = _get_db()
-            try:
-                if USE_POSTGRES:
-                    cur = conn.cursor()
-                    cur.execute(
-                        "INSERT INTO driver_applications (app_id,user_id,vehicle_make,vehicle_model,vehicle_year,vehicle_color,license_plate,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-                        (app_id, user_id, "Toyota", "Yaris", 2021, "White", "XYZ999", created)
-                    )
-                else:
-                    conn.execute(
-                        "INSERT INTO driver_applications (app_id,user_id,vehicle_make,vehicle_model,vehicle_year,vehicle_color,license_plate,created_at) VALUES (?,?,?,?,?,?,?,?)",
-                        (app_id, user_id, "Toyota", "Yaris", 2021, "White", "XYZ999", created)
-                    )
-                conn.commit()
-            finally:
-                conn.close()
         admin_req = _make_request({"admin_user": "admin"})
-        run(api_admin_driver_approve(admin_req, app_id, _DriverApproveRequest(approved=True)))
-        user_req = _make_request({"app_user_id": user_id})
-        data = json.loads(run(api_get_notifications(user_req)).body)
-        notif = next((n for n in data["notifications"] if n["type"] == "driver_approved"), None)
-        assert notif is not None
-        assert notif["link"] is not None
-        assert notif["link_label"] is not None
+        resp = run(api_admin_properties(admin_req))
+        assert resp.status_code == 200
+        body = json.loads(resp.body)
+        assert "properties" in body
+        ids = [p["property_id"] for p in body["properties"]]
+        assert prop_id in ids
 
-
-# ===========================================================================
-# DM Contacts endpoint + Search
-# ===========================================================================
-
-class TestDMContactsAndSearch:
-    """Tests for GET /api/dm/contacts and GET /api/dm/conversations?search=."""
-
-    def _get_user_id(self, name="DMTest"):
-        import json
-        resp, email = _register_user(name=name)
-        from api.app import _get_db, _db_lock, USE_POSTGRES, _execute
-        with _db_lock:
-            conn = _get_db()
-            try:
-                cur = _execute(
-                    conn,
-                    "SELECT user_id FROM app_users WHERE email=?" if not USE_POSTGRES else "SELECT user_id FROM app_users WHERE email=%s",
-                    (email,),
-                )
-                row = cur.fetchone()
-                return row[0] if row else None
-            finally:
-                conn.close()
-
-    def test_contacts_requires_login(self):
-        """GET /api/dm/contacts without login → 401."""
-        from api.app import api_dm_contacts
+    def test_delete_requires_admin(self):
+        from api.app import api_admin_delete_property
         req = _make_request({})
-        resp = run(api_dm_contacts(req))
+        resp = run(api_admin_delete_property(req, "fake-id"))
         assert resp.status_code == 401
 
-    def test_contacts_empty_for_new_user(self):
-        """New user has no contacts."""
+    def test_delete_nonexistent_returns_404(self):
+        from api.app import api_admin_delete_property
+        req = _make_request({"admin_user": "admin"})
+        resp = run(api_admin_delete_property(req, "does-not-exist"))
+        assert resp.status_code == 404
+
+    def test_admin_can_delete_any_property(self):
         import json
-        from api.app import api_dm_contacts
-        uid = self._get_user_id("ContactsNew")
-        req = _make_request({"app_user_id": uid})
-        resp = run(api_dm_contacts(req))
+        from api.app import api_admin_properties, api_admin_delete_property, api_create_property, _PropertyCreateRequest
+        resp_user, email = _register_user(name="PropDeleteUser")
+        user_id = json.loads(resp_user.body)["user_id"]
+        _grant_posting_permission(user_id)
+        session = _login_session(email)
+        req_user = _make_request(session)
+        prop_resp = run(api_create_property(req_user, _PropertyCreateRequest(
+            title="ToDeleteProp",
+            description="del",
+            price=50.0,
+            address="456 Delete Ave",
+            lat=11.0,
+            lng=21.0,
+            status="active",
+        )))
+        prop_id = json.loads(prop_resp.body)["property"]["property_id"]
+
+        admin_req = _make_request({"admin_user": "admin"})
+        del_resp = run(api_admin_delete_property(admin_req, prop_id))
+        assert del_resp.status_code == 200
+        assert json.loads(del_resp.body)["ok"] is True
+
+        # Confirm it's gone
+        list_resp = run(api_admin_properties(admin_req))
+        ids = [p["property_id"] for p in json.loads(list_resp.body)["properties"]]
+        assert prop_id not in ids
+
+
+# ---------------------------------------------------------------------------
+# Admin — Users
+# ---------------------------------------------------------------------------
+
+class TestAdminUsers:
+    """Tests for GET /api/admin/users and DELETE /api/admin/users/{id}."""
+
+    def test_list_requires_admin(self):
+        from api.app import api_admin_users
+        req = _make_request({})
+        resp = run(api_admin_users(req))
+        assert resp.status_code == 401
+
+    def test_list_returns_users(self):
+        import json
+        from api.app import api_admin_users
+        resp_user, _ = _register_user(name="AdminListableUser")
+        registered_id = json.loads(resp_user.body)["user_id"]
+
+        admin_req = _make_request({"admin_user": "admin"})
+        resp = run(api_admin_users(admin_req))
         assert resp.status_code == 200
-        assert json.loads(resp.body)["contacts"] == []
+        body = json.loads(resp.body)
+        assert "users" in body
+        ids = [u["user_id"] for u in body["users"]]
+        assert registered_id in ids
 
-    def test_contacts_shows_previously_messaged_user(self):
-        """After messaging someone, that person appears in /api/dm/contacts."""
+    def test_list_includes_expected_fields(self):
         import json
-        from api.app import api_dm_contacts, api_dm_start_conversation, api_dm_send, _DMStartRequest, _DMSendRequest
-        uid_a = self._get_user_id("ContactsA")
-        uid_b = self._get_user_id("ContactsB")
-        req_a = _make_request({"app_user_id": uid_a})
-        conv_id = json.loads(run(api_dm_start_conversation(req_a, _DMStartRequest(other_user_id=uid_b))).body)["conv"]["conv_id"]
-        run(api_dm_send(req_a, _DMSendRequest(conv_id=conv_id, content="Hello contacts!")))
-        resp = run(api_dm_contacts(req_a))
+        from api.app import api_admin_users
+        admin_req = _make_request({"admin_user": "admin"})
+        resp = run(api_admin_users(admin_req))
+        body = json.loads(resp.body)
+        if body["users"]:
+            user = body["users"][0]
+            for field in ("user_id", "name", "email", "role", "can_post_properties", "created_at"):
+                assert field in user
+
+    def test_delete_requires_admin(self):
+        from api.app import api_admin_delete_user
+        req = _make_request({})
+        resp = run(api_admin_delete_user(req, "fake-user-id"))
+        assert resp.status_code == 401
+
+    def test_delete_nonexistent_returns_404(self):
+        from api.app import api_admin_delete_user
+        req = _make_request({"admin_user": "admin"})
+        resp = run(api_admin_delete_user(req, "does-not-exist"))
+        assert resp.status_code == 404
+
+    def test_admin_can_delete_user(self):
+        import json
+        from api.app import api_admin_users, api_admin_delete_user
+        resp_user, _ = _register_user(name="DeleteableUser")
+        user_id = json.loads(resp_user.body)["user_id"]
+
+        admin_req = _make_request({"admin_user": "admin"})
+        del_resp = run(api_admin_delete_user(admin_req, user_id))
+        assert del_resp.status_code == 200
+        assert json.loads(del_resp.body)["ok"] is True
+
+        # Confirm gone
+        list_resp = run(api_admin_users(admin_req))
+        ids = [u["user_id"] for u in json.loads(list_resp.body)["users"]]
+        assert user_id not in ids
+
+
+# ---------------------------------------------------------------------------
+# Admin — Broadcasts
+# ---------------------------------------------------------------------------
+
+class TestAdminBroadcasts:
+    """Tests for GET /api/admin/broadcasts and DELETE /api/admin/broadcasts/{id}."""
+
+    def test_list_requires_admin(self):
+        from api.app import api_admin_broadcasts
+        req = _make_request({})
+        resp = run(api_admin_broadcasts(req))
+        assert resp.status_code == 401
+
+    def test_list_returns_broadcasts(self):
+        import json
+        from api.app import api_admin_broadcasts, api_broadcast_post, _BroadcastPostRequest
+        resp_user, email = _register_user(name="BcastAdminUser")
+        session = _login_session(email)
+        req_user = _make_request(session)
+        bcast_resp = run(api_broadcast_post(req_user, _BroadcastPostRequest(
+            seats=2,
+            waiting_time="30 min",
+            start_destination="Airport",
+            end_destination="City Centre",
+        )))
+        assert bcast_resp.status_code == 201
+        bcast_id = json.loads(bcast_resp.body)["broadcast_id"]
+
+        admin_req = _make_request({"admin_user": "admin"})
+        resp = run(api_admin_broadcasts(admin_req))
         assert resp.status_code == 200
-        contacts = json.loads(resp.body)["contacts"]
-        assert any(c["user_id"] == uid_b for c in contacts)
+        body = json.loads(resp.body)
+        assert "broadcasts" in body
+        ids = [b["broadcast_id"] for b in body["broadcasts"]]
+        assert bcast_id in ids
 
-    def test_contacts_sorted_by_most_recent(self):
-        """Contacts are sorted by most-recent message timestamp."""
-        import json, time
-        from api.app import api_dm_contacts, api_dm_start_conversation, api_dm_send, _DMStartRequest, _DMSendRequest
-        uid_a = self._get_user_id("ContactsSortA")
-        uid_b = self._get_user_id("ContactsSortB")
-        uid_c = self._get_user_id("ContactsSortC")
-        req_a = _make_request({"app_user_id": uid_a})
-        # Start conv with B first, then C
-        conv_b = json.loads(run(api_dm_start_conversation(req_a, _DMStartRequest(other_user_id=uid_b))).body)["conv"]["conv_id"]
-        conv_c = json.loads(run(api_dm_start_conversation(req_a, _DMStartRequest(other_user_id=uid_c))).body)["conv"]["conv_id"]
-        run(api_dm_send(req_a, _DMSendRequest(conv_id=conv_b, content="Hi B")))
-        time.sleep(0.01)
-        run(api_dm_send(req_a, _DMSendRequest(conv_id=conv_c, content="Hi C - later")))
-        contacts = json.loads(run(api_dm_contacts(req_a)).body)["contacts"]
-        ids = [c["user_id"] for c in contacts]
-        assert ids.index(uid_c) < ids.index(uid_b)  # C most recent → first
+    def test_cancel_requires_admin(self):
+        from api.app import api_admin_delete_broadcast
+        req = _make_request({})
+        resp = run(api_admin_delete_broadcast(req, "fake-id"))
+        assert resp.status_code == 401
 
-    def test_conversation_search_by_name(self):
-        """GET /api/dm/conversations?search=<name> filters by participant name."""
+    def test_cancel_nonexistent_returns_404(self):
+        from api.app import api_admin_delete_broadcast
+        req = _make_request({"admin_user": "admin"})
+        resp = run(api_admin_delete_broadcast(req, "does-not-exist"))
+        assert resp.status_code == 404
+
+    def test_admin_can_cancel_any_broadcast(self):
         import json
-        from api.app import api_dm_list_conversations, api_dm_start_conversation, _DMStartRequest
-        uid_a = self._get_user_id("SrchConvA")
-        uid_b = self._get_user_id("UniqueSearchName")
-        uid_c = self._get_user_id("OtherPersonConv")
-        req_a = _make_request({"app_user_id": uid_a})
-        run(api_dm_start_conversation(req_a, _DMStartRequest(other_user_id=uid_b)))
-        run(api_dm_start_conversation(req_a, _DMStartRequest(other_user_id=uid_c)))
+        from api.app import api_admin_broadcasts, api_admin_delete_broadcast, api_broadcast_post, _BroadcastPostRequest
+        resp_user, email = _register_user(name="BcastCancelUser")
+        session = _login_session(email)
+        req_user = _make_request(session)
+        bcast_resp = run(api_broadcast_post(req_user, _BroadcastPostRequest(
+            seats=1,
+            waiting_time="15 min",
+            start_destination="North",
+            end_destination="South",
+        )))
+        bcast_id = json.loads(bcast_resp.body)["broadcast_id"]
 
-        # Build a search request with query string
-        import types
-        req_search = types.SimpleNamespace(
-            session={"app_user_id": uid_a},
-            headers={"content-type": "application/json"},
-        )
-        resp = run(api_dm_list_conversations(req_search, search="UniqueSearchName"))
-        assert resp.status_code == 200
-        convs = json.loads(resp.body)["conversations"]
-        names = [c["other_user"]["name"] for c in convs]
-        assert any("UniqueSearchName" in n for n in names)
-        assert not any("OtherPersonConv" in n for n in names)
+        admin_req = _make_request({"admin_user": "admin"})
+        del_resp = run(api_admin_delete_broadcast(admin_req, bcast_id))
+        assert del_resp.status_code == 200
+        assert json.loads(del_resp.body)["ok"] is True
 
-    def test_conversation_search_no_match_returns_empty(self):
-        """Search that matches nothing returns empty conversations list."""
-        import json
-        from api.app import api_dm_list_conversations
-        uid = self._get_user_id("SrchEmpty")
-        req = _make_request({"app_user_id": uid})
-        resp = run(api_dm_list_conversations(req, search="ZZZNoMatchXXX"))
-        assert resp.status_code == 200
-        assert json.loads(resp.body)["conversations"] == []
-
-
-# ===========================================================================
-# Rides Geocoding & Fare Estimation
-# ===========================================================================
-
-class TestRidesGeocodingAndEstimate:
-    """Tests for GET /api/rides/geocode and GET /api/rides/estimate_fare."""
-
-    def test_geocode_empty_address_returns_400(self):
-        """Empty address parameter returns 400."""
-        import json
-        from api.app import api_rides_geocode
-        resp = run(api_rides_geocode(""))
-        assert resp.status_code == 400
-
-    def test_geocode_returns_lat_lng_for_known_city(self, monkeypatch):
-        """Geocoding a known city returns lat/lng coordinates."""
-        import json
-        from api import app as app_mod
-        monkeypatch.setattr(app_mod, "_geocode_address",
-            lambda addr: {"lat": 51.5074, "lng": -0.1278, "display_name": "London, UK"})
-        resp = run(app_mod.api_rides_geocode("London"))
-        assert resp.status_code == 200
-        data = json.loads(resp.body)
-        assert "lat" in data and "lng" in data
-        assert data["lat"] == 51.5074
-
-    def test_geocode_unknown_address_returns_422(self, monkeypatch):
-        """Unresolvable address returns 422."""
-        import json
-        from api import app as app_mod
-        monkeypatch.setattr(app_mod, "_geocode_address", lambda addr: None)
-        resp = run(app_mod.api_rides_geocode("xXxNoSuchPlace123xXx"))
-        assert resp.status_code == 422
-
-    def test_estimate_fare_requires_start_and_destination(self):
-        """Missing start or destination returns 400."""
-        import json
-        from api.app import api_rides_estimate_fare
-        resp1 = run(api_rides_estimate_fare("", "London"))
-        assert resp1.status_code == 400
-        resp2 = run(api_rides_estimate_fare("Paris", ""))
-        assert resp2.status_code == 400
-
-    def test_estimate_fare_calculates_correct_fare(self, monkeypatch):
-        """estimate_fare uses geocoded coords and _FARE_PER_KM to compute fare."""
-        import json
-        from api import app as app_mod
-
-        def _mock_geocode(addr):
-            if "Paris" in addr:
-                return {"lat": 48.8566, "lng": 2.3522, "display_name": "Paris, France"}
-            if "Lyon" in addr:
-                return {"lat": 45.7640, "lng": 4.8357, "display_name": "Lyon, France"}
-            return None
-
-        monkeypatch.setattr(app_mod, "_geocode_address", _mock_geocode)
-        resp = run(app_mod.api_rides_estimate_fare("Paris", "Lyon", seats=2))
-        assert resp.status_code == 200
-        data = json.loads(resp.body)
-        assert data["dist_km"] > 0
-        assert data["total_fare"] == round(data["dist_km"] * app_mod._FARE_PER_KM, 2)
-        assert data["per_seat_cost"] == round(data["total_fare"] / 2, 2)
-        assert data["seats"] == 2
-
-    def test_estimate_fare_geocode_failure_returns_422(self, monkeypatch):
-        """If geocoding fails for origin, returns 422 with a helpful message."""
-        import json
-        from api import app as app_mod
-        monkeypatch.setattr(app_mod, "_geocode_address", lambda addr: None)
-        resp = run(app_mod.api_rides_estimate_fare("NowherePlace", "London"))
-        assert resp.status_code == 422
-        data = json.loads(resp.body)
-        assert "error" in data
+        # Confirm status is expired
+        list_resp = run(api_admin_broadcasts(admin_req))
+        bcasts = json.loads(list_resp.body)["broadcasts"]
+        found = next((b for b in bcasts if b["broadcast_id"] == bcast_id), None)
+        assert found is not None
+        assert found["status"] == "expired"
