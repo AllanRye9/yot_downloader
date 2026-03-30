@@ -1461,6 +1461,75 @@ class TestDriverApplication:
         data = json.loads(status_resp.body)
         assert data["application"]["subscription_type"] == "monthly"
 
+    def test_driver_approve_sends_confirmation_email(self, monkeypatch):
+        """Approving a driver application triggers _send_email to the driver."""
+        import json, uuid as _uuid, datetime as _dt
+        from api import app as app_mod
+        emails_sent = []
+        monkeypatch.setattr(app_mod, "_send_email",
+                            lambda to, subj, body: emails_sent.append((to, subj)) or True)
+        resp, _ = _register_user("EmailDriverApprove")
+        user_id = json.loads(resp.body)["user_id"]
+        # Insert a driver application directly
+        app_id = str(_uuid.uuid4())
+        created = _dt.datetime.utcnow().isoformat()
+        with app_mod._db_lock:
+            conn = app_mod._get_db()
+            try:
+                if app_mod.USE_POSTGRES:
+                    cur = conn.cursor()
+                    cur.execute(
+                        "INSERT INTO driver_applications (app_id,user_id,vehicle_make,vehicle_model,vehicle_year,vehicle_color,license_plate,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                        (app_id, user_id, "Toyota", "Camry", 2020, "Blue", "EMAI001", created)
+                    )
+                else:
+                    conn.execute(
+                        "INSERT INTO driver_applications (app_id,user_id,vehicle_make,vehicle_model,vehicle_year,vehicle_color,license_plate,created_at) VALUES (?,?,?,?,?,?,?,?)",
+                        (app_id, user_id, "Toyota", "Camry", 2020, "Blue", "EMAI001", created)
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+        admin_req = _make_request({"admin_user": "admin"})
+        run(app_mod.api_admin_driver_approve(admin_req, app_id, app_mod._DriverApproveRequest(approved=True)))
+        assert len(emails_sent) == 1
+        _, subject = emails_sent[0]
+        assert "Approved" in subject
+
+    def test_driver_reject_sends_rejection_email(self, monkeypatch):
+        """Rejecting a driver application triggers _send_email to the driver."""
+        import json, uuid as _uuid, datetime as _dt
+        from api import app as app_mod
+        emails_sent = []
+        monkeypatch.setattr(app_mod, "_send_email",
+                            lambda to, subj, body: emails_sent.append((to, subj)) or True)
+        resp, _ = _register_user("EmailDriverReject")
+        user_id = json.loads(resp.body)["user_id"]
+        app_id = str(_uuid.uuid4())
+        created = _dt.datetime.utcnow().isoformat()
+        with app_mod._db_lock:
+            conn = app_mod._get_db()
+            try:
+                if app_mod.USE_POSTGRES:
+                    cur = conn.cursor()
+                    cur.execute(
+                        "INSERT INTO driver_applications (app_id,user_id,vehicle_make,vehicle_model,vehicle_year,vehicle_color,license_plate,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                        (app_id, user_id, "Toyota", "Camry", 2020, "Blue", "EMAI002", created)
+                    )
+                else:
+                    conn.execute(
+                        "INSERT INTO driver_applications (app_id,user_id,vehicle_make,vehicle_model,vehicle_year,vehicle_color,license_plate,created_at) VALUES (?,?,?,?,?,?,?,?)",
+                        (app_id, user_id, "Toyota", "Camry", 2020, "Blue", "EMAI002", created)
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+        admin_req = _make_request({"admin_user": "admin"})
+        run(app_mod.api_admin_driver_approve(admin_req, app_id, app_mod._DriverApproveRequest(approved=False)))
+        assert len(emails_sent) == 1
+        _, subject = emails_sent[0]
+        assert "Not Approved" in subject
+
 
 # ===========================================================================
 # Ride History
@@ -3815,3 +3884,49 @@ class TestAgentApplications:
             full_name="Bucket Test Agent", email="bucket@x.com", license_number="LIC-B"
         )))
         assert "agent_reg/pending" in calls
+
+    def test_approve_sends_confirmation_email(self, monkeypatch):
+        """Approving an agent application triggers _send_email with the applicant's address."""
+        import json
+        from api import app as app_mod
+        emails_sent = []
+        monkeypatch.setattr(app_mod, "_send_email",
+                            lambda to, subj, body: emails_sent.append((to, subj)) or True)
+        resp_data, _ = _register_user(name="AgentEmailApprove")
+        user_id = json.loads(resp_data.body)["user_id"]
+        req = _make_request({"app_user_id": user_id})
+        apply_resp = run(app_mod.api_agent_apply(req, app_mod._AgentApplyRequest(
+            full_name="Email Agent",
+            email="emailagent@example.com",
+            license_number="LIC-EMAIL",
+        )))
+        app_id = json.loads(apply_resp.body)["app_id"]
+        admin_req = _make_request({"admin_user": "admin"})
+        run(app_mod.api_admin_agent_approve(admin_req, app_id, app_mod._AgentApproveRequest(approved=True)))
+        assert len(emails_sent) == 1
+        to_addr, subject = emails_sent[0]
+        assert to_addr == "emailagent@example.com"
+        assert "Approved" in subject
+
+    def test_reject_sends_rejection_email(self, monkeypatch):
+        """Rejecting an agent application triggers _send_email with the applicant's address."""
+        import json
+        from api import app as app_mod
+        emails_sent = []
+        monkeypatch.setattr(app_mod, "_send_email",
+                            lambda to, subj, body: emails_sent.append((to, subj)) or True)
+        resp_data, _ = _register_user(name="AgentEmailReject")
+        user_id = json.loads(resp_data.body)["user_id"]
+        req = _make_request({"app_user_id": user_id})
+        apply_resp = run(app_mod.api_agent_apply(req, app_mod._AgentApplyRequest(
+            full_name="Reject Agent",
+            email="rejectagent@example.com",
+            license_number="LIC-REJECT",
+        )))
+        app_id = json.loads(apply_resp.body)["app_id"]
+        admin_req = _make_request({"admin_user": "admin"})
+        run(app_mod.api_admin_agent_approve(admin_req, app_id, app_mod._AgentApproveRequest(approved=False)))
+        assert len(emails_sent) == 1
+        to_addr, subject = emails_sent[0]
+        assert to_addr == "rejectagent@example.com"
+        assert "Not Approved" in subject
