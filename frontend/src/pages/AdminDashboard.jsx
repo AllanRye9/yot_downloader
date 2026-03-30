@@ -903,9 +903,6 @@ export default function AdminDashboard() {
             </div>
           )}
 
-            </div>
-          )}
-
           {/* Properties tab */}
           {tab === 'properties' && (
             <div className="space-y-4">
