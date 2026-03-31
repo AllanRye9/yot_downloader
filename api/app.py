@@ -869,6 +869,7 @@ def init_db():
                         lng REAL,
                         images_json TEXT NOT NULL DEFAULT '[]',
                         status TEXT NOT NULL DEFAULT 'active',
+                        property_type TEXT NOT NULL DEFAULT 'listings',
                         owner_user_id TEXT,
                         created_at TEXT NOT NULL
                     )
@@ -996,6 +997,13 @@ def init_db():
                 for col, coldef in [("link", "TEXT"), ("link_label", "TEXT")]:
                     try:
                         cur.execute(f"ALTER TABLE notifications ADD COLUMN {col} {coldef}")
+                        conn.commit()
+                    except Exception:
+                        conn.rollback()
+                        pass  # column already exists
+                for col, coldef in [("property_type", "TEXT NOT NULL DEFAULT 'listings'")]:
+                    try:
+                        cur.execute(f"ALTER TABLE properties ADD COLUMN {col} {coldef}")
                         conn.commit()
                     except Exception:
                         conn.rollback()
@@ -1170,6 +1178,7 @@ def init_db():
                         lng REAL,
                         images_json TEXT NOT NULL DEFAULT '[]',
                         status TEXT NOT NULL DEFAULT 'active',
+                        property_type TEXT NOT NULL DEFAULT 'listings',
                         owner_user_id TEXT,
                         created_at TEXT NOT NULL
                     );
@@ -1276,6 +1285,11 @@ def init_db():
                 for col, coldef in [("link", "TEXT"), ("link_label", "TEXT")]:
                     try:
                         conn.execute(f"ALTER TABLE notifications ADD COLUMN {col} {coldef}")
+                    except Exception:
+                        pass  # column already exists
+                for col, coldef in [("property_type", "TEXT DEFAULT 'listings'")]:
+                    try:
+                        conn.execute(f"ALTER TABLE properties ADD COLUMN {col} {coldef}")
                     except Exception:
                         pass  # column already exists
             conn.commit()
@@ -6546,6 +6560,14 @@ class _AiCvRequest(BaseModel):
     text: str = ""
     name: str = ""
     job_title: str = ""
+    inline_modify: bool = False
+    # Surrounding context fields for more accurate AI suggestions
+    summary: str = ""
+    experience: str = ""
+    skills: str = ""
+    education: str = ""
+    projects: str = ""
+    publications: str = ""
 
 
 @fastapi_app.post("/api/ai/cv_suggest")
@@ -6578,22 +6600,58 @@ async def api_ai_cv_suggest(body: _AiCvRequest):
     text = (body.text or "").strip()
     name = (body.name or "").strip()
     job_title = (body.job_title or "").strip()
+    inline_modify = body.inline_modify
+
+    # Build surrounding context from other CV sections when provided
+    surrounding_ctx = ""
+    ctx_parts = []
+    if body.summary and field != "summary":      ctx_parts.append(f"Summary: {body.summary[:300]}")
+    if body.experience and field != "experience": ctx_parts.append(f"Experience: {body.experience[:300]}")
+    if body.skills and field != "skills":         ctx_parts.append(f"Skills: {body.skills[:300]}")
+    if body.education and field != "education":   ctx_parts.append(f"Education: {body.education[:200]}")
+    if ctx_parts:
+        surrounding_ctx = "Other CV sections for context:\n" + "\n".join(ctx_parts) + "\n\n"
 
     # Try Groq first (fastest, highest quality)
     if _GROQ_API_KEY:
         context = f"Name: {name}\nJob title: {job_title}\n" if (name or job_title) else ""
-        prompt = (
-            f"You are a professional CV/résumé writing coach. "
-            f"Review the following '{field}' section of a CV and provide:\n"
-            f"1. Up to 5 concise, actionable improvement suggestions (one per line, "
-            f"prefixed with '- ').\n"
-            f"2. A polished, rewritten version of the text (labelled 'REWRITE:').\n\n"
-            f"{context}"
-            f"TEXT:\n{text or '(empty)'}\n\n"
-            f"Keep suggestions brief and specific."
-        )
+        if inline_modify:
+            prompt = (
+                f"You are a professional CV/résumé editor. "
+                f"Rewrite ONLY the following '{field}' section of a CV to be more impactful and professional.\n"
+                f"Return ONLY the improved text with no explanation or labels.\n\n"
+                f"{context}"
+                f"{surrounding_ctx}"
+                f"CURRENT {field.upper()}:\n{text or '(empty)'}\n\n"
+                f"IMPROVED VERSION:"
+            )
+        else:
+            prompt = (
+                f"You are a professional CV/résumé writing coach. "
+                f"Review the following '{field}' section of a CV and provide:\n"
+                f"1. Up to 5 concise, actionable improvement suggestions (one per line, "
+                f"prefixed with '- ').\n"
+                f"2. A polished, rewritten version of the text (labelled 'REWRITE:').\n\n"
+                f"{context}"
+                f"{surrounding_ctx}"
+                f"TEXT:\n{text or '(empty)'}\n\n"
+                f"Keep suggestions brief and specific."
+            )
         ai_text = _call_groq(prompt, max_tokens=400)
         if ai_text:
+            if inline_modify:
+                rule = _rule_based_cv_suggestions(field, text)
+                # Strip any "IMPROVED VERSION:" label if the model included it
+                improved = ai_text.strip()
+                if improved.upper().startswith("IMPROVED VERSION:"):
+                    improved = improved[len("IMPROVED VERSION:"):].strip()
+                return JSONResponse({
+                    "suggestions": rule["suggestions"],
+                    "sample_verbs": rule["sample_verbs"],
+                    "enhanced_text": improved,
+                    "inline_modified": improved,
+                    "source": "groq",
+                })
             lines = ai_text.splitlines()
             suggestions = [
                 l.lstrip("-– ").strip()
@@ -7081,124 +7139,6 @@ def _log_extraction_error(user_id: str | None, filename: str, error_type: str, e
 _TEXT_EXTRACT_PREVIEW_CHARS = 500
 
 
-@fastapi_app.post("/api/doc/to_text")
-async def api_doc_to_text(
-    request: Request,
-    file: UploadFile = File(...),
-):
-    """Extract clean plain text from a PDF, DOCX, DOC, ODT, or TXT file.
-
-    The returned JSON contains:
-      - ``text``: the extracted text (Unicode-safe, emojis preserved, bullets normalised)
-      - ``filename``: original filename
-      - ``truncated``: true if content was trimmed to 200 000 characters
-      - ``preview_only``: true when the user is unauthenticated (limited preview)
-    """
-    import tempfile
-
-    session = request.session
-    # Support both session key variants used across the app
-    user_id: str | None = session.get("app_user_id") or session.get("user_id") or None
-    is_authenticated = bool(user_id)
-
-    filename = (file.filename or "upload").strip()
-    src_ext = os.path.splitext(filename)[1].lower().lstrip(".")
-
-    if src_ext not in _TEXT_EXTRACT_ACCEPT:
-        _log_extraction_error(user_id, filename, "unsupported_format",
-                              f"File type '.{src_ext}' is not supported.")
-        return JSONResponse(
-            {
-                "error": (
-                    "Unable to extract text. Please ensure the file is a supported format "
-                    f"({', '.join('.' + e for e in sorted(_TEXT_EXTRACT_ACCEPT))}) and try again."
-                )
-            },
-            status_code=400,
-        )
-
-    content = await file.read()
-    if len(content) == 0:
-        _log_extraction_error(user_id, filename, "empty_file", "Uploaded file is empty.")
-        return JSONResponse(
-            {"error": "Unable to extract text. The uploaded file appears to be empty."},
-            status_code=400,
-        )
-    if len(content) > _TEXT_EXTRACT_MAX_BYTES:
-        _log_extraction_error(user_id, filename, "file_too_large",
-                              f"File size {len(content)} bytes exceeds {_TEXT_EXTRACT_MAX_BYTES} bytes limit.")
-        return JSONResponse(
-            {"error": f"Unable to extract text. File is too large (max {_TEXT_EXTRACT_MAX_BYTES // (1024 * 1024)} MB)."},
-            status_code=400,
-        )
-
-    tmpdir = tempfile.mkdtemp(prefix="totext_")
-    try:
-        src_path = os.path.join(tmpdir, f"input.{src_ext}")
-        with open(src_path, "wb") as fh:
-            fh.write(content)
-
-        if src_ext == "pdf":
-            raw = _extract_text_from_pdf(src_path)
-        elif src_ext in ("docx", "doc", "odt"):
-            raw = _extract_text_from_docx_rich(src_path)
-        elif src_ext == "rtf":
-            raw = _extract_text_from_rtf(src_path)
-        else:  # txt
-            raw = _extract_text_from_txt(src_path)
-
-        if not raw or not raw.strip():
-            _log_extraction_error(user_id, filename, "no_text_found",
-                                  "Extraction returned empty text (file may be image-based or corrupted).")
-            return JSONResponse(
-                {
-                    "error": (
-                        "Unable to extract text. The file appears to contain no readable text "
-                        "(it may be image-based, encrypted, or corrupted)."
-                    )
-                },
-                status_code=422,
-            )
-
-        # Normalise bullets; emojis and line breaks are kept as-is
-        text = _normalize_text_bullets(raw)
-
-        _MAX_CHARS = 200_000
-        truncated = len(text) > _MAX_CHARS
-        if truncated:
-            text = text[:_MAX_CHARS]
-
-        # Unauthenticated users receive a limited preview
-        if not is_authenticated:
-            preview = text[:_TEXT_EXTRACT_PREVIEW_CHARS]
-            return JSONResponse({
-                "text": preview,
-                "filename": filename,
-                "truncated": True,
-                "preview_only": True,
-                "message": "Sign in to extract the full document text.",
-            })
-
-        return JSONResponse({"text": text, "filename": filename, "truncated": truncated, "preview_only": False})
-
-    except Exception as exc:
-        logger.error("Text extraction error for '%s': %s", filename, exc, exc_info=True)
-        _log_extraction_error(user_id, filename, "processing_error", str(exc))
-        return JSONResponse(
-            {
-                "error": (
-                    "Unable to extract text. Please ensure the file is a supported format "
-                    f"({', '.join('.' + e for e in sorted(_TEXT_EXTRACT_ACCEPT))}) and try again."
-                )
-            },
-            status_code=500,
-        )
-    finally:
-        def _rm(p):
-            import time as _t
-            _t.sleep(_TEMP_DIR_CLEANUP_DELAY_SECS)
-            shutil.rmtree(p, ignore_errors=True)
-        threading.Thread(target=_rm, args=(tmpdir,), daemon=True).start()
 
 
 # =========================================================
@@ -9900,6 +9840,7 @@ _DEMO_PROPERTIES_SEED = [
         "lat": 51.522, "lng": -0.074,
         "images_json": '["https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800","https://images.unsplash.com/photo-1484154218962-a197022b5858?w=800"]',
         "status": "active",
+        "property_type": "rentals",
         "agent_ids": ["agent-1", "agent-3"],
     },
     {
@@ -9911,6 +9852,7 @@ _DEMO_PROPERTIES_SEED = [
         "lat": 51.533, "lng": -0.103,
         "images_json": '["https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800","https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=800"]',
         "status": "active",
+        "property_type": "purchase",
         "agent_ids": ["agent-2", "agent-5"],
     },
     {
@@ -9922,6 +9864,7 @@ _DEMO_PROPERTIES_SEED = [
         "lat": 51.503, "lng": -0.017,
         "images_json": '["https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800","https://images.unsplash.com/photo-1493809842364-78817add7ffb?w=800"]',
         "status": "active",
+        "property_type": "short_stay",
         "agent_ids": ["agent-7"],
     },
     {
@@ -9933,6 +9876,7 @@ _DEMO_PROPERTIES_SEED = [
         "lat": 51.461, "lng": -0.301,
         "images_json": '["https://images.unsplash.com/photo-1613977257363-707ba9348227?w=800","https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800"]',
         "status": "active",
+        "property_type": "purchase",
         "agent_ids": ["agent-8", "agent-6", "agent-1"],
     },
     {
@@ -9944,6 +9888,7 @@ _DEMO_PROPERTIES_SEED = [
         "lat": 51.461, "lng": -0.138,
         "images_json": '["https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=800","https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=800"]',
         "status": "active",
+        "property_type": "listings",
         "agent_ids": ["agent-4", "agent-2"],
     },
     {
@@ -9955,6 +9900,7 @@ _DEMO_PROPERTIES_SEED = [
         "lat": 51.541, "lng": -0.002,
         "images_json": '["https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800","https://images.unsplash.com/photo-1554995207-c18c203602cb?w=800"]',
         "status": "sold",
+        "property_type": "hotels",
         "agent_ids": ["agent-3", "agent-8"],
     },
 ]
@@ -9974,13 +9920,13 @@ def _seed_properties_if_empty():
                     try:
                         if USE_POSTGRES:
                             conn.cursor().execute(
-                                "INSERT INTO properties (property_id,title,description,price,address,lat,lng,images_json,status,owner_user_id,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
-                                (p["property_id"], p["title"], p["description"], p["price"], p["address"], p["lat"], p["lng"], p["images_json"], p["status"], None, now),
+                                "INSERT INTO properties (property_id,title,description,price,address,lat,lng,images_json,status,property_type,owner_user_id,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+                                (p["property_id"], p["title"], p["description"], p["price"], p["address"], p["lat"], p["lng"], p["images_json"], p["status"], p.get("property_type", "listings"), None, now),
                             )
                         else:
                             conn.execute(
-                                "INSERT OR IGNORE INTO properties (property_id,title,description,price,address,lat,lng,images_json,status,owner_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                                (p["property_id"], p["title"], p["description"], p["price"], p["address"], p["lat"], p["lng"], p["images_json"], p["status"], None, now),
+                                "INSERT OR IGNORE INTO properties (property_id,title,description,price,address,lat,lng,images_json,status,property_type,owner_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                                (p["property_id"], p["title"], p["description"], p["price"], p["address"], p["lat"], p["lng"], p["images_json"], p["status"], p.get("property_type", "listings"), None, now),
                             )
                         for pos, agent_id in enumerate(p.get("agent_ids", [])):
                             try:
@@ -10028,12 +9974,12 @@ def _get_property_row(property_id: str, with_agents: bool = False) -> dict | Non
         try:
             cur = _execute(
                 conn,
-                "SELECT property_id,title,description,price,address,lat,lng,images_json,status,owner_user_id,created_at FROM properties WHERE property_id=?"
+                "SELECT property_id,title,description,price,address,lat,lng,images_json,status,property_type,owner_user_id,created_at FROM properties WHERE property_id=?"
                 if not USE_POSTGRES else
-                "SELECT property_id,title,description,price,address,lat,lng,images_json,status,owner_user_id,created_at FROM properties WHERE property_id=%s",
+                "SELECT property_id,title,description,price,address,lat,lng,images_json,status,property_type,owner_user_id,created_at FROM properties WHERE property_id=%s",
                 (property_id,),
             )
-            cols = ["property_id","title","description","price","address","lat","lng","images_json","status","owner_user_id","created_at"]
+            cols = ["property_id","title","description","price","address","lat","lng","images_json","status","property_type","owner_user_id","created_at"]
             row = cur.fetchone()
             if not row:
                 return None
@@ -10049,6 +9995,9 @@ def _get_property_row(property_id: str, with_agents: bool = False) -> dict | Non
     return prop
 
 
+_VALID_PROPERTY_TYPES = {"hotels", "short_stay", "rentals", "purchase", "listings"}
+
+
 class _PropertyCreateRequest(BaseModel):
     title: str
     description: str = ""
@@ -10059,6 +10008,7 @@ class _PropertyCreateRequest(BaseModel):
     images: list[str] = []
     agent_ids: list[str] = []
     status: str = "active"
+    property_type: str = "listings"
 
 
 class _PropertyUpdateRequest(BaseModel):
@@ -10076,12 +10026,13 @@ class _PropertyUpdateRequest(BaseModel):
 @fastapi_app.get("/api/properties")
 async def api_list_properties(
     status: str | None = None,
+    property_type: str | None = None,
     min_lat: float | None = None,
     max_lat: float | None = None,
     min_lng: float | None = None,
     max_lng: float | None = None,
 ):
-    """List properties, optionally filtered by status and/or map bounds."""
+    """List properties, optionally filtered by status, property_type and/or map bounds."""
     _seed_properties_if_empty()
     with _db_lock:
         conn = _get_db()
@@ -10092,6 +10043,9 @@ async def api_list_properties(
             if status:
                 parts.append(f"status={ph}")
                 params.append(status)
+            if property_type and property_type in _VALID_PROPERTY_TYPES:
+                parts.append(f"property_type={ph}")
+                params.append(property_type)
             if min_lat is not None:
                 parts.append(f"lat>={ph}")
                 params.append(min_lat)
@@ -10105,7 +10059,7 @@ async def api_list_properties(
                 parts.append(f"lng<={ph}")
                 params.append(max_lng)
             where = (" WHERE " + " AND ".join(parts)) if parts else ""
-            cols = ["property_id","title","description","price","address","lat","lng","images_json","status","owner_user_id","created_at"]
+            cols = ["property_id","title","description","price","address","lat","lng","images_json","status","property_type","owner_user_id","created_at"]
             cur = _execute(conn, f"SELECT {','.join(cols)} FROM properties{where} ORDER BY created_at DESC", params)
             rows = cur.fetchall()
         finally:
@@ -10113,7 +10067,7 @@ async def api_list_properties(
 
     properties = []
     for row in rows:
-        p = dict(zip(["property_id","title","description","price","address","lat","lng","images_json","status","owner_user_id","created_at"], row))
+        p = dict(zip(["property_id","title","description","price","address","lat","lng","images_json","status","property_type","owner_user_id","created_at"], row))
         try:
             p["images"] = json.loads(p["images_json"] or "[]")
         except Exception:
@@ -10152,6 +10106,63 @@ async def api_property_map_preview(property_id: str):
         return JSONResponse({"error": "Property not found."}, status_code=404)
     cols = ["property_id", "title", "address", "lat", "lng", "status"]
     return JSONResponse({"preview": dict(zip(cols, row))})
+
+
+@fastapi_app.get("/api/properties/{property_id}/nearby_agents")
+async def api_property_nearby_agents(
+    property_id: str,
+    limit: int = 4,
+    offset: int = 0,
+):
+    """Return agents sorted by distance from a property (haversine formula).
+
+    Returns:
+        { agents: [...], total: int }
+    """
+    import math as _math
+
+    prop = _get_property_row(property_id)
+    if not prop:
+        return JSONResponse({"error": "Property not found."}, status_code=404)
+
+    prop_lat = prop.get("lat")
+    prop_lng = prop.get("lng")
+
+    _seed_agents_if_empty()
+    with _db_lock:
+        conn = _get_db()
+        try:
+            cur = _execute(
+                conn,
+                "SELECT agent_id,name,bio,avatar,availability_status,lat,lng,created_at FROM real_estate_agents"
+                if not USE_POSTGRES else
+                "SELECT agent_id,name,bio,avatar,availability_status,lat,lng,created_at FROM real_estate_agents",
+            )
+            rows = cur.fetchall()
+        finally:
+            conn.close()
+
+    cols = ["agent_id", "name", "bio", "avatar", "availability_status", "lat", "lng", "created_at"]
+    agents = [dict(zip(cols, r)) for r in rows]
+
+    def _haversine(lat1, lng1, lat2, lng2):
+        R = 6371
+        d_lat = _math.radians(lat2 - lat1)
+        d_lng = _math.radians(lng2 - lng1)
+        a = _math.sin(d_lat / 2) ** 2 + _math.cos(_math.radians(lat1)) * _math.cos(_math.radians(lat2)) * _math.sin(d_lng / 2) ** 2
+        return R * 2 * _math.atan2(_math.sqrt(a), _math.sqrt(1 - a))
+
+    for a in agents:
+        if prop_lat is not None and prop_lng is not None and a["lat"] is not None and a["lng"] is not None:
+            a["distance_km"] = round(_haversine(prop_lat, prop_lng, a["lat"], a["lng"]), 2)
+        else:
+            a["distance_km"] = None
+
+    agents.sort(key=lambda x: (x["distance_km"] is None, x["distance_km"] or 9999))
+
+    total = len(agents)
+    page = agents[offset: offset + limit]
+    return JSONResponse({"agents": page, "total": total})
 
 
 @fastapi_app.get("/api/properties/{property_id}")
@@ -10201,12 +10212,13 @@ async def api_create_property(request: Request, body: _PropertyCreateRequest):
     with _db_lock:
         conn = _get_db()
         try:
+            prop_type = body.property_type if body.property_type in _VALID_PROPERTY_TYPES else "listings"
             _execute(
                 conn,
-                "INSERT INTO properties (property_id,title,description,price,address,lat,lng,images_json,status,owner_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+                "INSERT INTO properties (property_id,title,description,price,address,lat,lng,images_json,status,property_type,owner_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
                 if not USE_POSTGRES else
-                "INSERT INTO properties (property_id,title,description,price,address,lat,lng,images_json,status,owner_user_id,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (property_id, title, body.description.strip(), body.price, body.address.strip(), body.lat, body.lng, images_json, body.status, user_id, now),
+                "INSERT INTO properties (property_id,title,description,price,address,lat,lng,images_json,status,property_type,owner_user_id,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (property_id, title, body.description.strip(), body.price, body.address.strip(), body.lat, body.lng, images_json, body.status, prop_type, user_id, now),
             )
             for pos, agent_id in enumerate(agent_ids):
                 try:
@@ -12031,7 +12043,10 @@ class _BroadcastUpdateRequest(BaseModel):
 
 
 class _BookingPayRequest(BaseModel):
-    pass  # future: payment gateway token
+    card_last4: str = ""
+    payment_method: str = "card"
+    billing_name: str = ""
+    billing_email: str = ""
 
 
 @fastapi_app.post("/api/broadcasts")
@@ -12448,7 +12463,7 @@ async def api_broadcast_book(request: Request, broadcast_id: str):
 
 
 @fastapi_app.post("/api/bookings/{booking_id}/pay")
-async def api_booking_pay(request: Request, booking_id: str):
+async def api_booking_pay(request: Request, booking_id: str, body: _BookingPayRequest = None):
     """Process payment for a booking and generate a receipt."""
     user_id = request.session.get("app_user_id")
     if not user_id:
@@ -12526,6 +12541,12 @@ async def api_booking_pay(request: Request, booking_id: str):
     transaction_id = str(uuid.uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
 
+    _TAX_RATE = 0.10
+    subtotal = round(float(booking["amount"]), 2)
+    tax_amount = round(subtotal * _TAX_RATE, 2)
+    total_amount = round(subtotal + tax_amount, 2)
+    pay_body = body or _BookingPayRequest()
+
     with _db_lock:
         conn = _get_db()
         try:
@@ -12537,7 +12558,7 @@ async def api_booking_pay(request: Request, booking_id: str):
                     (receipt_id, booking_id, booking["broadcast_id"],
                      user_id, booking["passenger_name"],
                      bcast["user_id"], bcast["poster_name"],
-                     booking["amount"], transaction_id,
+                     total_amount, transaction_id,
                      bcast["start_destination"], bcast["end_destination"], created_at),
                 )
             else:
@@ -12547,7 +12568,7 @@ async def api_booking_pay(request: Request, booking_id: str):
                     (receipt_id, booking_id, booking["broadcast_id"],
                      user_id, booking["passenger_name"],
                      bcast["user_id"], bcast["poster_name"],
-                     booking["amount"], transaction_id,
+                     total_amount, transaction_id,
                      bcast["start_destination"], bcast["end_destination"], created_at),
                 )
             conn.commit()
@@ -12562,16 +12583,193 @@ async def api_booking_pay(request: Request, booking_id: str):
         "passenger_name": booking["passenger_name"],
         "driver_id": bcast["user_id"],
         "driver_name": bcast["poster_name"],
-        "amount": booking["amount"],
+        "amount": total_amount,
+        "subtotal": subtotal,
+        "tax_amount": tax_amount,
+        "tax_rate": _TAX_RATE,
         "transaction_id": transaction_id,
         "start_destination": bcast["start_destination"],
         "end_destination": bcast["end_destination"],
         "created_at": created_at,
+        "billing_name": pay_body.billing_name,
+        "billing_email": pay_body.billing_email,
+        "payment_method": pay_body.payment_method,
+        "card_last4": pay_body.card_last4,
+        "items": [
+            {
+                "description": f"Ride: {bcast['start_destination']} → {bcast['end_destination']}",
+                "amount": subtotal,
+            }
+        ],
     }
 
     _bucket_write_json("receipts", "receipt", receipt_id, receipt_data)
 
     return JSONResponse({"ok": True, "receipt_id": receipt_id, "receipt": receipt_data}, status_code=201)
+
+
+@fastapi_app.get("/api/receipts/{receipt_id}/pdf")
+async def api_receipt_pdf(request: Request, receipt_id: str):
+    """Generate and return a downloadable PDF receipt."""
+    from fpdf import FPDF
+    user_id = request.session.get("app_user_id")
+    if not user_id:
+        return JSONResponse({"error": "Login required."}, status_code=401)
+
+    cols = ["receipt_id", "booking_id", "broadcast_id", "passenger_id", "passenger_name",
+            "driver_id", "driver_name", "amount", "transaction_id",
+            "start_destination", "end_destination", "created_at"]
+
+    with _db_lock:
+        conn = _get_db()
+        try:
+            cur = _execute(
+                conn,
+                "SELECT receipt_id,booking_id,broadcast_id,passenger_id,passenger_name,driver_id,driver_name,amount,transaction_id,start_destination,end_destination,created_at FROM receipts WHERE receipt_id=?"
+                if not USE_POSTGRES else
+                "SELECT receipt_id,booking_id,broadcast_id,passenger_id,passenger_name,driver_id,driver_name,amount,transaction_id,start_destination,end_destination,created_at FROM receipts WHERE receipt_id=%s",
+                (receipt_id,),
+            )
+            row = cur.fetchone()
+        finally:
+            conn.close()
+
+    if not row:
+        return JSONResponse({"error": "Receipt not found."}, status_code=404)
+
+    rec = dict(zip(cols, row))
+    if rec["passenger_id"] != user_id and rec["driver_id"] != user_id:
+        return JSONResponse({"error": "Access denied."}, status_code=403)
+
+    # Build PDF
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+
+    # Header
+    pdf.set_font("Helvetica", "B", 20)
+    pdf.set_text_color(30, 64, 175)
+    pdf.cell(0, 12, "Payment Receipt", ln=True, align="C")
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 6, "YOT Ride Service", ln=True, align="C")
+    pdf.ln(4)
+
+    # Divider
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(6)
+
+    # Transaction info
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_text_color(30, 30, 30)
+    pdf.cell(0, 7, "Transaction Details", ln=True)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(60, 60, 60)
+
+    created_dt = rec["created_at"]
+    try:
+        from datetime import datetime as _dt
+        created_dt = _dt.fromisoformat(rec["created_at"].replace("Z", "+00:00")).strftime("%d %b %Y, %H:%M UTC")
+    except Exception:
+        pass
+
+    rows_info = [
+        ("Transaction ID", rec["transaction_id"]),
+        ("Receipt ID", rec["receipt_id"]),
+        ("Date & Time", created_dt),
+    ]
+    for label, value in rows_info:
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.cell(55, 6, label + ":", ln=False)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.cell(0, 6, str(value), ln=True)
+
+    pdf.ln(4)
+
+    # Billing details
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_text_color(30, 30, 30)
+    pdf.cell(0, 7, "Billing Details", ln=True)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(60, 60, 60)
+
+    billing_rows = [
+        ("Passenger Name", rec["passenger_name"]),
+        ("Driver Name", rec["driver_name"]),
+    ]
+    for label, value in billing_rows:
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.cell(55, 6, label + ":", ln=False)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.cell(0, 6, str(value), ln=True)
+
+    pdf.ln(4)
+
+    # Itemised services
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_text_color(30, 30, 30)
+    pdf.cell(0, 7, "Services", ln=True)
+
+    # Table header
+    pdf.set_fill_color(230, 236, 255)
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_text_color(30, 30, 30)
+    pdf.cell(130, 7, "Description", border=1, fill=True)
+    pdf.cell(50, 7, "Amount", border=1, fill=True, align="R", ln=True)
+
+    # Item row
+    item_desc = f"Ride: {rec['start_destination']} -> {rec['end_destination']}"
+    subtotal = round(float(rec["amount"]) / 1.10, 2)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(60, 60, 60)
+    pdf.cell(130, 7, item_desc, border=1)
+    pdf.cell(50, 7, f"GBP {subtotal:.2f}", border=1, align="R", ln=True)
+
+    pdf.ln(2)
+
+    # Totals
+    tax_amount = round(float(rec["amount"]) - subtotal, 2)
+    total = float(rec["amount"])
+
+    pdf.set_font("Helvetica", "", 9)
+    pdf.cell(130, 6, "")
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.cell(25, 6, "Subtotal:")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.cell(25, 6, f"GBP {subtotal:.2f}", align="R", ln=True)
+
+    pdf.cell(130, 6, "")
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.cell(25, 6, "Tax (10%):")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.cell(25, 6, f"GBP {tax_amount:.2f}", align="R", ln=True)
+
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_text_color(30, 64, 175)
+    pdf.cell(130, 8, "")
+    pdf.cell(25, 8, "TOTAL:")
+    pdf.cell(25, 8, f"GBP {total:.2f}", align="R", ln=True)
+
+    pdf.ln(4)
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(4)
+
+    # Footer
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(130, 130, 130)
+    pdf.cell(0, 5, "Thank you for using YOT Ride Service. This is an official receipt.", ln=True, align="C")
+
+    pdf_bytes = pdf.output()
+
+    from fastapi.responses import Response as _FastAPIResponse
+    return _FastAPIResponse(
+        content=bytes(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="receipt-{receipt_id[:8]}.pdf"'},
+    )
 
 
 @fastapi_app.get("/api/receipts")
