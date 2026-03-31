@@ -509,7 +509,14 @@ function CVBuilder() {
     const text = fields[field] || ''
     setAiState({ loading: true, suggestions: [], sampleVerbs: [], enhancedText: '', source: '', error: '' })
     try {
-      const data = await aiCvSuggest(field, text, fields.name)
+      const data = await aiCvSuggest(field, text, fields.name, fields.job_title || '', {
+        summary:      fields.summary,
+        experience:   fields.experience,
+        skills:       fields.skills,
+        education:    fields.education,
+        projects:     fields.projects,
+        publications: fields.publications,
+      })
       setAiState({
         loading: false,
         suggestions: data.suggestions || [],
@@ -537,8 +544,16 @@ function CVBuilder() {
     setAutoFillField(field)
     setAutoFillError({ field: null, msg: null })
     try {
-      const data = await aiCvSuggest(field, fields[field] || '', fields.name)
-      const fillText = data.enhanced_text || data.suggestions?.[0] || ''
+      const data = await aiCvSuggest(field, fields[field] || '', fields.name, fields.job_title || '', {
+        inline_modify: true,
+        summary:      fields.summary,
+        experience:   fields.experience,
+        skills:       fields.skills,
+        education:    fields.education,
+        projects:     fields.projects,
+        publications: fields.publications,
+      })
+      const fillText = data.inline_modified || data.enhanced_text || data.suggestions?.[0] || ''
       if (fillText) {
         setFields(f => ({ ...f, [field]: fillText }))
       } else {

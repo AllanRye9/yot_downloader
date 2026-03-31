@@ -218,7 +218,6 @@ export default function DocConverter() {
         </p>
       </div>
 
-      {true && (
       <div>
       <div style={{
         background: '#1f2937', border: '1px solid #374151',
@@ -489,7 +488,6 @@ export default function DocConverter() {
         )}
       </div>
       </div>
-      )}
     </div>
   )
 }

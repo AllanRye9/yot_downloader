@@ -818,63 +818,147 @@ export default function UserProfile({ user: initialUser, onLogout, onLocationUpd
   )
 
   return (
-    <div className="rounded-xl border border-gray-700 bg-gray-900/70 overflow-hidden">
-      {/* ── Header with collapse toggle ── */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700/60 bg-gray-800/40">
-        <button
-          onClick={() => setExpanded(e => !e)}
-          className="flex items-center gap-2 text-xs text-gray-300 hover:text-white transition-colors min-w-0 flex-1"
-          title={expanded ? 'Collapse profile' : 'Expand profile'}
+    <>
+      <style>{`
+        @keyframes up-profile-fadein {
+          from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes up-tab-slide {
+          from { opacity: 0; transform: translateX(-6px); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
+        .up-card {
+          background: rgba(17, 24, 39, 0.80);
+          backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
+          border: 1px solid rgba(99, 102, 241, 0.22);
+          border-radius: 16px;
+          overflow: hidden;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.04) inset;
+          animation: up-profile-fadein 0.3s ease-out;
+          min-width: 280px;
+          max-width: 380px;
+        }
+        .up-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 10px 16px;
+          border-bottom: 1px solid rgba(99,102,241,0.18);
+          background: linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(17,24,39,0.5) 100%);
+        }
+        .up-collapse-btn {
+          display: flex; align-items: center; gap: 8px;
+          background: none; border: none; cursor: pointer;
+          color: #c7d2fe; font-size: 0.8rem; font-weight: 600;
+          min-width: 0; flex: 1; text-align: left;
+          transition: color 0.15s;
+        }
+        .up-collapse-btn:hover { color: #fff; }
+        .up-logout-btn {
+          background: none; border: none; cursor: pointer;
+          color: rgba(156,163,175,0.7); font-size: 0.75rem;
+          padding: 4px 8px; border-radius: 6px;
+          transition: color 0.15s, background 0.15s;
+        }
+        .up-logout-btn:hover {
+          color: #f87171;
+          background: rgba(239,68,68,0.12);
+        }
+        .up-tab-bar {
+          display: flex;
+          overflow-x: auto;
+          border-bottom: 1px solid rgba(99,102,241,0.15);
+          background: rgba(30,27,75,0.3);
+          scrollbar-width: none;
+        }
+        .up-tab-bar::-webkit-scrollbar { display: none; }
+        .up-tab-btn {
+          flex-shrink: 0;
+          padding: 9px 12px;
+          font-size: 0.75rem;
+          font-weight: 500;
+          white-space: nowrap;
+          background: none; border: none; cursor: pointer;
+          color: rgba(156,163,175,0.8);
+          position: relative;
+          transition: color 0.15s;
+          animation: up-tab-slide 0.25s ease-out;
+        }
+        .up-tab-btn:hover { color: #c7d2fe; }
+        .up-tab-btn.active {
+          color: #818cf8;
+          border-bottom: 2px solid #818cf8;
+        }
+        .up-content { padding: 16px; }
+        .up-driver-badge {
+          font-size: 0.68rem;
+          padding: 2px 6px;
+          border-radius: 9999px;
+          background: rgba(16,185,129,0.18);
+          color: #6ee7b7;
+          border: 1px solid rgba(16,185,129,0.35);
+          flex-shrink: 0;
+        }
+        .up-unread-badge {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 16px; height: 16px;
+          border-radius: 50%;
+          background: #ef4444;
+          color: #fff;
+          font-size: 0.6rem; font-weight: 700;
+          flex-shrink: 0;
+        }
+      `}</style>
+      <div className="up-card">
+        {/* ── Header with collapse toggle ── */}
+        <div className="up-header">
+          <button
+            onClick={() => setExpanded(e => !e)}
+            className="up-collapse-btn"
+            title={expanded ? 'Collapse profile' : 'Expand profile'}
+          >
+            <span style={{ transition: 'transform 0.3s', transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)', display: 'inline-block' }}>▾</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</span>
+            {user.role === 'driver' && <span className="up-driver-badge">✅ Driver</span>}
+            {unread > 0 && <span className="up-unread-badge">{unread > 9 ? '9+' : unread}</span>}
+          </button>
+          <button onClick={handleLogout} className="up-logout-btn">
+            Logout
+          </button>
+        </div>
+
+        {/* ── Animated body ── */}
+        <div
+          style={{
+            maxHeight: expanded ? '2000px' : '0px',
+            opacity:   expanded ? 1 : 0,
+            overflow:  'hidden',
+            transition: 'max-height 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.25s ease',
+          }}
         >
-          <span className={`shrink-0 transition-transform duration-300 ${expanded ? 'rotate-0' : '-rotate-90'}`}>▾</span>
-          <span className="font-medium truncate">{user.name}</span>
-          {user.role === 'driver' && (
-            <span className="shrink-0 text-xs px-1.5 py-0.5 rounded-full bg-green-900/60 text-green-300 border border-green-700/50">✅</span>
-          )}
-          {unread > 0 && (
-            <span className="shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">
-              {unread > 9 ? '9+' : unread}
-            </span>
-          )}
-        </button>
-        <button onClick={handleLogout} className="text-xs text-gray-500 hover:text-red-400 transition-colors shrink-0 ml-3">
-          Logout
-        </button>
-      </div>
+          <div className="up-tab-bar">
+            {tabsWithBadge.map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                className={`up-tab-btn${tab === t.id ? ' active' : ''}`}>
+                {t.label}
+                {t.badge > 0 && (
+                  <span className="up-unread-badge" style={{ marginLeft: 4 }}>{t.badge > 9 ? '9+' : t.badge}</span>
+                )}
+              </button>
+            ))}
+          </div>
 
-      {/* ── Animated body ── */}
-      <div
-        style={{
-          maxHeight: expanded ? '2000px' : '0px',
-          opacity:   expanded ? 1 : 0,
-          overflow:  'hidden',
-          transition: 'max-height 0.35s ease, opacity 0.25s ease',
-        }}
-      >
-        <div className="flex overflow-x-auto border-b border-gray-700/60 bg-gray-800/20">
-          {tabsWithBadge.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={`shrink-0 px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap relative ${
-                tab === t.id ? 'border-b-2 border-blue-500 text-blue-400' : 'text-gray-500 hover:text-gray-300'
-              }`}>
-              {t.label}
-              {t.badge > 0 && (
-                <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold">
-                  {t.badge > 9 ? '9+' : t.badge}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        <div className="p-4">
-          {tab === 'overview' && <OverviewTab user={user} onLocationUpdate={onLocationUpdate} onUserUpdate={handleUserUpdate} />}
-          {tab === 'history'  && <RideHistoryTab userId={user.user_id} />}
-          {tab === 'stats'    && <StatsTab user={user} />}
-          {tab === 'driver'   && <DriverRoleTab user={user} />}
-          {tab === 'inbox'    && <InboxTab user={user} unreadCount={unread} onUnreadChange={setUnread} />}
+          <div className="up-content">
+            {tab === 'overview' && <OverviewTab user={user} onLocationUpdate={onLocationUpdate} onUserUpdate={handleUserUpdate} />}
+            {tab === 'history'  && <RideHistoryTab userId={user.user_id} />}
+            {tab === 'stats'    && <StatsTab user={user} />}
+            {tab === 'driver'   && <DriverRoleTab user={user} />}
+            {tab === 'inbox'    && <InboxTab user={user} unreadCount={unread} onUnreadChange={setUnread} />}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   )
 }

@@ -13,7 +13,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../App'
 import UserAuth from '../components/UserAuth'
 import UserProfile from '../components/UserProfile'
-import { getProperty, startPropertyConversation, getUserProfile } from '../api'
+import { getProperty, startPropertyConversation, getUserProfile, getNearbyAgents } from '../api'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
@@ -379,6 +379,13 @@ export default function PropertyDetailPage() {
   const [propError, setPropError]     = useState(null)
   const [contacting, setContacting]   = useState(null)
 
+  // Nearby agents state
+  const [nearbyAgents, setNearbyAgents]       = useState([])
+  const [nearbyTotal, setNearbyTotal]         = useState(0)
+  const [nearbyLoading, setNearbyLoading]     = useState(false)
+  const [nearbyOffset, setNearbyOffset]       = useState(0)
+  const NEARBY_PAGE = 4
+
   // Load user
   useEffect(() => {
     getUserProfile()
@@ -406,6 +413,30 @@ export default function PropertyDetailPage() {
       .catch(() => setPropError('Failed to load property.'))
       .finally(() => setPropLoading(false))
   }, [propertyId])
+
+  // Load nearby agents (first page)
+  useEffect(() => {
+    if (!propertyId) return
+    setNearbyLoading(true)
+    setNearbyOffset(0)
+    getNearbyAgents(propertyId, NEARBY_PAGE, 0)
+      .then(data => {
+        setNearbyAgents(data.agents ?? [])
+        setNearbyTotal(data.total ?? 0)
+      })
+      .catch(() => {})
+      .finally(() => setNearbyLoading(false))
+  }, [propertyId])
+
+  const handleLoadMoreNearby = () => {
+    const newOffset = nearbyOffset + NEARBY_PAGE
+    getNearbyAgents(propertyId, NEARBY_PAGE, newOffset)
+      .then(data => {
+        setNearbyAgents(prev => [...prev, ...(data.agents ?? [])])
+        setNearbyOffset(newOffset)
+      })
+      .catch(() => {})
+  }
 
   const handleContactAgent = async (agent) => {
     if (!appUser) { setShowAuthModal(true); return }
@@ -600,6 +631,93 @@ export default function PropertyDetailPage() {
                     No agents assigned to this property.
                   </div>
                 )}
+
+                {/* ── Nearby Agents ── */}
+                <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-color)' }}>
+                  <h2 style={{ color: 'var(--text-primary)', fontSize: '1rem', fontWeight: 700, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span>📍</span> Nearby Agents
+                    {nearbyTotal > 0 && (
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 400 }}>
+                        ({nearbyTotal})
+                      </span>
+                    )}
+                  </h2>
+
+                  {nearbyLoading ? (
+                    <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 0' }}>
+                      <div className="spinner w-6 h-6" />
+                    </div>
+                  ) : nearbyAgents.length === 0 ? (
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', textAlign: 'center', padding: '12px 0' }}>
+                      No nearby agents found.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {nearbyAgents.map(agent => (
+                        <div key={agent.agent_id} style={{
+                          background: 'var(--bg-input)', border: '1px solid var(--border-color)', borderRadius: 10,
+                          padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10,
+                        }}>
+                          <div style={{
+                            width: 40, height: 40, borderRadius: '50%', background: 'var(--bg-surface)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '1.4rem', flexShrink: 0, position: 'relative',
+                          }}>
+                            {agent.avatar ?? '👤'}
+                            <span style={{
+                              position: 'absolute', bottom: 0, right: 0,
+                              width: 10, height: 10, borderRadius: '50%',
+                              background: AVAIL_COLOR[agent.availability_status] ?? 'var(--text-secondary)',
+                              border: '2px solid var(--border-color)',
+                            }} />
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {agent.name}
+                            </div>
+                            <div style={{ color: AVAIL_COLOR[agent.availability_status] ?? 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 600 }}>
+                              {AVAIL_LABEL[agent.availability_status] ?? agent.availability_status}
+                            </div>
+                            {agent.distance_km !== null && agent.distance_km !== undefined && (
+                              <div style={{ color: 'var(--text-secondary)', fontSize: '0.7rem' }}>
+                                📍 {agent.distance_km.toFixed(1)} km away
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleContactAgent(agent)}
+                            disabled={contacting === agent.agent_id}
+                            style={{
+                              background: contacting === agent.agent_id ? 'var(--bg-input)' : '#10b981',
+                              color: '#fff', border: 'none', borderRadius: 7,
+                              padding: '6px 10px', fontSize: '0.75rem', fontWeight: 600,
+                              cursor: contacting === agent.agent_id ? 'wait' : 'pointer',
+                              flexShrink: 0, transition: 'background 0.15s',
+                            }}
+                          >
+                            {contacting === agent.agent_id ? '…' : '💬'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {!nearbyLoading && nearbyAgents.length < nearbyTotal && (
+                    <button
+                      type="button"
+                      onClick={handleLoadMoreNearby}
+                      style={{
+                        width: '100%', marginTop: 10, padding: '8px 0', fontSize: '0.8rem',
+                        fontWeight: 600, borderRadius: 8, cursor: 'pointer',
+                        background: 'var(--bg-input)', color: 'var(--text-primary)',
+                        border: '1px solid var(--border-color)', transition: 'background 0.15s',
+                      }}
+                    >
+                      Show More ({nearbyTotal - nearbyAgents.length} remaining)
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>

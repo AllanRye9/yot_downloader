@@ -205,8 +205,17 @@ export const generateCVTxt = (fields, layout = 'chronological') => {
  * @param {string} [jobTitle]  - Job title (optional context)
  * @returns {Promise<{suggestions: string[], sample_verbs: string[], enhanced_text: string, source: string}>}
  */
-export const aiCvSuggest = (field, text, name = '', jobTitle = '') =>
-  request('POST', '/api/ai/cv_suggest', { field, text, name, job_title: jobTitle })
+export const aiCvSuggest = (field, text, name = '', jobTitle = '', options = {}) =>
+  request('POST', '/api/ai/cv_suggest', {
+    field, text, name, job_title: jobTitle,
+    inline_modify: options.inline_modify ?? false,
+    summary:      options.summary ?? '',
+    experience:   options.experience ?? '',
+    skills:       options.skills ?? '',
+    education:    options.education ?? '',
+    projects:     options.projects ?? '',
+    publications: options.publications ?? '',
+  })
 
 /**
  * Polish a block of text for clarity and professionalism using AI.
@@ -408,7 +417,8 @@ export const listUsers = () => request('GET', '/api/users/list')
 
 export const listProperties = (params = {}) => {
   const qs = new URLSearchParams()
-  if (params.status)   qs.set('status',   params.status)
+  if (params.status)        qs.set('status',        params.status)
+  if (params.property_type) qs.set('property_type', params.property_type)
   if (params.min_lat != null) qs.set('min_lat', params.min_lat)
   if (params.max_lat != null) qs.set('max_lat', params.max_lat)
   if (params.min_lng != null) qs.set('min_lng', params.min_lng)

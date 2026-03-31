@@ -9829,6 +9829,9 @@ async def api_get_agent_chat(request: Request, agent_id: str):
 
 _VALID_PROPERTY_STATUSES = {"active", "sold", "rented"}
 
+# Booking payment tax rate (10%)
+_BOOKING_TAX_RATE = 0.10
+
 # Demo property seed data (linked to the demo agents)
 _DEMO_PROPERTIES_SEED = [
     {
@@ -10204,6 +10207,7 @@ async def api_create_property(request: Request, body: _PropertyCreateRequest):
         return JSONResponse({"error": "Property location (lat/lng) is required."}, status_code=400)
     if body.status not in _VALID_PROPERTY_STATUSES:
         return JSONResponse({"error": f"Invalid status. Must be one of: {', '.join(sorted(_VALID_PROPERTY_STATUSES))}"}, status_code=400)
+    prop_type = body.property_type if body.property_type in _VALID_PROPERTY_TYPES else "listings"
     agent_ids = list(dict.fromkeys(body.agent_ids))[:4]  # deduplicate, max 4
     property_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
@@ -10212,7 +10216,6 @@ async def api_create_property(request: Request, body: _PropertyCreateRequest):
     with _db_lock:
         conn = _get_db()
         try:
-            prop_type = body.property_type if body.property_type in _VALID_PROPERTY_TYPES else "listings"
             _execute(
                 conn,
                 "INSERT INTO properties (property_id,title,description,price,address,lat,lng,images_json,status,property_type,owner_user_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
@@ -12541,9 +12544,8 @@ async def api_booking_pay(request: Request, booking_id: str, body: _BookingPayRe
     transaction_id = str(uuid.uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
 
-    _TAX_RATE = 0.10
     subtotal = round(float(booking["amount"]), 2)
-    tax_amount = round(subtotal * _TAX_RATE, 2)
+    tax_amount = round(subtotal * _BOOKING_TAX_RATE, 2)
     total_amount = round(subtotal + tax_amount, 2)
     pay_body = body or _BookingPayRequest()
 
@@ -12586,7 +12588,7 @@ async def api_booking_pay(request: Request, booking_id: str, body: _BookingPayRe
         "amount": total_amount,
         "subtotal": subtotal,
         "tax_amount": tax_amount,
-        "tax_rate": _TAX_RATE,
+        "tax_rate": _BOOKING_TAX_RATE,
         "transaction_id": transaction_id,
         "start_destination": bcast["start_destination"],
         "end_destination": bcast["end_destination"],
@@ -12720,9 +12722,8 @@ async def api_receipt_pdf(request: Request, receipt_id: str):
     pdf.cell(50, 7, "Amount", border=1, fill=True, align="R", ln=True)
 
     # Item row
-    item_desc = f"Ride: {rec['start_destination']} -> {rec['end_destination']}"
-    _TAX_RATE = 0.10
-    subtotal = round(float(rec["amount"]) / (1 + _TAX_RATE), 2)
+    item_desc = f"Ride: {rec['start_destination']} \u2192 {rec['end_destination']}"
+    subtotal = round(float(rec["amount"]) / (1 + _BOOKING_TAX_RATE), 2)
     pdf.set_font("Helvetica", "", 9)
     pdf.set_text_color(60, 60, 60)
     pdf.cell(130, 7, item_desc, border=1)
