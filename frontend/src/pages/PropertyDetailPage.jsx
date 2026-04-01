@@ -13,6 +13,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../App'
 import UserAuth from '../components/UserAuth'
 import UserProfile from '../components/UserProfile'
+import AgentRegistration from '../components/AgentRegistration'
 import { getProperty, startPropertyConversation, getUserProfile, getNearbyAgents } from '../api'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -371,6 +372,7 @@ export default function PropertyDetailPage() {
   const [appUser, setAppUser]             = useState(null)
   const [userLoading, setUserLoading]     = useState(true)
   const [showAuthModal, setShowAuthModal] = useState(false)
+  const [showAgentModal, setShowAgentModal] = useState(false)
   const [profileOpen, setProfileOpen]     = useState(false)
   const profileRef = useRef(null)
 
@@ -378,6 +380,10 @@ export default function PropertyDetailPage() {
   const [propLoading, setPropLoading] = useState(true)
   const [propError, setPropError]     = useState(null)
   const [contacting, setContacting]   = useState(null)
+
+  // Listed agents "show more" state
+  const LISTED_AGENTS_PAGE = 4
+  const [listedAgentsShown, setListedAgentsShown] = useState(LISTED_AGENTS_PAGE)
 
   // Nearby agents state
   const [nearbyAgents, setNearbyAgents]       = useState([])
@@ -464,6 +470,21 @@ export default function PropertyDetailPage() {
         />
       )}
 
+      {/* ── Agent Registration Modal ── */}
+      {showAgentModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 500,
+            background: 'rgba(0,0,0,0.65)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '20px',
+          }}
+          onClick={e => { if (e.target === e.currentTarget) setShowAgentModal(false) }}
+        >
+          <AgentRegistration onClose={() => setShowAgentModal(false)} />
+        </div>
+      )}
+
       {/* ── Navbar ── */}
       <header style={{
         background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-color)',
@@ -480,7 +501,23 @@ export default function PropertyDetailPage() {
             <Link to="/property-inbox" style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', textDecoration: 'none' }}>Inbox</Link>
           </nav>
         </div>
-        <div ref={profileRef} style={{ position: 'relative' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Register as Agent button — always visible in top-right */}
+          <button
+            type="button"
+            onClick={() => appUser ? setShowAgentModal(true) : setShowAuthModal(true)}
+            style={{
+              background: 'transparent', color: 'var(--text-secondary)',
+              border: '1px solid var(--border-color)', borderRadius: 8,
+              padding: '6px 12px', fontSize: '0.78rem', fontWeight: 600,
+              cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+            title="Register as a property agent"
+          >
+            🏢 Become an Agent
+          </button>
+
+          <div ref={profileRef} style={{ position: 'relative' }}>
           {userLoading ? null : appUser ? (
             <div>
               <button
@@ -513,6 +550,7 @@ export default function PropertyDetailPage() {
               }}
             >Sign In</button>
           )}
+          </div>
         </div>
       </header>
 
@@ -617,7 +655,7 @@ export default function PropertyDetailPage() {
 
                 {property.agents && property.agents.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {property.agents.map(agent => (
+                    {property.agents.slice(0, listedAgentsShown).map(agent => (
                       <AgentCard
                         key={agent.agent_id}
                         agent={agent}
@@ -625,6 +663,20 @@ export default function PropertyDetailPage() {
                         contacting={contacting}
                       />
                     ))}
+                    {listedAgentsShown < property.agents.length && (
+                      <button
+                        type="button"
+                        onClick={() => setListedAgentsShown(n => n + LISTED_AGENTS_PAGE)}
+                        style={{
+                          width: '100%', padding: '8px 0', fontSize: '0.8rem',
+                          fontWeight: 600, borderRadius: 8, cursor: 'pointer',
+                          background: 'var(--bg-input)', color: 'var(--text-primary)',
+                          border: '1px solid var(--border-color)', transition: 'background 0.15s',
+                        }}
+                      >
+                        Show More ({property.agents.length - listedAgentsShown} remaining)
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', textAlign: 'center', padding: '20px 0' }}>
