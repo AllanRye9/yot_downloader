@@ -120,6 +120,7 @@ export default function App() {
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/properties" element={<PropertiesPage />} />
             <Route path="/properties/:propertyId" element={<PropertyDetailPage />} />
+            <Route path="/agents" element={<AgentsPage />} />
             <Route path="/property-inbox" element={<PropertyInboxPage />} />
             <Route path="/agents" element={<AgentsPage />} />
             <Route path="/map" element={<UnifiedMapPage />} />
