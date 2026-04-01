@@ -529,6 +529,10 @@ export default function UserDashboard() {
 
             {tab === 'agents' && (
               <div className="card">
+                <div className="mb-4">
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">🧑‍💼 Agents</h2>
+                  <p className="text-xs text-gray-400 mt-0.5">Register as a property agent or check your application status.</p>
+                </div>
                 <AgentRegistration />
               </div>
             )}
