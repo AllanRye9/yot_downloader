@@ -751,7 +751,7 @@ function PropertiesPanel({ properties, setProperties, onSelectOnMap, canPost, on
 
   const cycleStatus = async (prop) => {
     const cycle = { empty: 'occupied', occupied: 'soon_empty', soon_empty: 'empty' }
-    const newStatus = cycle[prop.status] ?? 'empty'
+    const newStatus = (prop.status in cycle) ? cycle[prop.status] : 'empty'
     setSaving(prop.property_id)
     try {
       const res = await updateProperty(prop.property_id, { status: newStatus })
@@ -1113,7 +1113,7 @@ function PostPropertyPanel({ onDone }) {
 
         {/* Images */}
         <div>
-          <label style={labelStyle}>Images (URLs, up to 20)</label>
+          <label style={labelStyle}>Image URLs (maximum 20)</label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {form.images.map((url, idx) => (
               <div key={idx} style={{ display: 'flex', gap: 6 }}>
@@ -1358,7 +1358,7 @@ export default function PropertyManager({ userLocation }) {
       if (data?.properties?.length) {
         setProperties(data.properties)
       }
-    } catch { /* fallback to demo data */ } finally {
+    } catch { /* API unavailable, demo data remains */ } finally {
       setPropsLoading(false)
     }
   }, [])
