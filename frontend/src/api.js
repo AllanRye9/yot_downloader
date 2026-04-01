@@ -205,8 +205,17 @@ export const generateCVTxt = (fields, layout = 'chronological') => {
  * @param {string} [jobTitle]  - Job title (optional context)
  * @returns {Promise<{suggestions: string[], sample_verbs: string[], enhanced_text: string, source: string}>}
  */
-export const aiCvSuggest = (field, text, name = '', jobTitle = '') =>
-  request('POST', '/api/ai/cv_suggest', { field, text, name, job_title: jobTitle })
+export const aiCvSuggest = (field, text, name = '', jobTitle = '', options = {}) =>
+  request('POST', '/api/ai/cv_suggest', {
+    field, text, name, job_title: jobTitle,
+    inline_modify: options.inline_modify ?? false,
+    summary:      options.summary ?? '',
+    experience:   options.experience ?? '',
+    skills:       options.skills ?? '',
+    education:    options.education ?? '',
+    projects:     options.projects ?? '',
+    publications: options.publications ?? '',
+  })
 
 /**
  * Polish a block of text for clarity and professionalism using AI.
@@ -251,22 +260,6 @@ export const convertDoc = (file, target) => {
   return request('POST', '/api/doc/convert', fd, false)
 }
 
-/**
- * Extract clean plain text from a document (PDF, DOCX, DOC, ODT, TXT).
- * @param {File} file
- * @returns {Promise<{text: string, filename: string, truncated: boolean}>}
- */
-export const extractDocText = async (file) => {
-  const fd = new FormData()
-  fd.append('file', file, file.name)
-  const res = await request('POST', '/api/doc/to_text', fd, false)
-  if (!res.ok) {
-    let msg = `Server error (${res.status})`
-    try { const j = await res.json(); if (j.error) msg = j.error } catch {}
-    throw new Error(msg)
-  }
-  return res.json()
-}
 
 // ── Admin Cookies ─────────────────────────────────────────────────────────────
 
@@ -424,7 +417,8 @@ export const listUsers = () => request('GET', '/api/users/list')
 
 export const listProperties = (params = {}) => {
   const qs = new URLSearchParams()
-  if (params.status)   qs.set('status',   params.status)
+  if (params.status)        qs.set('status',        params.status)
+  if (params.property_type) qs.set('property_type', params.property_type)
   if (params.min_lat != null) qs.set('min_lat', params.min_lat)
   if (params.max_lat != null) qs.set('max_lat', params.max_lat)
   if (params.min_lng != null) qs.set('min_lng', params.min_lng)
@@ -446,6 +440,9 @@ export const updateProperty = (propertyId, data) =>
 
 export const deleteProperty = (propertyId) =>
   request('DELETE', `/api/properties/${encodeURIComponent(propertyId)}`)
+
+export const getNearbyAgents = (propertyId, limit = 4, offset = 0) =>
+  request('GET', `/api/properties/${encodeURIComponent(propertyId)}/nearby_agents?limit=${limit}&offset=${offset}`)
 
 // ── Property Conversations (Inbox) ────────────────────────────────────────────
 
@@ -514,3 +511,18 @@ export const getAdminBroadcasts = () => request('GET', '/api/admin/broadcasts')
 
 export const adminCancelBroadcast = (broadcastId) =>
   request('DELETE', `/api/admin/broadcasts/${encodeURIComponent(broadcastId)}`)
+
+// ── Receipts ──────────────────────────────────────────────────────────────────
+
+export const getReceipts = () => request('GET', '/api/receipts')
+
+export const downloadReceiptPdf = async (receiptId) => {
+  const res = await request('GET', `/api/receipts/${encodeURIComponent(receiptId)}/pdf`, null, false)
+  if (!res.ok) {
+    let msg = `Server error (${res.status})`
+    try { const j = await res.json(); if (j.error) msg = j.error } catch {}
+    throw new Error(msg)
+  }
+  const blob = await res.blob()
+  triggerBlobDownload(blob, `receipt-${receiptId}.pdf`)
+}

@@ -372,6 +372,7 @@ export default function PropertiesPage() {
   const [properties, setProperties]     = useState([])
   const [loading, setLoading]           = useState(true)
   const [statusFilter, setStatusFilter] = useState('')  // '' = all
+  const [typeFilter, setTypeFilter]     = useState('')   // '' = all types
   const [selectedId, setSelectedId]     = useState(null)
   const [previewProp, setPreviewProp]   = useState(null)
   const [userLocation, setUserLocation] = useState(null)
@@ -410,6 +411,7 @@ export default function PropertiesPage() {
     try {
       const params = {}
       if (statusFilter) params.status = statusFilter
+      if (typeFilter) params.property_type = typeFilter
       const data = await listProperties(params)
       setProperties(data.properties ?? [])
     } catch {
@@ -417,7 +419,7 @@ export default function PropertiesPage() {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter])
+  }, [statusFilter, typeFilter])
 
   useEffect(() => { fetchProperties() }, [fetchProperties])
 
@@ -505,28 +507,57 @@ export default function PropertiesPage() {
       </header>
 
       {/* ── Page header ── */}
-      <div style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <h1 style={{ color: 'var(--text-primary)', fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>🏠 Property Discovery</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: '2px 0 0' }}>
-            {properties.length} propert{properties.length !== 1 ? 'ies' : 'y'} found
-          </p>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-color)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+          <div>
+            <h1 style={{ color: 'var(--text-primary)', fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>🏠 Property Discovery</h1>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: '2px 0 0' }}>
+              {properties.length} propert{properties.length !== 1 ? 'ies' : 'y'} found
+            </p>
+          </div>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* Status filter */}
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              style={{
+                background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border-color)',
+                borderRadius: 8, padding: '6px 10px', fontSize: '0.8rem', cursor: 'pointer',
+              }}
+            >
+              <option value="">All Status</option>
+              <option value="active">Active</option>
+              <option value="sold">Sold</option>
+              <option value="rented">Rented</option>
+            </select>
+          </div>
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* Status filter */}
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            style={{
-              background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border-color)',
-              borderRadius: 8, padding: '6px 10px', fontSize: '0.8rem', cursor: 'pointer',
-            }}
-          >
-            <option value="">All Status</option>
-            <option value="active">Active</option>
-            <option value="sold">Sold</option>
-            <option value="rented">Rented</option>
-          </select>
+        {/* ── Property type segmented tabs ── */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {[
+            { id: '',          label: 'All' },
+            { id: 'hotels',    label: '🏨 Hotels' },
+            { id: 'short_stay',label: '🛏 Short Stay' },
+            { id: 'rentals',   label: '🔑 Rentals' },
+            { id: 'purchase',  label: '🏡 Purchase' },
+            { id: 'listings',  label: '📋 Listings' },
+          ].map(t => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTypeFilter(t.id)}
+              style={{
+                borderRadius: 9999, padding: '5px 14px', fontSize: '0.78rem',
+                fontWeight: 600, cursor: 'pointer',
+                border: typeFilter === t.id ? '2px solid #3b82f6' : '1px solid var(--border-color)',
+                background: typeFilter === t.id ? 'rgba(59,130,246,0.18)' : 'var(--bg-input)',
+                color: typeFilter === t.id ? '#60a5fa' : 'var(--text-secondary)',
+                transition: 'all 0.15s',
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
       </div>
 
