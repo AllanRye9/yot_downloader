@@ -11,6 +11,7 @@ import AdminDashboard from './pages/AdminDashboard'
 import TouristSitesPage from './pages/TouristSitesPage'
 import UnifiedMapPage from './pages/UnifiedMapPage'
 import ProfilePage from './pages/ProfilePage'
+import InboxPage from './pages/InboxPage'
 
 // ─── Auth Context ─────────────────────────────────────────────────────────────
 const AuthCtx = createContext(null)
@@ -122,6 +123,7 @@ export default function App() {
             <Route path="/agents" element={<Navigate to="/" replace />} />
             <Route path="/property-inbox" element={<Navigate to="/" replace />} />
             <Route path="/map" element={<UnifiedMapPage />} />
+            <Route path="/inbox" element={<InboxPage />} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin/register" element={<AdminLogin register />} />
             <Route path="/const" element={
