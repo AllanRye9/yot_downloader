@@ -53,14 +53,21 @@ function OverviewPanel({ user, dashStats, onSelectTab, onNavigate }) {
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
   const roleLabel = user?.role === 'driver' ? '🚗 Verified Driver' : '🧍 Passenger'
+  const [showAllRides, setShowAllRides] = useState(false)
+  const recentRides = dashStats?.recent_rides || []
+  const visibleRides = showAllRides ? recentRides : recentRides.slice(0, 3)
 
   return (
     <div className="space-y-6">
       {/* Welcome banner */}
       <div className="rounded-2xl bg-gradient-to-br from-blue-900/60 to-gray-900/80 border border-blue-800/40 p-6">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-full bg-blue-700 flex items-center justify-center text-3xl shrink-0">
-            {user?.role === 'driver' ? '🚗' : '🧍'}
+          <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-blue-600 bg-blue-800 shrink-0 flex items-center justify-center">
+            {user?.avatar_url ? (
+              <img src={user.avatar_url} alt="avatar" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-3xl">{user?.role === 'driver' ? '🚗' : '🧍'}</span>
+            )}
           </div>
           <div>
             <p className="text-gray-400 text-sm">{greeting},</p>
@@ -111,7 +118,7 @@ function OverviewPanel({ user, dashStats, onSelectTab, onNavigate }) {
       </div>
 
       {/* Recent rides */}
-      {dashStats?.recent_rides?.length > 0 && (
+      {recentRides.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Recent Rides</h3>
           <div className="rounded-xl border border-gray-700 overflow-hidden">
@@ -125,7 +132,7 @@ function OverviewPanel({ user, dashStats, onSelectTab, onNavigate }) {
                 </tr>
               </thead>
               <tbody>
-                {dashStats.recent_rides.map(r => (
+                {visibleRides.map(r => (
                   <tr key={r.ride_id} className="border-t border-gray-700/60 hover:bg-gray-800/40">
                     <td className="px-3 py-2 text-gray-300 max-w-[100px] truncate">{r.origin}</td>
                     <td className="px-3 py-2 text-gray-300 max-w-[100px] truncate">{r.destination}</td>
@@ -140,12 +147,22 @@ function OverviewPanel({ user, dashStats, onSelectTab, onNavigate }) {
               </tbody>
             </table>
           </div>
-          <button
-            onClick={() => onSelectTab('profile')}
-            className="mt-2 text-xs text-blue-400 hover:text-blue-300 transition-colors"
-          >
-            View full profile &amp; ride history →
-          </button>
+          <div className="flex items-center justify-between mt-2">
+            {recentRides.length > 3 && (
+              <button
+                onClick={() => setShowAllRides(v => !v)}
+                className="text-xs text-gray-400 hover:text-gray-200 transition-colors"
+              >
+                {showAllRides ? '▲ Show less' : `▼ Show more (${recentRides.length - 3} more)`}
+              </button>
+            )}
+            <button
+              onClick={() => onSelectTab('history')}
+              className="text-xs text-blue-400 hover:text-blue-300 transition-colors ml-auto"
+            >
+              View full profile &amp; ride history →
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -579,55 +596,8 @@ export default function UserDashboard() {
 
             {/* ── Inbox tab ── */}
             {tab === 'inbox' && (
-              <div className="space-y-4">
-                {/* ── Direct Messages (blue) ── */}
-                <div className="card border-l-4 border-blue-500">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block shrink-0" />
-                    <h2 className="text-sm font-bold text-blue-300 uppercase tracking-wide">💬 Direct Messages</h2>
-                  </div>
-                  <DMInbox currentUser={appUser} />
-                </div>
-
-                {/* ── Ride Share Chat (amber) ── */}
-                <div className="card border-l-4 border-amber-500">
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block shrink-0" />
-                      <h2 className="text-sm font-bold text-amber-300 uppercase tracking-wide">🚗 Ride Share Messages</h2>
-                    </div>
-                    <button
-                      onClick={() => getRideChatInbox().then(d => setChatInbox(d.conversations || [])).catch(() => {})}
-                      className="text-xs text-gray-400 hover:text-gray-200 transition-colors"
-                    >
-                      ↺ Refresh
-                    </button>
-                  </div>
-                  {chatInbox.length === 0 ? (
-                    <p className="text-sm text-gray-500 text-center py-4">No ride chat messages yet.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {chatInbox.map((conv, i) => (
-                        <div key={conv.msg_id || i} className="flex items-start gap-3 rounded-xl px-3 py-2.5 bg-amber-900/10 border border-amber-700/30 hover:bg-amber-900/20 transition-colors">
-                          <div className="w-9 h-9 rounded-full bg-amber-800 flex items-center justify-center text-sm font-bold text-amber-200 shrink-0">🚗</div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-0.5">
-                              <p className="text-xs font-semibold text-amber-200 truncate">
-                                {conv.ride_info?.origin || 'Ride'} → {conv.ride_info?.destination || '…'}
-                              </p>
-                              <span className="text-xs text-gray-500 shrink-0">
-                                {conv.ts ? new Date(conv.ts * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}
-                              </span>
-                            </div>
-                            <p className="text-xs text-gray-300 truncate">
-                              {conv.is_mine ? 'You: ' : `${conv.sender_name}: `}{conv.text || '[media]'}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+              <div className="card p-0 overflow-hidden">
+                <DMInbox currentUser={appUser} />
               </div>
             )}
 

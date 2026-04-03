@@ -25,7 +25,7 @@ import { getSharedSecret, encryptMessage, decryptMessage, isEncryptedPayload } f
 // E2E-encrypted payloads are base64-encoded and larger than plaintext; 4000 chars accommodates them
 const MAX_LEN = 4000
 
-export default function DMChat({ conv, currentUser, onClose }) {
+export default function DMChat({ conv, currentUser, onClose, onBack }) {
   const [messages,    setMessages]    = useState([])
   const [text,        setText]        = useState('')
   const [joined,      setJoined]      = useState(false)
@@ -233,7 +233,16 @@ export default function DMChat({ conv, currentUser, onClose }) {
     <div className="flex flex-col h-full bg-gray-900 rounded-xl overflow-hidden border border-gray-700">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="text-gray-400 hover:text-white transition-colors text-lg leading-none mr-1 md:hidden"
+              aria-label="Back to inbox"
+            >
+              ←
+            </button>
+          )}
           <div className="w-9 h-9 rounded-full bg-blue-700 flex items-center justify-center text-sm font-bold text-white shrink-0">
             {otherUser?.name?.charAt(0)?.toUpperCase() || '?'}
           </div>
@@ -245,13 +254,15 @@ export default function DMChat({ conv, currentUser, onClose }) {
             </p>
           </div>
         </div>
-        <button
-          onClick={onClose}
-          className="text-gray-500 hover:text-gray-300 transition-colors text-lg leading-none"
-          aria-label="Close chat"
-        >
-          ✕
-        </button>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-300 transition-colors text-lg leading-none hidden md:block"
+            aria-label="Close chat"
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       {/* Messages */}
