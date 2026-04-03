@@ -17,8 +17,6 @@ export default function RidesPage() {
   const [rides, setRides]             = useState([])
   // State for opening chat from the map with a pre-filled default message
   const [mapChatRequest, setMapChatRequest] = useState(null) // { ride, defaultMsg }
-  // Active center panel tab: 'post' | 'broadcast' | 'dashboard'
-  const [centerTab, setCenterTab] = useState('post')
   const profileRef = useRef(null)
 
   // Load platform user session
@@ -155,7 +153,7 @@ export default function RidesPage() {
             </div>
           </aside>
 
-          {/* ── Center: Post / Broadcast / Dashboard (compact) ── */}
+          {/* ── Center: Post Ride (compact) ── */}
           <main className="rides-center-col" style={{
             flexBasis: '25%', flexShrink: 0,
             overflowY: 'auto',
@@ -163,62 +161,17 @@ export default function RidesPage() {
             display: 'flex', flexDirection: 'column',
             borderRight: '1px solid var(--border-color)',
           }}>
-            {/* Compact tab bar with icons */}
-            <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
-              {[
-                { key: 'post',      icon: '🚗', label: 'Post Ride' },
-                { key: 'broadcast', icon: '📡', label: 'Broadcast' },
-                { key: 'dashboard', icon: '📊', label: 'Dashboard' },
-              ].map(tab => (
-                <button
-                  key={tab.key}
-                  onClick={() => setCenterTab(tab.key)}
-                  style={{
-                    flex: 1,
-                    padding: '8px 4px',
-                    background: centerTab === tab.key ? 'var(--bg-input)' : 'transparent',
-                    border: 'none',
-                    borderBottom: centerTab === tab.key ? '2px solid #3b82f6' : '2px solid transparent',
-                    color: centerTab === tab.key ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    cursor: 'pointer',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-                    transition: 'all 0.15s',
-                  }}
-                >
-                  <span style={{ fontSize: '1rem' }}>{tab.icon}</span>
-                  <span style={{ fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.03em' }}>{tab.label}</span>
-                </button>
-              ))}
+            <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
+              <div style={{ color: 'var(--text-primary)', fontSize: '0.82rem', fontWeight: 700 }}>🚗 Post Ride — Drivers Only</div>
             </div>
-            {/* Active tab content */}
             <div style={{ flex: 1, padding: '10px', overflowY: 'auto' }}>
-              {centerTab === 'post' && (
-                <RideShare
-                  user={appUser}
-                  onRidesChange={() => {}}
-                  requestedRide={mapChatRequest}
-                  onRequestedRideHandled={() => setMapChatRequest(null)}
-                  showSections={{ form: true, dashboard: false, driverBroadcast: false, list: false }}
-                />
-              )}
-              {centerTab === 'broadcast' && (
-                <RideShare
-                  user={appUser}
-                  onRidesChange={() => {}}
-                  requestedRide={null}
-                  onRequestedRideHandled={() => {}}
-                  showSections={{ form: false, dashboard: false, driverBroadcast: true, list: false }}
-                />
-              )}
-              {centerTab === 'dashboard' && (
-                <RideShare
-                  user={appUser}
-                  onRidesChange={setRides}
-                  requestedRide={null}
-                  onRequestedRideHandled={() => {}}
-                  showSections={{ form: false, dashboard: true, driverBroadcast: false, list: false }}
-                />
-              )}
+              <RideShare
+                user={appUser}
+                onRidesChange={() => {}}
+                requestedRide={mapChatRequest}
+                onRequestedRideHandled={() => setMapChatRequest(null)}
+                showSections={{ form: true, dashboard: false, driverBroadcast: false, list: false }}
+              />
             </div>
           </main>
 

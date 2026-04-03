@@ -76,7 +76,7 @@ function OverviewPanel({ user, dashStats, onSelectTab, onNavigate }) {
       </div>
 
       {/* Quick stats */}
-      {dashStats && (
+      {dashStats && false && (
         <div>
           <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Your Stats</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -169,13 +169,13 @@ export default function UserDashboard() {
   const [connected,   setConnected]   = useState(false)
   const [fileListVersion, setFileListVersion] = useState(0)
   const [menuOpen,    setMenuOpen]    = useState(false)
-  const [profileOpen, setProfileOpen] = useState(false)
   const [unreadNotifs, setUnreadNotifs] = useState(0)
   const [unreadChat,  setUnreadChat]  = useState(0)
   const [notifications, setNotifications] = useState([])
   const [rideHistory, setRideHistory] = useState([])
   const [chatInbox,   setChatInbox]   = useState([])
   const [propertyConvs, setPropertyConvs] = useState([])
+  const [inboxTab, setInboxTab]           = useState('dm')  // 'dm' | 'rides' | 'estate'
   const [driverApp,   setDriverApp]   = useState(null)
   const [driverForm,  setDriverForm]  = useState({ vehicle_make:'', vehicle_model:'', vehicle_year:'', vehicle_color:'', license_plate:'' })
   const [driverApplying, setDriverApplying] = useState(false)
@@ -253,11 +253,11 @@ export default function UserDashboard() {
     return () => clearInterval(id)
   }, [])
 
-  // Close profile dropdown when clicking outside
+  // Close profile dropdown when clicking outside (unused now, kept for safety)
   useEffect(() => {
     const handler = (e) => {
       if (profileRef.current && !profileRef.current.contains(e.target))
-        setProfileOpen(false)
+        void e // no-op
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -391,23 +391,17 @@ export default function UserDashboard() {
           {/* Profile button */}
           <div className="relative" ref={profileRef}>
             <button
-              onClick={() => setProfileOpen(o => !o)}
-              className="nav-profile-btn w-8 h-8 rounded-full bg-blue-700 hover:bg-blue-600 flex items-center justify-center text-base transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onClick={() => navigate('/profile')}
+              className="nav-profile-btn w-8 h-8 rounded-full bg-blue-700 hover:bg-blue-600 flex items-center justify-center text-base transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 overflow-hidden"
               aria-label="Profile"
               title={appUser.name}
             >
-              {appUser.role === 'driver' ? '🚗' : '🧍'}
+              {appUser.avatar_url ? (
+                <img src={appUser.avatar_url} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <span>{appUser.role === 'driver' ? '🚗' : '🧍'}</span>
+              )}
             </button>
-            {profileOpen && (
-              <div className="nav-profile-dropdown absolute right-0 top-10 w-64 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">
-                <UserProfile
-                  user={appUser}
-                  onLogout={handleLogout}
-                  onLocationUpdate={(loc) => setAppUser(u => ({ ...u, ...loc }))}
-                  onUserUpdate={(u) => u && setAppUser(prev => ({ ...prev, ...u }))}
-                />
-              </div>
-            )}
           </div>
 
           {/* Admin link */}
@@ -627,7 +621,7 @@ export default function UserDashboard() {
                 <h2 className="text-lg font-bold text-white flex items-center gap-2">📊 Your Stats</h2>
                 {dashStats ? (
                   <>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                       <div className="rounded-xl border border-blue-800/40 bg-blue-900/20 p-4 text-center">
                         <p className="text-3xl font-bold text-blue-300">{dashStats.stats?.total_rides ?? 0}</p>
                         <p className="text-xs text-gray-400 mt-1">Total Rides</p>
@@ -640,23 +634,7 @@ export default function UserDashboard() {
                         <p className="text-3xl font-bold text-amber-300">{dashStats.stats?.taken_rides ?? 0}</p>
                         <p className="text-xs text-gray-400 mt-1">Taken Rides</p>
                       </div>
-                      <div className="rounded-xl border border-purple-800/40 bg-purple-900/20 p-4 text-center">
-                        <p className="text-3xl font-bold text-purple-300">{dashStats.site_stats?.total_downloads ?? 0}</p>
-                        <p className="text-xs text-gray-400 mt-1">Site Downloads</p>
-                      </div>
                     </div>
-                    {dashStats.site_stats && (
-                      <div className="grid grid-cols-2 gap-4 pt-2">
-                        <div className="rounded-xl border border-gray-700 bg-gray-800/40 p-4 text-center">
-                          <p className="text-2xl font-bold text-white">{dashStats.site_stats.total_visitors ?? 0}</p>
-                          <p className="text-xs text-gray-400 mt-1">Total Visitors</p>
-                        </div>
-                        <div className="rounded-xl border border-gray-700 bg-gray-800/40 p-4 text-center">
-                          <p className="text-2xl font-bold text-white">{dashStats.site_stats.total_files ?? 0}</p>
-                          <p className="text-xs text-gray-400 mt-1">Files Available</p>
-                        </div>
-                      </div>
-                    )}
                   </>
                 ) : (
                   <div className="flex justify-center py-8"><div className="spinner w-8 h-8" /></div>
@@ -666,102 +644,122 @@ export default function UserDashboard() {
 
             {/* ── Inbox tab ── */}
             {tab === 'inbox' && (
-              <div className="space-y-4">
-                {/* ── Direct Messages (blue) ── */}
-                <div className="card border-l-4 border-blue-500">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block shrink-0" />
-                    <h2 className="text-sm font-bold text-blue-300 uppercase tracking-wide">💬 Direct Messages</h2>
-                  </div>
-                  <DMInbox currentUser={appUser} />
+              <div className="card space-y-0 overflow-hidden p-0">
+                {/* Tab bar */}
+                <div className="flex border-b border-gray-700">
+                  {[
+                    { key: 'dm',     label: '💬 Direct Messages',      color: 'border-blue-500',    textActive: 'text-blue-300'    },
+                    { key: 'rides',  label: '🚗 Ride Share Messages',   color: 'border-amber-500',   textActive: 'text-amber-300'   },
+                    { key: 'estate', label: '🏢 Real Estate Messages',  color: 'border-emerald-500', textActive: 'text-emerald-300' },
+                  ].map(t => (
+                    <button
+                      key={t.key}
+                      onClick={() => setInboxTab(t.key)}
+                      className={`flex-1 py-3 px-2 text-xs font-semibold border-b-2 transition-colors ${
+                        inboxTab === t.key
+                          ? `${t.color} ${t.textActive} bg-gray-800/40`
+                          : 'border-transparent text-gray-500 hover:text-gray-300'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
                 </div>
 
-                {/* ── Ride Share Chat (amber) ── */}
-                <div className="card border-l-4 border-amber-500">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block shrink-0" />
-                    <h2 className="text-sm font-bold text-amber-300 uppercase tracking-wide">🚗 Ride Share Messages</h2>
-                    <button
-                      onClick={() => getRideChatInbox().then(d => setChatInbox(d.conversations || [])).catch(() => {})}
-                      className="ml-auto text-xs text-gray-400 hover:text-gray-200 transition-colors"
-                    >
-                      ↺ Refresh
-                    </button>
-                  </div>
-                  {chatInbox.length === 0 ? (
-                    <p className="text-sm text-gray-500 text-center py-6">No ride chat messages yet.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {chatInbox.map((conv, i) => (
-                        <div key={conv.msg_id || i} className="flex items-start gap-3 rounded-xl px-3 py-2.5 bg-amber-900/10 border border-amber-700/30 hover:bg-amber-900/20 transition-colors">
-                          <div className="w-9 h-9 rounded-full bg-amber-800 flex items-center justify-center text-sm font-bold text-amber-200 shrink-0">🚗</div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-0.5">
-                              <p className="text-xs font-semibold text-amber-200 truncate">
-                                {conv.ride_info?.origin || 'Ride'} → {conv.ride_info?.destination || '…'}
-                              </p>
-                              <span className="text-xs text-gray-500 shrink-0">
-                                {conv.ts ? new Date(conv.ts * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}
-                              </span>
+                {/* Tab content */}
+                <div className="p-4">
+                  {/* ── Direct Messages ── */}
+                  {inboxTab === 'dm' && (
+                    <DMInbox currentUser={appUser} />
+                  )}
+
+                  {/* ── Ride Share Chat ── */}
+                  {inboxTab === 'rides' && (
+                    <div>
+                      <div className="flex justify-end mb-2">
+                        <button
+                          onClick={() => getRideChatInbox().then(d => setChatInbox(d.conversations || [])).catch(() => {})}
+                          className="text-xs text-gray-400 hover:text-gray-200 transition-colors"
+                        >
+                          ↺ Refresh
+                        </button>
+                      </div>
+                      {chatInbox.length === 0 ? (
+                        <p className="text-sm text-gray-500 text-center py-6">No ride chat messages yet.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {chatInbox.map((conv, i) => (
+                            <div key={conv.msg_id || i} className="flex items-start gap-3 rounded-xl px-3 py-2.5 bg-amber-900/10 border border-amber-700/30 hover:bg-amber-900/20 transition-colors">
+                              <div className="w-9 h-9 rounded-full bg-amber-800 flex items-center justify-center text-sm font-bold text-amber-200 shrink-0">🚗</div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <p className="text-xs font-semibold text-amber-200 truncate">
+                                    {conv.ride_info?.origin || 'Ride'} → {conv.ride_info?.destination || '…'}
+                                  </p>
+                                  <span className="text-xs text-gray-500 shrink-0">
+                                    {conv.ts ? new Date(conv.ts * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-gray-300 truncate">
+                                  {conv.is_mine ? 'You: ' : `${conv.sender_name}: `}{conv.text || '[media]'}
+                                </p>
+                              </div>
                             </div>
-                            <p className="text-xs text-gray-300 truncate">
-                              {conv.is_mine ? 'You: ' : `${conv.sender_name}: `}{conv.text || '[media]'}
-                            </p>
-                          </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
                     </div>
                   )}
-                </div>
 
-                {/* ── Real Estate Messages (green) ── */}
-                <div className="card border-l-4 border-emerald-500">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block shrink-0" />
-                    <h2 className="text-sm font-bold text-emerald-300 uppercase tracking-wide">🏢 Real Estate Messages</h2>
-                    <button
-                      onClick={() => listPropertyConversations().then(d => setPropertyConvs(d.conversations || [])).catch(() => {})}
-                      className="ml-auto text-xs text-gray-400 hover:text-gray-200 transition-colors"
-                    >
-                      ↺ Refresh
-                    </button>
-                  </div>
-                  {propertyConvs.length === 0 ? (
-                    <p className="text-sm text-gray-500 text-center py-6">No property conversations yet.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {propertyConvs.map((conv) => {
-                        const unread = conv.unread_count ?? 0
-                        const lastMsg = conv.last_message
-                        return (
-                          <div key={conv.conv_id} className="flex items-start gap-3 rounded-xl px-3 py-2.5 bg-emerald-900/10 border border-emerald-700/30 hover:bg-emerald-900/20 transition-colors">
-                            <div className="w-9 h-9 rounded-full bg-emerald-800 flex items-center justify-center text-sm font-bold text-emerald-200 shrink-0">🏠</div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-0.5">
-                                <p className="text-xs font-semibold text-emerald-200 truncate">
-                                  {conv.property?.title || 'Property'}
-                                </p>
-                                {unread > 0 && (
-                                  <span className="bg-emerald-600 text-white text-xs px-1.5 py-0.5 rounded-full shrink-0">{unread}</span>
-                                )}
-                                {lastMsg && (
-                                  <span className="text-xs text-gray-500 shrink-0 ml-auto">
-                                    {new Date(lastMsg.ts * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                                  </span>
-                                )}
+                  {/* ── Real Estate Messages ── */}
+                  {inboxTab === 'estate' && (
+                    <div>
+                      <div className="flex justify-end mb-2">
+                        <button
+                          onClick={() => listPropertyConversations().then(d => setPropertyConvs(d.conversations || [])).catch(() => {})}
+                          className="text-xs text-gray-400 hover:text-gray-200 transition-colors"
+                        >
+                          ↺ Refresh
+                        </button>
+                      </div>
+                      {propertyConvs.length === 0 ? (
+                        <p className="text-sm text-gray-500 text-center py-6">No property conversations yet.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {propertyConvs.map((conv) => {
+                            const unread = conv.unread_count ?? 0
+                            const lastMsg = conv.last_message
+                            return (
+                              <div key={conv.conv_id} className="flex items-start gap-3 rounded-xl px-3 py-2.5 bg-emerald-900/10 border border-emerald-700/30 hover:bg-emerald-900/20 transition-colors">
+                                <div className="w-9 h-9 rounded-full bg-emerald-800 flex items-center justify-center text-sm font-bold text-emerald-200 shrink-0">🏠</div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <p className="text-xs font-semibold text-emerald-200 truncate">
+                                      {conv.property?.title || 'Property'}
+                                    </p>
+                                    {unread > 0 && (
+                                      <span className="bg-emerald-600 text-white text-xs px-1.5 py-0.5 rounded-full shrink-0">{unread}</span>
+                                    )}
+                                    {lastMsg && (
+                                      <span className="text-xs text-gray-500 shrink-0 ml-auto">
+                                        {new Date(lastMsg.ts * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-gray-400">
+                                    {conv.role === 'user' ? `Agent: ${conv.agent?.name || '…'}` : `Buyer: ${conv.other_user?.name || '…'}`}
+                                  </p>
+                                  {lastMsg && (
+                                    <p className={`text-xs truncate ${unread > 0 ? 'text-white font-medium' : 'text-gray-400'}`}>
+                                      {lastMsg.content?.slice(0, 80) || 'Start a conversation'}
+                                    </p>
+                                  )}
+                                </div>
                               </div>
-                              <p className="text-xs text-gray-400">
-                                {conv.role === 'user' ? `Agent: ${conv.agent?.name || '…'}` : `Buyer: ${conv.other_user?.name || '…'}`}
-                              </p>
-                              {lastMsg && (
-                                <p className={`text-xs truncate ${unread > 0 ? 'text-white font-medium' : 'text-gray-400'}`}>
-                                  {lastMsg.content?.slice(0, 80) || 'Start a conversation'}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

@@ -112,7 +112,24 @@ export default function DownloadForm({ onDownloadStarted }) {
       </form>
 
       {/* Errors / notices */}
-      {error  && <p className="mt-3 text-sm text-red-400 bg-red-900/20 border border-red-800/50 rounded-lg px-3 py-2">{error}</p>}
+      {error && (
+        <div className="mt-3 text-sm text-red-400 bg-red-900/20 border border-red-800/50 rounded-lg px-3 py-2">
+          <p>{error}</p>
+          {(error.toLowerCase().includes('youtube') || error.toLowerCase().includes('bot') || error.toLowerCase().includes('sign in')) && (
+            <p className="mt-1 text-xs text-red-300">
+              Having issues with YouTube?{' '}
+              <a
+                href="https://github.com/AllanRye9/yotweek/blob/main/youtubeError.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-red-200"
+              >
+                See the YouTube Error solutions log →
+              </a>
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Video preview card */}
       {info && (

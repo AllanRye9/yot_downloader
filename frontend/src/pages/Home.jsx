@@ -1,17 +1,28 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../App'
-import DownloadForm from '../components/DownloadForm'
-import ActiveDownloads from '../components/ActiveDownloads'
-import FileList from '../components/FileList'
 import Reviews from '../components/Reviews'
 import ThemeSelector from '../components/ThemeSelector'
 import CVGenerator from '../components/CVGenerator'
 import DocConverter from '../components/DocConverter'
 import UserAuth from '../components/UserAuth'
-import UserProfile from '../components/UserProfile'
-import { getStats, getUserProfile } from '../api'
+import RideShare from '../components/RideShare'
+import { getUserProfile } from '../api'
 import socket from '../socket'
+
+function RideShareEmbed({ user }) {
+  return (
+    <div style={{ minHeight: 300 }}>
+      <RideShare
+        user={user}
+        onRidesChange={() => {}}
+        requestedRide={null}
+        onRequestedRideHandled={() => {}}
+        showSections={{ form: true, list: true, dashboard: false, driverBroadcast: false }}
+      />
+    </div>
+  )
+}
 
 /** Returns true when n is a power-of-10 milestone worth celebrating (≥ 100).
  * Checks whether n equals the nearest power of 10 within ±0.5 integer units
@@ -273,15 +284,15 @@ function AnimatedCounter({ value, label, icon }) {
 }
 
 const TABS = [
-  { id: 'download', label: '⬇ Download',     icon: '⬇' },
-  { id: 'cv',       label: '📄 CV Generator', icon: '📄' },
-  { id: 'convert',  label: '🔄 Doc Converter', icon: '🔄' },
+  { id: 'rides',   label: '🚗 Ride Share',    icon: '🚗' },
+  { id: 'cv',      label: '📄 CV Generator', icon: '📄' },
+  { id: 'convert', label: '🔄 Doc Converter', icon: '🔄' },
 ]
 
 const SERVICE_CARDS = [
-  { id: 'download', icon: '⬇️', title: 'Video Downloader', desc: 'YouTube, TikTok, Instagram & 1,000+ sites' },
-  { id: 'cv',       icon: '📄', title: 'CV Generator',     desc: 'Professional resumes with ATS scanning' },
-  { id: 'convert',  icon: '🔄', title: 'Doc Converter',    desc: 'PDF, Word, Excel, images & more' },
+  { id: 'rides',   icon: '🚗', title: 'Ride Share',       desc: 'Post rides, find drivers & get alerts' },
+  { id: 'cv',      icon: '📄', title: 'CV Generator',     desc: 'Professional resumes with ATS scanning' },
+  { id: 'convert', icon: '🔄', title: 'Doc Converter',    desc: 'PDF, Word, Excel, images & more' },
 ]
 
 /** Three animated service cards with glowing borders that randomly interchange. */
@@ -380,10 +391,8 @@ function ServiceCards({ activeTab, onSelectTab }) {
 export default function Home() {
   const { admin } = useAuth()
   const navigate  = useNavigate()
-  const [tab, setTab] = useState('download')
-  const [stats, setStats] = useState(null)
+  const [tab, setTab] = useState('rides')
   const [connected, setConnected] = useState(false)
-  const [fileListVersion, setFileListVersion] = useState(0)
   const [menuOpen, setMenuOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
 
@@ -391,11 +400,6 @@ export default function Home() {
   const [appUser, setAppUser]     = useState(null)  // null=unknown, false=not logged in, object=logged in
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [userLoading, setUserLoading]     = useState(true)
-  const [profileOpen, setProfileOpen]     = useState(false)  // navbar profile dropdown
-  const profileRef                        = useRef(null)
-
-  // Ref to ActiveDownloads so we can call subscribeToDownload on it
-  const activeDownloadsRef = useRef(null)
 
   // Ref to the tab-panel container so we can scroll to it on card click
   const tabPanelRef = useRef(null)
@@ -449,24 +453,13 @@ export default function Home() {
   useEffect(() => {
     const onConnect    = () => setConnected(true)
     const onDisconnect = () => setConnected(false)
-    const onFilesUpdated = () => setFileListVersion(v => v + 1)
-    socket.on('connect',       onConnect)
-    socket.on('disconnect',    onDisconnect)
-    socket.on('files_updated', onFilesUpdated)
+    socket.on('connect',    onConnect)
+    socket.on('disconnect', onDisconnect)
     setConnected(socket.connected)
     return () => {
-      socket.off('connect',       onConnect)
-      socket.off('disconnect',    onDisconnect)
-      socket.off('files_updated', onFilesUpdated)
+      socket.off('connect',    onConnect)
+      socket.off('disconnect', onDisconnect)
     }
-  }, [])
-
-  // Poll stats
-  useEffect(() => {
-    const fetchStats = () => getStats().then(setStats).catch(() => {})
-    fetchStats()
-    const id = setInterval(fetchStats, 30_000)
-    return () => clearInterval(id)
   }, [])
 
   // Load platform user session on mount; redirect to dashboard if already logged in
@@ -480,44 +473,6 @@ export default function Home() {
       .catch(() => setAppUser(false))
       .finally(() => setUserLoading(false))
   }, [navigate])
-
-  // Close profile dropdown when clicking outside
-  useEffect(() => {
-    const handler = (e) => {
-      if (profileRef.current && !profileRef.current.contains(e.target)) {
-        setProfileOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
-  const refreshFiles = useCallback(() => setFileListVersion(v => v + 1), [])
-
-  // Called by DownloadForm/PlaylistForm when a download is queued.
-  // Subscribes to the socket.io room for the download and shows the popup.
-  const handleDownloadStarted = useCallback(({ download_id, title } = {}) => {
-    if (download_id) {
-      activeDownloadsRef.current?.subscribeToDownload(download_id, title)
-    }
-    refreshFiles()
-  }, [refreshFiles])
-
-  // Ref attached to the file list section so we can scroll to it after a download completes
-  const fileListRef = useRef(null)
-  // Debounce timer for the scroll-to-file-list action so concurrent completions don't
-  // trigger multiple redundant scroll operations.
-  const scrollTimerRef = useRef(null)
-
-  const handleDownloadDone = useCallback(() => {
-    refreshFiles()
-    // Debounce: if several downloads finish close together, only scroll once.
-    // The 600 ms delay lets the file list re-render before we scroll to it.
-    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current)
-    scrollTimerRef.current = setTimeout(() => {
-      fileListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }, 600)
-  }, [refreshFiles])
 
   // When a card is clicked, switch tab and scroll the feature panel into view
   const handleSelectTab = useCallback((id) => {
@@ -547,16 +502,6 @@ export default function Home() {
           </Link>
 
           {/* Stats badges */}
-          <div className="hidden md:flex items-center gap-3 text-xs ml-4">
-            {stats && (
-              <>
-                <span className="badge-info">{stats.active_downloads ?? 0} active</span>
-                <span className="badge-gray">{stats.file_count ?? 0} files</span>
-                {stats.total_size_hr && <span className="badge-gray">{stats.total_size_hr}</span>}
-              </>
-            )}
-          </div>
-
           <div className="flex-1" />
 
           {/* Connection dot */}
@@ -570,39 +515,23 @@ export default function Home() {
 
           {/* User profile avatar — top-right navbar */}
           {!userLoading && (
-            <div className="relative" ref={profileRef}>
+            <div className="relative">
               {appUser ? (
-                <>
-                  <button
-                    onClick={() => setProfileOpen(o => !o)}
-                    className="nav-profile-btn w-8 h-8 rounded-full bg-blue-700 hover:bg-blue-600 flex items-center justify-center text-base transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    aria-label="Profile"
-                    title={appUser.name}
-                  >
-                    {appUser.role === 'driver' ? '🚗' : '🧍'}
-                  </button>
-                  {profileOpen && (
-                    <div className="nav-profile-dropdown absolute right-0 top-10 w-64 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">
-                      <UserProfile
-                        user={appUser}
-                        onLogout={() => { setAppUser(false); setProfileOpen(false) }}
-                        onLocationUpdate={() => {}}
-                      />
-                      <div className="px-3 py-2 border-t border-gray-700/50 bg-gray-800/30">
-                        <Link
-                          to="/profile"
-                          onClick={() => setProfileOpen(false)}
-                          className="flex items-center gap-2 text-xs text-blue-400 hover:text-blue-300 transition-colors py-1"
-                        >
-                          👤 View Full Profile Page →
-                        </Link>
-                      </div>
-                    </div>
+                <button
+                  onClick={() => navigate('/profile')}
+                  className="nav-profile-btn w-8 h-8 rounded-full bg-blue-700 hover:bg-blue-600 flex items-center justify-center text-base transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  aria-label="Profile"
+                  title={appUser.name}
+                >
+                  {appUser.avatar_url ? (
+                    <img src={appUser.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
+                  ) : (
+                    <span>{appUser.role === 'driver' ? '🚗' : '🧍'}</span>
                   )}
-                </>
+                </button>
               ) : (
                 <button
-                  onClick={() => { setShowAuthModal(true); setTab('rides') }}
+                  onClick={() => { setShowAuthModal(true) }}
                   className="text-xs px-3 py-1.5 rounded-lg bg-blue-700 hover:bg-blue-600 text-white transition-colors hidden sm:inline-flex items-center gap-1"
                 >
                   Login / Register
@@ -631,12 +560,6 @@ export default function Home() {
         {/* Mobile dropdown */}
         {menuOpen && (
           <div className="sm:hidden border-t border-gray-800 bg-gray-900 px-4 py-3 space-y-2">
-            {stats && (
-              <div className="flex gap-2 flex-wrap pb-2 border-b border-gray-800">
-                <span className="badge-info">{stats.active_downloads ?? 0} active</span>
-                <span className="badge-gray">{stats.file_count ?? 0} files</span>
-              </div>
-            )}
             {admin && (
               <Link
                 to="/const"
@@ -666,10 +589,10 @@ export default function Home() {
             <span className="gradient-text">yotweek</span> — Your All-in-One Free Platform
           </h1>
           <p className="text-gray-400 text-xs sm:text-sm">
-            Download Any Video · Build a CV · Convert Docs · Share Rides — All Free, No Sign-up Required.
+            Build a CV · Convert Docs · Share Rides · Browse Properties — All Free.
           </p>
           <p className="text-gray-500 text-xs mt-1">
-            YouTube, TikTok, Instagram, Twitter, Facebook &amp; 1,000+ sites. Also available as a Flutter app.
+            Also available as a Flutter app.
           </p>
 
           {/* Sign up CTA for non-logged-in users */}
@@ -687,23 +610,6 @@ export default function Home() {
               >
                 Sign In
               </button>
-            </div>
-          )}
-
-          {/* Animated global stats counters */}
-          {stats && (
-            <div className="mt-5 flex justify-center gap-10 sm:gap-16">
-              <AnimatedCounter
-                value={stats.total_downloads}
-                label="Total Downloads"
-                icon="⬇"
-              />
-              <div className="w-px bg-gray-700 self-stretch" />
-              <AnimatedCounter
-                value={stats.total_visitors}
-                label="Total Visitors"
-                icon="👥"
-              />
             </div>
           )}
         </div>
@@ -734,33 +640,29 @@ export default function Home() {
           >
             🧑‍💼 Agents
           </Link>
-          <Link
-            to="/map"
-            className="text-sm px-4 py-1.5 rounded-full border transition-colors bg-gray-800/60 border-gray-700 text-gray-400 hover:bg-green-700 hover:border-green-600 hover:text-green-100"
-          >
-            🗺 Unified Map
-          </Link>
         </div>
 
         <div className="h-4" />
 
         {/* Tab panels */}
         <div className="card" ref={tabPanelRef}>
-          {tab === 'download' && <DownloadForm onDownloadStarted={handleDownloadStarted} />}
-          {tab === 'cv'       && <CVGenerator />}
-          {tab === 'convert'  && <DocConverter />}
-        </div>
-
-        {/* Active Downloads — only relevant when download tab is active */}
-        {tab === 'download' && (
-          <div className="mt-[19px]">
-            <ActiveDownloads ref={activeDownloadsRef} onComplete={refreshFiles} onDownloadDone={handleDownloadDone} />
-          </div>
-        )}
-
-        {/* File List */}
-        <div className="mt-[19px]" ref={fileListRef}>
-          <FileList version={fileListVersion} />
+          {tab === 'rides'   && (
+            appUser
+              ? <RideShareEmbed user={appUser} />
+              : <div className="text-center py-10 space-y-4">
+                  <div className="text-5xl">🚗</div>
+                  <h3 className="text-lg font-bold text-white">Ride Share</h3>
+                  <p className="text-sm text-gray-400">Sign in to post rides, find drivers, and get real-time alerts.</p>
+                  <button
+                    onClick={() => setShowAuthModal(true)}
+                    className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm transition-colors"
+                  >
+                    Login / Register
+                  </button>
+                </div>
+          )}
+          {tab === 'cv'      && <CVGenerator />}
+          {tab === 'convert' && <DocConverter />}
         </div>
 
         {/* Reviews */}
@@ -772,7 +674,7 @@ export default function Home() {
       {/* ── Footer ── */}
       <footer className="border-t border-gray-800 py-6 px-4 pb-safe text-center text-xs text-gray-600">
         <p>
-          yotweek © {new Date().getFullYear()} — Download responsibly. Respect copyright laws.
+          yotweek © {new Date().getFullYear()}
         </p>
         <p className="mt-1">
           <a href="mailto:support@yotweek.com" className="hover:text-gray-400 transition-colors">
