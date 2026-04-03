@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { getUserProfile, userLogout, uploadAvatar } from '../api'
 import UserProfile from '../components/UserProfile'
@@ -6,273 +6,494 @@ import UserAuth from '../components/UserAuth'
 import ThemeSelector from '../components/ThemeSelector'
 import { useAuth } from '../App'
 
+// ─── Local storage cache helpers ─────────────────────────────────────────────
+
+const CACHE_KEY = 'yotweek_profile_cache'
+
+function readCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function writeCache(user) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(user))
+  } catch {}
+}
+
+// ─── Toast notification ───────────────────────────────────────────────────────
+
+function Toast({ message, onDismiss }) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 4000)
+    return () => clearTimeout(t)
+  }, [onDismiss])
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={{
+        position: 'fixed',
+        bottom: 20,
+        right: 20,
+        zIndex: 9999,
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-color)',
+        borderRadius: 8,
+        padding: '10px 16px',
+        fontSize: '0.8rem',
+        color: 'var(--text-secondary)',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+        maxWidth: 280,
+        lineHeight: 1.4,
+      }}
+    >
+      ⚠️ {message}
+    </div>
+  )
+}
+
+// ─── Default avatar SVG ───────────────────────────────────────────────────────
+
+function DefaultAvatarSVG() {
+  return (
+    <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
+      <circle cx="20" cy="20" r="20" fill="#1e3a5f"/>
+      <circle cx="20" cy="15" r="7" fill="#60a5fa"/>
+      <ellipse cx="20" cy="34" rx="12" ry="8" fill="#60a5fa"/>
+    </svg>
+  )
+}
+
+// ─── Profile Header Row ───────────────────────────────────────────────────────
+
+function ProfileHeaderRow({ user, onEditClick, onAvatarChange }) {
+  const avatarInputRef = useRef(null)
+  const [uploading, setUploading] = useState(false)
+
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const res = await uploadAvatar(file)
+      onAvatarChange?.(res.avatar_url)
+    } catch {}
+    setUploading(false)
+    e.target.value = ''
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+      {/* Avatar — 40×40, rounded full */}
+      <div style={{ position: 'relative', width: 40, height: 40, flexShrink: 0 }}>
+        <div
+          onClick={() => avatarInputRef.current?.click()}
+          title="Click to change avatar"
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            overflow: 'hidden',
+            border: '2px solid var(--accent)',
+            background: '#1e3a5f',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: uploading ? 0.6 : 1,
+          }}
+        >
+          {user.avatar_url
+            ? <img src={user.avatar_url} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : <DefaultAvatarSVG />
+          }
+        </div>
+        {uploading && (
+          <div style={{
+            position: 'absolute', inset: 0, borderRadius: '50%',
+            background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <div style={{ width: 16, height: 16, border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+          </div>
+        )}
+        <input ref={avatarInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarChange} />
+      </div>
+
+      {/* Name & username */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 700, fontSize: '1.2rem', color: 'var(--text-primary)', lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {user.name}
+          </span>
+          {user.role === 'driver' && (
+            <span style={{ fontSize: '0.72rem', padding: '2px 7px', borderRadius: 9999, background: 'rgba(16,185,129,0.18)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.35)', flexShrink: 0 }}>
+              ✅ Verified Driver
+            </span>
+          )}
+        </div>
+        {user.username && (
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>@{user.username}</span>
+        )}
+      </div>
+
+      {/* Edit Profile button */}
+      <button
+        onClick={onEditClick}
+        style={{
+          padding: '6px 12px',
+          borderRadius: 6,
+          border: '1px solid var(--border-color)',
+          background: 'transparent',
+          color: 'var(--text-secondary)',
+          fontSize: '0.82rem',
+          cursor: 'pointer',
+          flexShrink: 0,
+          lineHeight: 1.4,
+          transition: 'color 0.15s, border-color 0.15s',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.borderColor = 'var(--text-secondary)' }}
+        onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.borderColor = 'var(--border-color)' }}
+      >
+        Edit Profile
+      </button>
+    </div>
+  )
+}
+
+// ─── Profile Details Grid ─────────────────────────────────────────────────────
+
+function ProfileDetailsGrid({ user }) {
+  const rows = [
+    { label: 'Email',        value: user.email },
+    { label: 'Phone',        value: user.phone || null },
+    { label: 'Member since', value: user.created_at ? new Date(user.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : null },
+    { label: 'Location',     value: user.location_name || null },
+    { label: 'Role',         value: user.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : null },
+  ].filter(r => r.value)
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, 1fr)',
+        gap: 8,
+        marginTop: 16,
+      }}
+      className="profile-details-grid"
+    >
+      {rows.map(row => (
+        <div key={row.label} style={{ display: 'contents' }}>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4, alignSelf: 'center' }}>{row.label}</span>
+          <span style={{ fontSize: '0.88rem', color: 'var(--text-primary)', lineHeight: 1.4, alignSelf: 'center', wordBreak: 'break-word' }}>{row.value}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ─── Action Buttons Row ───────────────────────────────────────────────────────
+
+const BTN_BASE = {
+  height: 32,
+  padding: '0 12px',
+  borderRadius: 6,
+  fontSize: '0.85rem',
+  cursor: 'pointer',
+  lineHeight: '30px',
+  border: '1px solid transparent',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  whiteSpace: 'nowrap',
+  transition: 'opacity 0.15s',
+  minWidth: 32,
+  touchAction: 'manipulation',
+}
+
+function ActionButtonsRow({ onLogout, navigate }) {
+  return (
+    <div
+      style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 16 }}
+      className="profile-actions-row"
+    >
+      <button
+        onClick={() => navigate('/rides')}
+        style={{ ...BTN_BASE, background: 'var(--accent)', color: 'var(--accent-text)', border: '1px solid var(--accent)' }}
+        onMouseEnter={e => (e.currentTarget.style.opacity = '0.85')}
+        onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+      >
+        ✈️ Airport Rides
+      </button>
+
+      <button
+        onClick={() => navigate('/dashboard')}
+        style={{ ...BTN_BASE, background: 'transparent', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}
+        onMouseEnter={e => (e.currentTarget.style.opacity = '0.75')}
+        onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+      >
+        📊 Dashboard
+      </button>
+
+      <button
+        onClick={onLogout}
+        style={{ ...BTN_BASE, background: 'transparent', color: '#f87171', border: '1px solid #f87171' }}
+        onMouseEnter={e => (e.currentTarget.style.opacity = '0.75')}
+        onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+      >
+        Logout
+      </button>
+    </div>
+  )
+}
+
+// ─── Skeleton loader ──────────────────────────────────────────────────────────
+
+function ProfileSkeleton() {
+  const bar = (w, h = 12) => (
+    <div style={{ width: w, height: h, borderRadius: 6, background: 'var(--border-color)', opacity: 0.6 }} />
+  )
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, animation: 'pp-pulse 1.5s ease-in-out infinite' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--border-color)', opacity: 0.6 }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {bar(120, 14)}
+          {bar(80)}
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
+        {[80, 160, 60, 120, 70, 100].map((w, i) => <div key={i}>{bar(w)}</div>)}
+      </div>
+    </div>
+  )
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 /**
- * ProfilePage — A dedicated full-page profile experience with animated hero section,
- * stats, and the full UserProfile component embedded below.
+ * ProfilePage — Compact, spec-compliant profile page.
+ * Renders cached data immediately, then silently fetches fresh data in the background.
  */
 export default function ProfilePage() {
   const { admin } = useAuth()
   const navigate = useNavigate()
-  const [appUser, setAppUser] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [appUser, setAppUser] = useState(() => readCache())
+  const [loading, setLoading] = useState(!readCache())
   const [showAuth, setShowAuth] = useState(false)
-  const [heroVisible, setHeroVisible] = useState(false)
-  const [statsVisible, setStatsVisible] = useState(false)
-  const statsRef = useRef(null)
+  const [toast, setToast] = useState(null)
+  const [editOpen, setEditOpen] = useState(false)
+  const toastDismiss = useCallback(() => setToast(null), [])
 
+  // Background fetch — always runs on mount; uses cached data for instant render
   useEffect(() => {
+    let cancelled = false
     getUserProfile()
-      .then(u => setAppUser(u))
-      .catch(() => setAppUser(false))
-      .finally(() => setLoading(false))
-  }, [])
-
-  // Staggered entrance animation
-  useEffect(() => {
-    const t1 = setTimeout(() => setHeroVisible(true), 80)
-    const t2 = setTimeout(() => setStatsVisible(true), 340)
-    return () => { clearTimeout(t1); clearTimeout(t2) }
-  }, [])
-
-  // Intersection observer for stats cards
-  useEffect(() => {
-    if (!statsRef.current) return
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setStatsVisible(true) },
-      { threshold: 0.2 }
-    )
-    observer.observe(statsRef.current)
-    return () => observer.disconnect()
+      .then(fresh => {
+        if (cancelled) return
+        writeCache(fresh)
+        setAppUser(fresh)
+      })
+      .catch(() => {
+        if (cancelled) return
+        // If no cached data at all, mark as not logged in
+        setAppUser(prev => prev ?? false)
+        if (readCache()) {
+          setToast('Could not refresh profile. Showing cached data.')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => { cancelled = true }
   }, [])
 
   const handleLogout = async () => {
     try { await userLogout() } catch (_) {}
+    localStorage.removeItem(CACHE_KEY)
     setAppUser(false)
     navigate('/')
   }
 
+  const handleUserUpdate = (updated) => {
+    if (!updated) return
+    setAppUser(prev => {
+      const merged = { ...prev, ...updated }
+      writeCache(merged)
+      return merged
+    })
+  }
+
+  const handleAvatarChange = (url) => {
+    setAppUser(prev => {
+      const updated = { ...prev, avatar_url: url }
+      writeCache(updated)
+      return updated
+    })
+  }
+
+  // Inline styles for the layout
+  const headerStyle = {
+    width: '100%',
+    height: 56,
+    display: 'flex',
+    alignItems: 'center',
+    background: 'var(--bg-nav)',
+    borderBottom: '1px solid var(--border-color)',
+    flexShrink: 0,
+    position: 'sticky',
+    top: 0,
+    zIndex: 50,
+  }
+
+  const mainContainerStyle = {
+    flex: 1,
+    width: '100%',
+    maxWidth: 1200,
+    margin: '0 auto',
+    paddingLeft: '4vw',
+    paddingRight: '4vw',
+    paddingTop: 24,
+    paddingBottom: 32,
+    boxSizing: 'border-box',
+  }
+
+  const profileCardStyle = {
+    background: 'var(--bg-card)',
+    border: '1px solid var(--border-color)',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+    lineHeight: 1.4,
+  }
+
   return (
-    <div className="profile-page min-h-screen" style={{ background: 'var(--bg-page)', display: 'flex', flexDirection: 'column' }}>
-      {/* Auth modal */}
-      {showAuth && !appUser && (
-        <UserAuth
-          onSuccess={(u) => { setAppUser(u); setShowAuth(false) }}
-          onClose={() => setShowAuth(false)}
-        />
-      )}
+    <>
+      <style>{`
+        @keyframes pp-pulse {
+          0%, 100% { opacity: 1; }
+          50%       { opacity: 0.5; }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+        /* Responsive: collapse grid to 1 col & stack buttons on narrow screens */
+        @media (max-width: 767px) {
+          .pp-main { padding-left: 12px !important; padding-right: 12px !important; }
+          .profile-details-grid { grid-template-columns: 1fr 1fr !important; }
+          .profile-actions-row { flex-direction: column !important; }
+          .profile-actions-row button { width: 100% !important; justify-content: center !important; }
+        }
+        @media (max-width: 479px) {
+          .profile-details-grid { grid-template-columns: max-content 1fr !important; }
+        }
+        button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        a:focus-visible      { outline: 2px solid var(--accent); outline-offset: 2px; }
+      `}</style>
 
-      {/* ── Navbar ── */}
-      <nav className="sticky top-0 z-50 bg-gray-950/95 backdrop-blur border-b border-gray-800">
-        <div className="max-w-full px-4 flex items-center h-14 gap-4">
-          <Link to="/" className="flex items-center gap-2 text-xl font-bold text-white shrink-0">
-            <img src="/yotweek.png" alt="" width={22} height={22} style={{ borderRadius: 4 }} />
-            <span className="gradient-text hidden sm:inline">yotweek</span>
-          </Link>
-          <Link to="/" className="text-xs text-gray-400 hover:text-white transition-colors flex items-center gap-1">← Home</Link>
-          <div className="flex-1" />
-          <ThemeSelector />
-          {admin && (
-            <Link to="/const" className="btn-secondary btn-sm hidden sm:inline-flex">Dashboard</Link>
-          )}
-        </div>
-      </nav>
+      <div style={{ minHeight: '100vh', background: 'var(--bg-page)', display: 'flex', flexDirection: 'column' }}>
 
-      {loading ? (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="spinner w-10 h-10" />
-        </div>
-      ) : !appUser ? (
-        /* ── Not logged in ── */
-        <div className="flex-1 flex flex-col items-center justify-center py-16 gap-6 text-center px-4">
-          <div
-            className="profile-hero-enter"
-            style={{
-              opacity: heroVisible ? 1 : 0,
-              transform: heroVisible ? 'translateY(0) scale(1)' : 'translateY(24px) scale(0.97)',
-              transition: 'opacity 0.5s ease, transform 0.5s cubic-bezier(0.34,1.4,0.64,1)',
-            }}
-          >
-            <div className="text-7xl mb-4 animate-bounce-slow">👤</div>
-            <h1 className="text-3xl font-bold text-white mb-2">Your Profile</h1>
-            <p className="text-gray-400 text-sm max-w-xs mb-6">
-              Log in to view and edit your profile, track your ride history, and manage your driver settings.
-            </p>
-            <button
-              onClick={() => setShowAuth(true)}
-              className="px-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-base transition-all hover:scale-105 active:scale-95"
-            >
-              Login / Register
-            </button>
+        {/* Auth modal */}
+        {showAuth && !appUser && (
+          <UserAuth
+            onSuccess={(u) => { writeCache(u); setAppUser(u); setShowAuth(false) }}
+            onClose={() => setShowAuth(false)}
+          />
+        )}
+
+        {/* ── Header (full width, no margin) ── */}
+        <header style={headerStyle}>
+          <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 16, paddingLeft: 16, paddingRight: 16 }}>
+            <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: '1.1rem', color: 'var(--text-primary)', textDecoration: 'none', flexShrink: 0 }}>
+              <img src="/yotweek.png" alt="" width={22} height={22} style={{ borderRadius: 4 }} />
+              <span>yotweek</span>
+            </Link>
+
+            {/* Nav links */}
+            <nav aria-label="Site navigation" style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+              <Link to="/" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textDecoration: 'none', padding: '4px 8px', borderRadius: 4, transition: 'color 0.15s' }}
+                onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)')}
+                onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-secondary)')}>
+                Home
+              </Link>
+              <Link to="/profile" aria-current="page" style={{ fontSize: '0.85rem', color: 'var(--accent)', textDecoration: 'none', padding: '4px 8px', borderRadius: 4 }}>
+                Profile
+              </Link>
+              {admin && (
+                <Link to="/const" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textDecoration: 'none', padding: '4px 8px', borderRadius: 4, transition: 'color 0.15s' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)')}
+                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-secondary)')}>
+                  Settings
+                </Link>
+              )}
+              <ThemeSelector />
+            </nav>
           </div>
-        </div>
-      ) : (
-        /* ── Logged in ── */
-        <div className="flex-1 w-full px-4 py-8 space-y-8">
+        </header>
 
-          {/* ── Animated hero banner ── */}
-          <div
-            className="profile-hero-card relative overflow-hidden rounded-2xl border border-blue-800/40 p-6"
-            style={{
-              background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%)',
-              opacity: heroVisible ? 1 : 0,
-              transform: heroVisible ? 'translateY(0)' : 'translateY(-20px)',
-              transition: 'opacity 0.5s ease, transform 0.5s ease',
-            }}
-          >
-            {/* Animated background blobs */}
-            <div className="profile-bg-blob profile-bg-blob-1" />
-            <div className="profile-bg-blob profile-bg-blob-2" />
+        {/* ── Main container (4% left/right margin, max 1200px) ── */}
+        <main style={mainContainerStyle} className="pp-main">
 
-            <div className="relative flex items-center gap-5">
-              {/* Animated avatar ring — click to upload */}
-              <div className="profile-avatar-ring relative shrink-0">
-                <div className="profile-avatar-ring-pulse absolute inset-0 rounded-full" />
-                <div
-                  className="w-20 h-20 rounded-full overflow-hidden border-3 border-blue-500 bg-blue-900 flex items-center justify-center z-10 relative cursor-pointer hover:opacity-80 transition-opacity"
-                  title="Click to change avatar"
-                  onClick={() => document.getElementById('hero-avatar-input')?.click()}
-                >
-                  {appUser.avatar_url ? (
-                    <img src={appUser.avatar_url} alt="avatar" className="w-full h-full object-cover" />
-                  ) : (
-                    <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-                      <circle cx="20" cy="20" r="20" fill="#1e3a5f"/>
-                      <circle cx="20" cy="15" r="7" fill="#60a5fa"/>
-                      <ellipse cx="20" cy="34" rx="12" ry="8" fill="#60a5fa"/>
-                    </svg>
-                  )}
-                </div>
-                <button
-                  className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-blue-600 border border-gray-900 flex items-center justify-center text-white text-xs hover:bg-blue-500 z-20 shadow-lg"
-                  title="Upload avatar photo"
-                  onClick={() => document.getElementById('hero-avatar-input')?.click()}
-                >📷</button>
-                <input
-                  id="hero-avatar-input"
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0]
-                    if (!file) return
-                    try {
-                      const res = await uploadAvatar(file)
-                      setAppUser(u => ({ ...u, avatar_url: res.avatar_url }))
-                    } catch {}
-                    e.target.value = ''
-                  }}
-                />
-              </div>
+          {loading && !appUser ? (
+            /* Initial skeleton while no cached data */
+            <div style={profileCardStyle}><ProfileSkeleton /></div>
 
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap mb-1">
-                  <h1 className="text-2xl font-bold text-white truncate">{appUser.name}</h1>
-                  {appUser.role === 'driver' && (
-                    <span className="profile-verified-badge text-xs px-2 py-0.5 rounded-full bg-green-900/60 text-green-300 border border-green-700/50">
-                      ✅ Verified Driver
-                    </span>
-                  )}
-                </div>
-                <p className="text-gray-400 text-sm">{appUser.email}</p>
-                <p className="text-gray-500 text-xs capitalize mt-0.5">{appUser.role} · Member since {new Date(appUser.created_at).toLocaleDateString()}</p>
-                <p className="text-gray-600 text-xs font-mono mt-1 truncate" title={appUser.user_id}>ID: {appUser.user_id}</p>
-              </div>
-
+          ) : !appUser ? (
+            /* Not logged in */
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 300, gap: 16, textAlign: 'center' }}>
+              <div style={{ fontSize: '3rem' }}>👤</div>
+              <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Your Profile</h1>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', maxWidth: 300, lineHeight: 1.5, margin: 0 }}>
+                Log in to view and edit your profile, track your ride history, and manage settings.
+              </p>
               <button
-                onClick={handleLogout}
-                className="shrink-0 text-xs text-gray-500 hover:text-red-400 transition-colors px-3 py-1.5 rounded-lg hover:bg-red-900/20"
+                onClick={() => setShowAuth(true)}
+                style={{ ...BTN_BASE, height: 36, padding: '0 20px', background: 'var(--accent)', color: 'var(--accent-text)', border: 'none', borderRadius: 8, fontSize: '0.9rem', fontWeight: 600 }}
               >
-                Logout
+                Login / Register
               </button>
             </div>
 
-            {appUser.bio && (
-              <p className="relative mt-4 text-sm text-gray-300 bg-gray-800/40 rounded-xl px-4 py-3 border border-gray-700/40 profile-bio-text">
-                "{appUser.bio}"
-              </p>
-            )}
-          </div>
+          ) : (
+            /* Logged in */
+            <>
+              {/* ── Profile Header Row + Details + Actions ── */}
+              <section aria-label="Profile summary" style={profileCardStyle}>
+                <ProfileHeaderRow
+                  user={appUser}
+                  onEditClick={() => setEditOpen(o => !o)}
+                  onAvatarChange={handleAvatarChange}
+                />
+                <ProfileDetailsGrid user={appUser} />
+                <ActionButtonsRow onLogout={handleLogout} navigate={navigate} />
+              </section>
 
-          {/* ── Quick stats ── */}
-          <div
-            ref={statsRef}
-            className="grid grid-cols-3 gap-3"
-            style={{
-              opacity: statsVisible ? 1 : 0,
-              transform: statsVisible ? 'translateY(0)' : 'translateY(16px)',
-              transition: 'opacity 0.5s ease 0.15s, transform 0.5s ease 0.15s',
-            }}
-          >
-            {[
-              { icon: '🚗', label: 'Role', value: appUser.role === 'driver' ? 'Driver' : 'Passenger', color: 'text-blue-400' },
-              { icon: '✅', label: 'Status', value: appUser.role === 'driver' ? 'Verified' : 'Active', color: 'text-green-400' },
-              { icon: '📅', label: 'Joined', value: new Date(appUser.created_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }), color: 'text-purple-400' },
-            ].map((stat, i) => (
-              <div
-                key={stat.label}
-                className="profile-stat-card bg-gray-900/80 border border-gray-700/60 rounded-xl p-4 text-center"
-                style={{
-                  opacity: statsVisible ? 1 : 0,
-                  transform: statsVisible ? 'translateY(0) scale(1)' : 'translateY(12px) scale(0.95)',
-                  transition: `opacity 0.4s ease ${0.1 + i * 0.08}s, transform 0.4s cubic-bezier(0.34,1.4,0.64,1) ${0.1 + i * 0.08}s`,
-                }}
-              >
-                <div className="text-2xl mb-1">{stat.icon}</div>
-                <div className={`text-sm font-bold ${stat.color}`}>{stat.value}</div>
-                <div className="text-xs text-gray-500 mt-0.5">{stat.label}</div>
-              </div>
-            ))}
-          </div>
+              {/* ── Full profile tabs (overview / rides / stats / driver / inbox) ── */}
+              <UserProfile
+                user={appUser}
+                onLogout={handleLogout}
+                onLocationUpdate={(loc) => handleUserUpdate(loc)}
+                onUserUpdate={(u) => u && handleUserUpdate(u)}
+                defaultTab={editOpen ? 'overview' : undefined}
+              />
+            </>
+          )}
+        </main>
 
-          {/* ── Full profile component ── */}
-          <div
-            style={{
-              opacity: statsVisible ? 1 : 0,
-              transform: statsVisible ? 'translateY(0)' : 'translateY(20px)',
-              transition: 'opacity 0.5s ease 0.3s, transform 0.5s ease 0.3s',
-            }}
-          >
-            <UserProfile
-              user={appUser}
-              onLogout={handleLogout}
-              onLocationUpdate={(loc) => setAppUser(u => ({ ...u, ...loc }))}
-              onUserUpdate={(u) => u && setAppUser(prev => ({ ...prev, ...u }))}
-            />
-          </div>
+        <footer style={{ borderTop: '1px solid var(--border-color)', padding: '12px 16px', textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+          yotweek © {new Date().getFullYear()} —{' '}
+          <Link to="/" style={{ color: 'var(--text-secondary)', textDecoration: 'none' }}>Back to Home</Link>
+        </footer>
+      </div>
 
-          {/* ── Quick links ── */}
-          <div
-            className="grid grid-cols-2 gap-3"
-            style={{
-              opacity: statsVisible ? 1 : 0,
-              transition: 'opacity 0.5s ease 0.45s',
-            }}
-          >
-            {[
-              { to: '/rides',      icon: '✈️', label: 'Airport Rides',  desc: 'View & book rides' },
-              { to: '/dashboard',  icon: '📊', label: 'Dashboard',      desc: 'Full control panel' },
-              { to: '/tourist-sites', icon: '🗺️', label: 'Tourist Sites', desc: 'Explore attractions' },
-              { to: '/',           icon: '🏠', label: 'Home',           desc: 'Back to main page'  },
-            ].map(link => (
-              <Link
-                key={link.to}
-                to={link.to}
-                className="profile-quick-link bg-gray-900/60 hover:bg-gray-800 border border-gray-700/60 hover:border-gray-600 rounded-xl p-4 flex items-center gap-3 transition-all hover:scale-[1.02] active:scale-[0.98]"
-              >
-                <span className="text-2xl">{link.icon}</span>
-                <div>
-                  <p className="text-sm font-semibold text-white">{link.label}</p>
-                  <p className="text-xs text-gray-500">{link.desc}</p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <footer className="border-t border-gray-800 py-4 px-4 text-center text-xs text-gray-600">
-        <p>yotweek © {new Date().getFullYear()} — <Link to="/" className="hover:text-gray-400">Back to Home</Link></p>
-      </footer>
-    </div>
+      {/* Non-blocking bottom-right toast */}
+      {toast && <Toast message={toast} onDismiss={toastDismiss} />}
+    </>
   )
 }
