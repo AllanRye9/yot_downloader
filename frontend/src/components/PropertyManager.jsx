@@ -1339,7 +1339,6 @@ const PM_TABS = [
   { id: 'properties', label: '🏢 Properties' },
   { id: 'post',       label: '➕ Post Property' },
   { id: 'agents',     label: '🧑‍💼 Agents' },
-  { id: 'map_view',   label: '🗺 Map View' },
 ]
 
 export default function PropertyManager({ userLocation }) {
@@ -1608,14 +1607,7 @@ export default function PropertyManager({ userLocation }) {
         />
       )}
 
-      {tab === 'map_view' && (
-        <MapViewPanel
-          properties={enriched}
-          userLocation={effectiveLocation}
-          closestId={closestId}
-          initialSelectedId={mapViewId}
-        />
-      )}
+      {tab === 'map_view' && null}
 
       {/* Agent profile modal */}
       {activeAgentLive && (

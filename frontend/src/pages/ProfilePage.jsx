@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { getUserProfile, userLogout } from '../api'
+import { getUserProfile, userLogout, uploadAvatar } from '../api'
 import UserProfile from '../components/UserProfile'
 import UserAuth from '../components/UserAuth'
 import ThemeSelector from '../components/ThemeSelector'
@@ -108,7 +108,7 @@ export default function ProfilePage() {
         </div>
       ) : (
         /* ── Logged in ── */
-        <div className="flex-1 max-w-4xl mx-auto w-full px-4 py-8 space-y-8">
+        <div className="flex-1 w-full px-4 py-8 space-y-8">
 
           {/* ── Animated hero banner ── */}
           <div
@@ -125,16 +125,40 @@ export default function ProfilePage() {
             <div className="profile-bg-blob profile-bg-blob-2" />
 
             <div className="relative flex items-center gap-5">
-              {/* Animated avatar ring */}
+              {/* Animated avatar ring — click to upload */}
               <div className="profile-avatar-ring relative shrink-0">
                 <div className="profile-avatar-ring-pulse absolute inset-0 rounded-full" />
-                <div className="w-20 h-20 rounded-full overflow-hidden border-3 border-blue-500 bg-blue-900 flex items-center justify-center text-4xl z-10 relative">
+                <div
+                  className="w-20 h-20 rounded-full overflow-hidden border-3 border-blue-500 bg-blue-900 flex items-center justify-center text-4xl z-10 relative cursor-pointer hover:opacity-80 transition-opacity"
+                  title="Click to change avatar"
+                  onClick={() => document.getElementById('hero-avatar-input')?.click()}
+                >
                   {appUser.avatar_url ? (
                     <img src={appUser.avatar_url} alt="avatar" className="w-full h-full object-cover" />
                   ) : (
                     <span>{appUser.role === 'driver' ? '🚗' : '🧍'}</span>
                   )}
                 </div>
+                <button
+                  className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-blue-600 border border-gray-900 flex items-center justify-center text-white text-xs hover:bg-blue-500 z-20"
+                  title="Upload avatar"
+                  onClick={() => document.getElementById('hero-avatar-input')?.click()}
+                >+</button>
+                <input
+                  id="hero-avatar-input"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    try {
+                      const res = await uploadAvatar(file)
+                      setAppUser(u => ({ ...u, avatar_url: res.avatar_url }))
+                    } catch {}
+                    e.target.value = ''
+                  }}
+                />
               </div>
 
               <div className="flex-1 min-w-0">

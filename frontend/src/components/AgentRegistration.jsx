@@ -30,6 +30,14 @@ export default function AgentRegistration({ onClose }) {
       .then(res => { setStatus(res?.application || null) })
       .catch(() => {})
       .finally(() => setLoading(false))
+
+    // Poll every 15s so the status reflects admin approval without requiring a manual refresh
+    const id = setInterval(() => {
+      getAgentApplicationStatus()
+        .then(res => { setStatus(res?.application || null) })
+        .catch(() => {})
+    }, 15_000)
+    return () => clearInterval(id)
   }, [])
 
   const handleSubmit = async (e) => {
