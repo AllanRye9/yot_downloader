@@ -208,18 +208,7 @@ export default function DMInbox({ currentUser }) {
   }
 
   // ── If full chat is open, show it ─────────────────────────────────────────
-
-  if (activeConv) {
-    return (
-      <div className="h-[600px]">
-        <DMChat
-          conv={activeConv}
-          currentUser={currentUser}
-          onClose={() => { setActiveConv(null); loadConversations() }}
-        />
-      </div>
-    )
-  }
+  // (handled inline in two-panel layout below)
 
   // ── Build user list for new chat ─────────────────────────────────────────────
   // If user has typed a search query, show live search results; otherwise show previous contacts
@@ -234,293 +223,304 @@ export default function DMInbox({ currentUser }) {
     : conversations
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-white flex items-center gap-2">
-          💬 Messages
-          {totalUnread > 0 && (
-            <span className="bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded-full">
-              {totalUnread > 99 ? '99+' : totalUnread}
-            </span>
-          )}
-        </h2>
-        <div className="flex gap-2">
-          <button
-            onClick={loadConversations}
-            className="text-xs text-gray-400 hover:text-gray-200 transition-colors"
-            title="Refresh"
-          >
-            ↺ Refresh
-          </button>
-          <button
-            onClick={handleOpenNewChat}
-            className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg transition-colors"
-          >
-            + New Message
-          </button>
-        </div>
-      </div>
+    <div className="flex h-[600px] rounded-xl overflow-hidden border border-gray-700 bg-gray-900">
 
-      {/* Conversation search */}
-      {conversations.length > 0 && (
-        <input
-          type="text"
-          placeholder="Search conversations…"
-          value={convSearch}
-          onChange={e => setConvSearch(e.target.value)}
-          className="w-full rounded-lg bg-gray-900 border border-gray-700 text-gray-100 text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      )}
+      {/* ── Left panel: Thread list (30% desktop / full mobile) ── */}
+      <div className={`flex flex-col border-r border-gray-700 bg-gray-900/80
+        ${activeConv ? 'hidden md:flex' : 'flex'}
+        w-full md:w-[30%] md:min-w-[220px] md:max-w-[280px]`}>
 
-      {/* New chat picker */}
-      {showNewChat && (
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-white">Start a conversation</p>
-            <button
-              onClick={() => { setShowNewChat(false); setUserSearch(''); setSearchResults([]) }}
-              className="text-gray-500 hover:text-gray-300 text-lg leading-none"
-            >
-              ✕
-            </button>
-          </div>
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Type a username to search…"
-              value={userSearch}
-              onChange={e => handleUserSearchChange(e.target.value)}
-              autoFocus
-              className="w-full rounded-lg bg-gray-900 border border-gray-600 text-gray-100 text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            {searchLoading && (
-              <span className="absolute right-2.5 top-2.5 text-gray-400 text-xs">⏳</span>
+        {/* Panel header */}
+        <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-700 shrink-0">
+          <h2 className="text-sm font-bold text-white flex items-center gap-1.5">
+            💬 Messages
+            {totalUnread > 0 && (
+              <span className="bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded-full">
+                {totalUnread > 99 ? '99+' : totalUnread}
+              </span>
             )}
-          </div>
-          {filteredUsers.length === 0 ? (
-            <p className="text-xs text-gray-500 text-center py-2">
-              {userSearch.trim()
-                ? (searchLoading ? 'Searching…' : 'No users found.')
-                : (contacts.length === 0
-                  ? 'Type a username above to find someone.'
-                  : 'No contacts match your search.')}
-            </p>
-          ) : (
-            <div className="space-y-1 max-h-48 overflow-y-auto">
-              {!userSearch.trim() && contacts.length > 0 && (
-                <p className="text-xs text-gray-500 px-1 pb-0.5">Previously contacted</p>
-              )}
-              {userSearch.trim() && searchResults.length > 0 && (
-                <p className="text-xs text-gray-500 px-1 pb-0.5">Search results</p>
-              )}
-              {filteredUsers.map((u) => (
-                <button
-                  key={u.user_id}
-                  onClick={() => handleStartConversation(u.user_id)}
-                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-700 transition-colors text-left"
-                >
-                  <div className="w-8 h-8 rounded-full bg-blue-700 flex items-center justify-center text-sm font-bold text-white shrink-0">
-                    {u.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm text-white block truncate">{u.name}</span>
-                    {u.username && u.username !== u.name && (
-                      <span className="text-xs text-gray-400 block truncate">@{u.username}</span>
-                    )}
-                  </div>
-                  <span className="text-xs text-gray-500">💬</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Ride Share Conversations (shown first) ── */}
-      {!rideChatsLoading && rideChats.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-semibold text-amber-400 uppercase tracking-wide flex items-center gap-1">
-            🚗 Ride Share Messages
-          </p>
-          {rideChats.map((conv, i) => (
-            <div
-              key={conv.msg_id || i}
-              className="flex items-start gap-3 rounded-xl px-3 py-2.5 bg-amber-900/10 border border-amber-700/30 hover:bg-amber-900/20 transition-all cursor-pointer"
-              style={{
-                transform: clickedConv === `ride-${i}` ? 'scale(0.97)' : '',
-                transition: `transform ${CLICK_ANIMATION_DURATION}ms ease, background 0.2s`,
-              }}
-              onClick={() => {
-                setClickedConv(`ride-${i}`)
-                setTimeout(() => setClickedConv(null), CLICK_ANIMATION_DURATION)
-                navigate('/rides')
-              }}
-              role="button"
-              tabIndex={0}
-              onKeyDown={e => e.key === 'Enter' && navigate('/rides')}
-              aria-label={`Ride chat: ${conv.ride_info?.origin || 'Ride'} to ${conv.ride_info?.destination || '…'}`}
+          </h2>
+          <div className="flex gap-1.5 items-center">
+            <button
+              onClick={loadConversations}
+              className="text-xs text-gray-500 hover:text-gray-200 transition-colors"
+              title="Refresh"
             >
-              <div className="w-9 h-9 rounded-full bg-amber-800 flex items-center justify-center text-sm font-bold text-amber-200 shrink-0">🚗</div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <p className="text-xs font-semibold text-amber-200 truncate">
-                    {conv.ride_info?.origin || 'Ride'} → {conv.ride_info?.destination || '…'}
-                  </p>
-                  <span className="text-xs text-gray-500 shrink-0">
-                    {conv.ts ? new Date(conv.ts * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-300 truncate">
-                  {conv.is_mine ? 'You: ' : `${conv.sender_name || 'Driver'}: `}{conv.text || '[message]'}
-                </p>
-              </div>
-            </div>
-          ))}
-          <div className="border-t border-gray-700/50 pt-2">
-            <p className="text-xs font-semibold text-blue-400 uppercase tracking-wide flex items-center gap-1">
-              💬 Direct Messages
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Conversations list */}
-      {loading ? (
-        <div className="text-center py-8">
-          <div className="spinner w-6 h-6 mx-auto" />
-        </div>
-      ) : filteredConversations.length === 0 ? (
-        <div className="text-center text-sm text-gray-500 py-10">
-          <p className="text-3xl mb-2">💬</p>
-          <p>{convSearch ? 'No conversations match your search.' : 'No conversations yet.'}</p>
-          {!convSearch && (
+              ↺
+            </button>
             <button
               onClick={handleOpenNewChat}
-              className="mt-3 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+              className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded-lg transition-colors"
             >
-              Start a new conversation →
+              + New
             </button>
-          )}
+          </div>
         </div>
-      ) : (
-        <div className="space-y-2">
-          {filteredConversations.map((conv) => {
-            const isQR = quickReply?.conv_id === conv.conv_id
-            const lastMsg = conv.last_message
-            const senderUsername = lastMsg?.sender_id === myId
-              ? 'You'
-              : (lastMsg?.sender_username || conv.other_user?.username || conv.other_user?.name || 'User')
-            const preview = lastMsg
-              ? `${senderUsername}: ${lastMsg.content || '…'}`
-              : 'No messages yet'
-            const lastTs = lastMsg?.ts
 
-            return (
-              <div
-                key={conv.conv_id}
-                className="bg-gray-800/50 border border-gray-700 rounded-xl overflow-hidden hover:bg-gray-800/80 transition-colors"
-                style={{
-                  transform: clickedConv === conv.conv_id ? 'scale(0.98)' : '',
-                  transition: `transform ${CLICK_ANIMATION_DURATION}ms ease, background 0.2s`,
-                }}
+        {/* Search */}
+        {conversations.length > 0 && (
+          <div className="px-2 py-1.5 border-b border-gray-700/50 shrink-0">
+            <input
+              type="text"
+              placeholder="Search messages…"
+              value={convSearch}
+              onChange={e => setConvSearch(e.target.value)}
+              className="w-full rounded-lg bg-gray-800 border border-gray-700 text-gray-100 text-xs px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+        )}
+
+        {/* New chat picker */}
+        {showNewChat && (
+          <div className="mx-2 my-1.5 bg-gray-800 border border-gray-700 rounded-xl p-3 space-y-2 shrink-0">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-white">Start a conversation</p>
+              <button
+                onClick={() => { setShowNewChat(false); setUserSearch(''); setSearchResults([]) }}
+                className="text-gray-500 hover:text-gray-300 text-base leading-none"
               >
-                {/* Clicking the main row opens full chat */}
+                ✕
+              </button>
+            </div>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search username…"
+                value={userSearch}
+                onChange={e => handleUserSearchChange(e.target.value)}
+                autoFocus
+                className="w-full rounded-lg bg-gray-900 border border-gray-600 text-gray-100 text-xs px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              {searchLoading && (
+                <span className="absolute right-2 top-2 text-gray-400 text-xs">⏳</span>
+              )}
+            </div>
+            {filteredUsers.length === 0 ? (
+              <p className="text-xs text-gray-500 text-center py-1">
+                {userSearch.trim()
+                  ? (searchLoading ? 'Searching…' : 'No users found.')
+                  : (contacts.length === 0
+                    ? 'Type a username to search.'
+                    : 'No contacts match.')}
+              </p>
+            ) : (
+              <div className="space-y-0.5 max-h-36 overflow-y-auto">
+                {filteredUsers.map((u) => (
+                  <button
+                    key={u.user_id}
+                    onClick={() => handleStartConversation(u.user_id)}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-700 transition-colors text-left"
+                  >
+                    <div className="w-7 h-7 rounded-full bg-blue-700 flex items-center justify-center text-xs font-bold text-white shrink-0">
+                      {u.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-xs text-white block truncate">{u.name}</span>
+                      {u.username && u.username !== u.name && (
+                        <span className="text-xs text-gray-400 block truncate">@{u.username}</span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Thread list — scrollable */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Ride share threads */}
+          {!rideChatsLoading && rideChats.length > 0 && (
+            <>
+              <p className="text-xs font-semibold text-amber-400 uppercase tracking-wide px-3 pt-2 pb-1">🚗 Ride Share</p>
+              {rideChats.map((conv, i) => (
                 <div
-                  className="flex items-center gap-3 px-4 py-3 cursor-pointer"
+                  key={conv.msg_id || i}
+                  className="flex items-start gap-2 px-3 py-2.5 border-b border-gray-800/60 hover:bg-amber-900/10 transition-colors cursor-pointer"
+                  style={{
+                    transform: clickedConv === `ride-${i}` ? 'scale(0.97)' : '',
+                    transition: `transform ${CLICK_ANIMATION_DURATION}ms ease`,
+                  }}
                   onClick={() => {
-                    setClickedConv(conv.conv_id)
-                    setTimeout(() => { setClickedConv(null); setActiveConv(conv) }, CLICK_ANIMATION_DURATION)
+                    setClickedConv(`ride-${i}`)
+                    setTimeout(() => setClickedConv(null), CLICK_ANIMATION_DURATION)
+                    navigate('/rides')
                   }}
                   role="button"
                   tabIndex={0}
-                  onKeyDown={e => e.key === 'Enter' && setActiveConv(conv)}
-                  aria-label={`Open chat with ${conv.other_user?.name || 'User'}`}
+                  onKeyDown={e => e.key === 'Enter' && navigate('/rides')}
+                  aria-label={`Ride chat: ${conv.ride_info?.origin || 'Ride'} to ${conv.ride_info?.destination || '…'}`}
                 >
-                  {/* Avatar */}
-                  <div className="w-10 h-10 rounded-full bg-blue-700 flex items-center justify-center text-sm font-bold text-white shrink-0">
-                    {conv.other_user?.name?.charAt(0)?.toUpperCase() || '?'}
-                  </div>
-
-                  {/* Content */}
+                  <div className="w-8 h-8 rounded-full bg-amber-800 flex items-center justify-center text-xs shrink-0 mt-0.5">🚗</div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <p className="text-sm font-semibold text-white truncate">
-                        {conv.other_user?.name || 'User'}
-                      </p>
-                      {conv.other_user?.username && conv.other_user.username !== conv.other_user.name && (
-                        <span className="text-xs text-gray-500 truncate">@{conv.other_user.username}</span>
-                      )}
+                    <p className="text-xs font-semibold text-amber-200 truncate">
+                      {conv.ride_info?.origin || 'Ride'} → {conv.ride_info?.destination || '…'}
+                    </p>
+                    <p className="text-xs text-gray-400 truncate">
+                      {conv.is_mine ? 'You: ' : `${conv.sender_name || 'Driver'}: `}{conv.text || '[message]'}
+                    </p>
+                  </div>
+                  <span className="text-xs text-gray-600 shrink-0 mt-0.5">
+                    {conv.ts ? new Date(conv.ts * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}
+                  </span>
+                </div>
+              ))}
+              {conversations.length > 0 && (
+                <p className="text-xs font-semibold text-blue-400 uppercase tracking-wide px-3 pt-2 pb-1">💬 Direct Messages</p>
+              )}
+            </>
+          )}
+
+          {/* DM threads */}
+          {loading ? (
+            <div className="flex justify-center py-6">
+              <div className="spinner w-5 h-5" />
+            </div>
+          ) : filteredConversations.length === 0 ? (
+            <div className="text-center text-xs text-gray-500 py-8 px-3">
+              <p className="text-2xl mb-1">💬</p>
+              <p>{convSearch ? 'No matches.' : 'No conversations yet.'}</p>
+              {!convSearch && (
+                <button
+                  onClick={handleOpenNewChat}
+                  className="mt-2 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  Start one →
+                </button>
+              )}
+            </div>
+          ) : (
+            filteredConversations.map((conv) => {
+              const isQR = quickReply?.conv_id === conv.conv_id
+              const isActive = activeConv?.conv_id === conv.conv_id
+              const lastMsg = conv.last_message
+              const senderUsername = lastMsg?.sender_id === myId
+                ? 'You'
+                : (lastMsg?.sender_username || conv.other_user?.username || conv.other_user?.name || 'User')
+              const preview = lastMsg
+                ? `${senderUsername}: ${lastMsg.content || '…'}`
+                : 'No messages yet'
+              const lastTs = lastMsg?.ts
+
+              return (
+                <div
+                  key={conv.conv_id}
+                  className={`border-b border-gray-800/60 transition-colors ${
+                    isActive ? 'bg-blue-900/30 border-l-2 border-l-blue-500' : 'hover:bg-gray-800/50'
+                  }`}
+                  style={{
+                    transform: clickedConv === conv.conv_id ? 'scale(0.98)' : '',
+                    transition: `transform ${CLICK_ANIMATION_DURATION}ms ease`,
+                  }}
+                >
+                  <div
+                    className="flex items-center gap-2 px-3 py-2.5 cursor-pointer"
+                    onClick={() => {
+                      setClickedConv(conv.conv_id)
+                      setTimeout(() => { setClickedConv(null); setActiveConv(conv) }, CLICK_ANIMATION_DURATION)
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={e => e.key === 'Enter' && setActiveConv(conv)}
+                    aria-label={`Open chat with ${conv.other_user?.name || 'User'}`}
+                  >
+                    {/* Avatar */}
+                    <div className="relative shrink-0">
+                      <div className="w-9 h-9 rounded-full bg-blue-700 flex items-center justify-center text-xs font-bold text-white">
+                        {conv.other_user?.name?.charAt(0)?.toUpperCase() || '?'}
+                      </div>
                       {conv.unread_count > 0 && (
-                        <span className="bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded-full shrink-0">
-                          {conv.unread_count}
+                        <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-blue-500 border border-gray-900 flex items-center justify-center text-white text-[9px] font-bold">
+                          {conv.unread_count > 9 ? '9+' : conv.unread_count}
                         </span>
                       )}
                     </div>
-                    <p className={`text-xs truncate ${conv.unread_count > 0 ? 'text-white font-medium' : 'text-gray-400'}`}>
-                      {preview.slice(0, 60)}{preview.length > 60 ? '…' : ''}
-                    </p>
-                  </div>
 
-                  {/* Timestamp + actions */}
-                  <div className="flex flex-col items-end gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-                    <span className="text-xs text-gray-500">{fmtTime(lastTs)}</span>
-                    <div className="flex gap-1">
-                      {/* Quick reply button */}
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <p className={`text-xs truncate ${conv.unread_count > 0 ? 'font-bold text-white' : 'font-semibold text-gray-200'}`}>
+                          {conv.other_user?.name || 'User'}
+                        </p>
+                        <span className="text-xs text-gray-600 shrink-0">{fmtTime(lastTs)}</span>
+                      </div>
+                      <p className={`text-xs truncate mt-0.5 ${conv.unread_count > 0 ? 'text-gray-200' : 'text-gray-500'}`}>
+                        {preview.slice(0, 50)}{preview.length > 50 ? '…' : ''}
+                      </p>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-1 shrink-0 ml-1" onClick={e => e.stopPropagation()}>
                       <button
-                        onClick={() => {
-                          if (isQR) {
-                            setQuickReply(null)
-                            setQuickText('')
-                          } else {
-                            setQuickReply(conv)
-                            setQuickText('')
-                          }
-                        }}
-                        className="text-xs text-gray-400 hover:text-blue-300 transition-colors px-1.5 py-0.5 rounded border border-gray-700 hover:border-blue-500"
+                        onClick={() => isQR ? (setQuickReply(null), setQuickText('')) : (setQuickReply(conv), setQuickText(''))}
+                        className="text-xs text-gray-500 hover:text-blue-300 transition-colors p-1 rounded"
                         title="Quick reply"
                       >
                         ↩
                       </button>
-                      {/* Delete conversation button */}
                       <button
                         onClick={() => handleDeleteConversation(conv.conv_id)}
-                        className="text-xs text-gray-500 hover:text-red-400 transition-colors px-1.5 py-0.5 rounded border border-gray-700 hover:border-red-500"
-                        title="Delete conversation"
+                        className="text-xs text-gray-600 hover:text-red-400 transition-colors p-1 rounded"
+                        title="Delete"
                       >
                         🗑
                       </button>
                     </div>
                   </div>
-                </div>
 
-                {/* Quick reply input (inline) */}
-                {isQR && (
-                  <div className="px-4 pb-3 pt-0 flex gap-2 border-t border-gray-700/50">
-                    <input
-                      type="text"
-                      autoFocus
-                      value={quickText}
-                      onChange={e => setQuickText(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) handleQuickReply(conv) }}
-                      placeholder={`Reply to ${conv.other_user?.name || 'User'}…`}
-                      maxLength={1000}
-                      className="flex-1 rounded-lg bg-gray-900 border border-gray-600 text-gray-100 text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
-                    />
-                    <button
-                      onClick={() => handleQuickReply(conv)}
-                      disabled={!quickText.trim() || sendingQR}
-                      className="rounded-lg px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-sm transition-colors shrink-0"
-                    >
-                      Send
-                    </button>
-                  </div>
-                )}
-              </div>
-            )
-          })}
+                  {/* Quick reply */}
+                  {isQR && (
+                    <div className="px-3 pb-2 flex gap-2">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={quickText}
+                        onChange={e => setQuickText(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) handleQuickReply(conv) }}
+                        placeholder={`Reply to ${conv.other_user?.name || 'User'}…`}
+                        maxLength={1000}
+                        className="flex-1 rounded-lg bg-gray-900 border border-gray-600 text-gray-100 text-xs px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-0"
+                      />
+                      <button
+                        onClick={() => handleQuickReply(conv)}
+                        disabled={!quickText.trim() || sendingQR}
+                        className="rounded-lg px-2.5 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs transition-colors shrink-0"
+                      >
+                        Send
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          )}
         </div>
-      )}
+      </div>
+
+      {/* ── Right panel: Chat box (70% desktop / full mobile) ── */}
+      <div className={`flex-1 flex flex-col overflow-hidden
+        ${!activeConv ? 'hidden md:flex' : 'flex'}`}>
+        {activeConv ? (
+          <DMChat
+            conv={activeConv}
+            currentUser={currentUser}
+            onClose={() => { setActiveConv(null); loadConversations() }}
+            onBack={() => setActiveConv(null)}
+          />
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-6">
+            <p className="text-4xl">💬</p>
+            <p className="text-sm text-gray-400">Select a conversation to start chatting</p>
+            <button
+              onClick={handleOpenNewChat}
+              className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg transition-colors"
+            >
+              + New Message
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
+

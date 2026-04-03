@@ -16,7 +16,7 @@ import { useState, useEffect, useCallback } from 'react'
 const CATEGORIES = [
   { id: 'all',           label: '🌐 All',           tags: [] },
   { id: 'museum',        label: '🏛 Museums',        tags: ['tourism=museum', 'tourism=gallery', 'tourism=artwork'] },
-  { id: 'park',          label: '🌿 Parks',          tags: ['leisure=park', 'leisure=nature_reserve', 'boundary=national_park'] },
+  { id: 'park',          label: '🌿 Parks & Nature', tags: ['leisure=park', 'leisure=nature_reserve', 'leisure=garden', 'boundary=national_park', 'natural=peak', 'natural=waterfall', 'natural=beach', 'natural=volcano'] },
   { id: 'historic',      label: '🏰 Historic',       tags: ['historic=*', 'tourism=monument', 'tourism=ruins', 'tourism=castle'] },
   { id: 'religious',     label: '⛪ Religious',       tags: ['amenity=place_of_worship'] },
   { id: 'viewpoint',     label: '🔭 Viewpoints',     tags: ['tourism=viewpoint', 'tourism=attraction'] },
@@ -53,11 +53,12 @@ function _categoryFromTags(tags = {}) {
   const h = tags.historic || ''
   const l = tags.leisure || ''
   const a = tags.amenity || ''
+  const n = tags.natural || ''
   if (t === 'museum' || t === 'gallery' || t === 'artwork') return 'museum'
   if (t === 'castle' || t === 'ruins' || t === 'monument' || h) return 'historic'
   if (t === 'viewpoint' || t === 'attraction') return 'viewpoint'
   if (t === 'zoo' || t === 'aquarium' || t === 'theme_park' || l === 'stadium') return 'entertainment'
-  if (l === 'park' || l === 'nature_reserve') return 'park'
+  if (l === 'park' || l === 'nature_reserve' || l === 'garden' || n === 'peak' || n === 'waterfall' || n === 'beach' || n === 'volcano') return 'park'
   if (a === 'place_of_worship') return 'religious'
   return 'default'
 }
@@ -76,6 +77,7 @@ function _tourismEmoji(tags = {}) {
   const h = tags.historic || ''
   const l = tags.leisure || ''
   const a = tags.amenity || ''
+  const n = tags.natural || ''
   if (t === 'museum' || t === 'gallery') return '🏛'
   if (t === 'artwork') return '🎨'
   if (t === 'monument') return '🗿'
@@ -84,23 +86,35 @@ function _tourismEmoji(tags = {}) {
   if (t === 'zoo') return '🦁'
   if (t === 'aquarium') return '🐟'
   if (t === 'theme_park') return '🎡'
-  if (l === 'park' || l === 'nature_reserve') return '🌿'
+  if (l === 'park' || l === 'nature_reserve' || l === 'garden') return '🌿'
   if (l === 'stadium') return '🏟'
   if (a === 'place_of_worship') return '⛪'
+  if (n === 'peak' || n === 'volcano') return '⛰️'
+  if (n === 'waterfall') return '💧'
+  if (n === 'beach') return '🏖️'
+  if (n === 'cave_entrance') return '🕳️'
   return '📍'
 }
 
 async function fetchNearbyAttractions(lat, lng, radiusKm = 25) {
   const radius = radiusKm * 1000
   const query = `
-[out:json][timeout:30];
+[out:json][timeout:60];
 (
-  node["tourism"~"museum|gallery|artwork|monument|ruins|castle|viewpoint|attraction|zoo|aquarium|theme_park"](around:${radius},${lat},${lng});
-  node["historic"~"monument|ruins|castle|fort|archaeological_site"](around:${radius},${lat},${lng});
-  node["leisure"~"park|nature_reserve|stadium"](around:${radius},${lat},${lng});
+  node["tourism"~"museum|gallery|artwork|monument|ruins|castle|viewpoint|attraction|zoo|aquarium|theme_park|information|hotel|hostel|chalet|alpine_hut|camp_site|caravan_site|picnic_site|wilderness_hut"](around:${radius},${lat},${lng});
+  way["tourism"~"museum|gallery|monument|ruins|castle|viewpoint|attraction|zoo|aquarium|theme_park"](around:${radius},${lat},${lng});
+  node["historic"~"monument|ruins|castle|fort|archaeological_site|building|church|wayside_shrine|battlefield|manor|palace|memorial"](around:${radius},${lat},${lng});
+  way["historic"~"monument|ruins|castle|fort|archaeological_site|building|church|battlefield|manor|palace"](around:${radius},${lat},${lng});
+  node["leisure"~"park|nature_reserve|stadium|garden|beach_resort|marina|golf_course|sports_centre"](around:${radius},${lat},${lng});
+  way["leisure"~"park|nature_reserve|garden"](around:${radius},${lat},${lng});
   node["amenity"="place_of_worship"](around:${radius},${lat},${lng});
+  way["amenity"="place_of_worship"](around:${radius},${lat},${lng});
+  node["natural"~"peak|volcano|waterfall|hot_spring|geyser|cave_entrance|beach|cliff|arch|rock|stone"](around:${radius},${lat},${lng});
+  node["boundary"="national_park"](around:${radius},${lat},${lng});
+  way["boundary"="national_park"](around:${radius},${lat},${lng});
+  node["landuse"="recreation_ground"](around:${radius},${lat},${lng});
 );
-out body 80;
+out body center 200;
 `
   const res = await fetch('https://overpass-api.de/api/interpreter', {
     method: 'POST',
@@ -111,22 +125,27 @@ out body 80;
   const data = await res.json()
   return (data.elements || [])
     .filter(el => el.tags?.name)
-    .map(el => ({
-      id: String(el.id),
-      name: el.tags.name,
-      lat: el.lat,
-      lng: el.lon,
-      tags: el.tags,
-      emoji: _tourismEmoji(el.tags),
-      category: _categoryFromTags(el.tags),
-      description: el.tags.description || el.tags['description:en'] || el.tags.wikipedia?.replace(/_/g, ' ') || '',
-      wikidata: el.tags.wikidata,
-      wikipedia: el.tags.wikipedia,
-      website: el.tags.website || el.tags['contact:website'] || '',
-      phone: el.tags.phone || el.tags['contact:phone'] || '',
-      openingHours: el.tags.opening_hours || '',
-      address: [el.tags['addr:street'], el.tags['addr:city']].filter(Boolean).join(', '),
-    }))
+    .map(el => {
+      const lat = el.lat ?? el.center?.lat
+      const lng = el.lon ?? el.center?.lon
+      return {
+        id: String(el.id),
+        name: el.tags.name,
+        lat,
+        lng,
+        tags: el.tags,
+        emoji: _tourismEmoji(el.tags),
+        category: _categoryFromTags(el.tags),
+        description: el.tags.description || el.tags['description:en'] || el.tags.wikipedia?.replace(/_/g, ' ') || '',
+        wikidata: el.tags.wikidata,
+        wikipedia: el.tags.wikipedia,
+        website: el.tags.website || el.tags['contact:website'] || '',
+        phone: el.tags.phone || el.tags['contact:phone'] || '',
+        openingHours: el.tags.opening_hours || '',
+        address: [el.tags['addr:street'], el.tags['addr:city']].filter(Boolean).join(', '),
+      }
+    })
+    .filter(el => el.lat != null && el.lng != null)
 }
 
 // ─── Attraction Card ──────────────────────────────────────────────────────────
