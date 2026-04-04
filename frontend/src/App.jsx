@@ -12,12 +12,13 @@ import TouristSitesPage from './pages/TouristSitesPage'
 import UnifiedMapPage from './pages/UnifiedMapPage'
 import ProfilePage from './pages/ProfilePage'
 import InboxPage from './pages/InboxPage'
+import AgentsPage from './pages/AgentsPage'
 
-// ─── Auth Context ─────────────────────────────────────────────────────────────
+// ─── Auth Context ────────────────────────────────────────────────────────
 const AuthCtx = createContext(null)
 export const useAuth = () => useContext(AuthCtx)
 
-// ─── Theme Context ────────────────────────────────────────────────────────────
+// ─── Theme Context ────────────────────────────────────────────────────────
 export const THEMES = [
   { id: 'dark',   label: '🌑 Dark',   className: 'theme-dark'   },
   { id: 'light',  label: '☀️ Light',  className: 'theme-light'  },
@@ -91,7 +92,7 @@ function AuthProvider({ children }) {
   )
 }
 
-// ─── Protected Route ──────────────────────────────────────────────────────────
+// ─── Protected Route ────────────────────────────────────────────────────────
 function ProtectedRoute({ children }) {
   const { admin } = useAuth()
   if (admin === null) {
@@ -105,7 +106,7 @@ function ProtectedRoute({ children }) {
   return children
 }
 
-// ─── App ──────────────────────────────────────────────────────────────────────
+// ─── App ───────────────────────────────────────────────────────────
 export default function App() {
   return (
     <BrowserRouter>
@@ -120,7 +121,7 @@ export default function App() {
             {/* Legacy redirects — real estate / property features removed */}
             <Route path="/properties" element={<Navigate to="/tourist-sites" replace />} />
             <Route path="/properties/:propertyId" element={<Navigate to="/tourist-sites" replace />} />
-            <Route path="/agents" element={<Navigate to="/" replace />} />
+            <Route path="/agents" element={<AgentsPage />} />
             <Route path="/property-inbox" element={<Navigate to="/" replace />} />
             <Route path="/map" element={<UnifiedMapPage />} />
             <Route path="/inbox" element={<InboxPage />} />
