@@ -435,10 +435,8 @@ function InboxTab({ user, unreadCount, onUnreadChange }) {
       if (n.link.startsWith('/')) {
         navigate(n.link)
       } else if (n.link.startsWith('#')) {
-        // Hash links: navigate to inbox for inbox-type links
-        if (n.link === '#inbox' || n.type === 'ride_taken' || n.type === 'driver_arrived') {
-          navigate('/inbox')
-        }
+        // Legacy hash links: treat #inbox as /inbox
+        navigate('/inbox')
       }
     }
   }

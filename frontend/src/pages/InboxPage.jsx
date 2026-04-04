@@ -442,7 +442,7 @@ export default function InboxPage() {
         </div>
 
         {/* ── Right body: Conversation list OR open chat ── */}
-        <div className={`flex-1 flex flex-col overflow-hidden ${activeConv ? 'flex' : 'flex'}`}>
+        <div className="flex-1 flex flex-col overflow-hidden">
           {activeConv ? (
             /* Open chat */
             <DMChat
