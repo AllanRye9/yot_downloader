@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   updateUserLocation, userLogout, getRideHistory, getDriverApplication, driverApply,
-  updateProfileDetails, uploadAvatar, getNotifications, markNotificationRead, markAllNotificationsRead,
+  updateProfileDetails, uploadAvatar, deleteAvatar, getNotifications, markNotificationRead, markAllNotificationsRead,
   clearAllNotifications, changePassword,
 } from '../api'
 import socket from '../socket'
@@ -23,6 +24,7 @@ function AvatarUpload({ user, onAvatarChange }) {
   const inputRef  = useRef(null)
   const [preview, setPreview] = useState(user?.avatar_url || null)
   const [loading, setLoading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [error,   setError]   = useState('')
 
   useEffect(() => { setPreview(user?.avatar_url || null) }, [user?.avatar_url])
@@ -46,6 +48,22 @@ function AvatarUpload({ user, onAvatarChange }) {
     }
   }
 
+  const handleDelete = async (e) => {
+    e.stopPropagation()
+    if (!window.confirm('Remove your profile picture?')) return
+    setDeleting(true)
+    setError('')
+    try {
+      await deleteAvatar()
+      setPreview(null)
+      onAvatarChange?.(null)
+    } catch (err) {
+      setError(err.message || 'Delete failed.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const DefaultAvatar = () => (
     <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
       <circle cx="20" cy="20" r="20" fill="#1e3a5f"/>
@@ -66,7 +84,7 @@ function AvatarUpload({ user, onAvatarChange }) {
         ) : (
           <DefaultAvatar />
         )}
-        {loading && (
+        {(loading || deleting) && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-full">
             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
           </div>
@@ -79,6 +97,16 @@ function AvatarUpload({ user, onAvatarChange }) {
       >
         📷
       </button>
+      {preview && (
+        <button
+          className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-600 border border-gray-800 flex items-center justify-center text-white text-[10px] hover:bg-red-500 transition-colors shadow-lg"
+          onClick={handleDelete}
+          title="Remove profile picture"
+          aria-label="Remove profile picture"
+        >
+          ✕
+        </button>
+      )}
       <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
       {error && <p className="absolute top-full mt-1 text-red-400 text-xs whitespace-nowrap">{error}</p>}
     </div>
@@ -344,6 +372,7 @@ function DriverRoleTab({ user }) {
 // ─── Inbox tab ────────────────────────────────────────────────────────────────
 
 function InboxTab({ user, unreadCount, onUnreadChange }) {
+  const navigate = useNavigate()
   const [notifications, setNotifications] = useState(null)
   const [loading,       setLoading]       = useState(true)
   const [markingAll,    setMarkingAll]     = useState(false)
@@ -389,11 +418,28 @@ function InboxTab({ user, unreadCount, onUnreadChange }) {
     onUnreadChange?.(0)
   }
 
-  // Clicking a DM/message notification navigates to the messages section
+  // Handle notification click: mark read, then route based on type/link
   const handleNotifClick = (n) => {
     if (!n.read) handleMarkRead(n.notif_id)
     if (n.type === 'dm' || n.type === 'message') {
       setActiveSection('messages')
+    } else if (n.link && n.link.startsWith('/')) {
+      navigate(n.link)
+    }
+  }
+
+  const handleNotifLinkClick = (e, n) => {
+    e.stopPropagation()
+    if (!n.read) handleMarkRead(n.notif_id)
+    if (n.link) {
+      if (n.link.startsWith('/')) {
+        navigate(n.link)
+      } else if (n.link.startsWith('#')) {
+        // Hash links: navigate to inbox for inbox-type links
+        if (n.link === '#inbox' || n.type === 'ride_taken' || n.type === 'driver_arrived') {
+          navigate('/inbox')
+        }
+      }
     }
   }
 
@@ -401,6 +447,7 @@ function InboxTab({ user, unreadCount, onUnreadChange }) {
     driver_approved: '🎉',
     driver_rejected: '❌',
     ride_taken:      '✅',
+    driver_arrived:  '🚗',
     dm:              '💬',
     message:         '💬',
     system:          'ℹ️',
@@ -486,16 +533,22 @@ function InboxTab({ user, unreadCount, onUnreadChange }) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <p className={`text-xs font-semibold truncate ${n.read ? 'text-gray-300' : 'text-white'}`}>{n.title}</p>
-                        <div className="flex items-center gap-1 shrink-0">
-                          {!n.read && <span className="w-2 h-2 rounded-full bg-blue-400" />}
-                          {(n.type === 'dm' || n.type === 'message') && (
-                            <span className="text-[10px] text-blue-400 whitespace-nowrap">→ msgs</span>
-                          )}
-                        </div>
+                        {!n.read && <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />}
                       </div>
                       <p className="text-xs text-gray-400 mt-0.5">{n.body}</p>
-                      <p className="text-xs text-gray-600 mt-1">{new Date(n.created_at).toLocaleString()}</p>
+                      <div className="flex items-center justify-between mt-1">
+                        <p className="text-xs text-gray-600">{new Date(n.created_at).toLocaleString()}</p>
+                        {n.link && n.link_label && (
+                          <button
+                            onClick={(e) => handleNotifLinkClick(e, n)}
+                            className="text-[11px] text-blue-400 hover:text-blue-300 transition-colors font-medium shrink-0 ml-2"
+                          >
+                            {n.link_label} →
+                          </button>
+                        )}
+                      </div>
                     </div>
+                  </div>
                   </div>
                 </div>
               ))}
@@ -532,9 +585,11 @@ function OverviewTab({ user, onLocationUpdate, onUserUpdate }) {
   const [pwErr,       setPwErr]       = useState('')
 
   useEffect(() => {
-    setName(user.name || '')
-    setBio(user.bio  || '')
-  }, [user.user_id])
+    if (!editMode) {
+      setName(user.name || '')
+      setBio(user.bio  || '')
+    }
+  }, [user.user_id, user.name, user.bio, editMode])
 
   useEffect(() => {
     if (!continuous) {

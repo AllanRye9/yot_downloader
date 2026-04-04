@@ -317,6 +317,9 @@ export const uploadAvatar = (file) => {
   return request('POST', '/api/auth/profile/avatar', fd, false)
 }
 
+export const deleteAvatar = () =>
+  request('DELETE', '/api/auth/profile/avatar')
+
 export const getNotifications = () => request('GET', '/api/notifications')
 
 export const markNotificationRead = (notifId) =>

@@ -7733,6 +7733,54 @@ async def api_user_upload_avatar(request: Request, file: UploadFile = File(...))
     return JSONResponse({"ok": True, "avatar_url": avatar_url})
 
 
+@fastapi_app.delete("/api/auth/profile/avatar")
+async def api_user_delete_avatar(request: Request):
+    """Remove the profile avatar for the logged-in user."""
+    user_id = request.session.get("app_user_id")
+    if not user_id:
+        return JSONResponse({"error": "Not logged in."}, status_code=401)
+
+    # Fetch current avatar_url so we can clean up stored files
+    user = _get_app_user(user_id)
+    current_url = user.get("avatar_url") if user else None
+
+    # Delete from S3 bucket if enabled
+    if _S3_ENABLED and current_url:
+        filename = current_url.split("/")[-1]
+        safe_name = os.path.basename(filename)
+        if safe_name:
+            try:
+                _get_s3_client().delete_object(Bucket=_S3_BUCKET, Key=f"avatars/{safe_name}")
+            except Exception:
+                pass
+
+    # Delete local cached file if present
+    if current_url:
+        filename = current_url.split("/")[-1]
+        safe_name = os.path.basename(filename)
+        local_path = os.path.join(AVATARS_DIR, safe_name)
+        if safe_name and os.path.exists(local_path):
+            try:
+                os.remove(local_path)
+            except OSError:
+                pass
+
+    # Clear avatar_url in DB
+    with _db_lock:
+        conn = _get_db()
+        try:
+            if USE_POSTGRES:
+                cur = conn.cursor()
+                cur.execute("UPDATE app_users SET avatar_url=NULL WHERE user_id=%s", (user_id,))
+            else:
+                conn.execute("UPDATE app_users SET avatar_url=NULL WHERE user_id=?", (user_id,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    return JSONResponse({"ok": True})
+
+
 @fastapi_app.put("/api/auth/change_password")
 async def api_change_password(request: Request, body: _ChangePasswordRequest):
     """Change the current user's password after verifying the current password."""
@@ -9191,7 +9239,7 @@ async def api_ride_take(request: Request, ride_id: str):
         "ride_taken",
         "✅ Your Ride Has Been Taken",
         f"Good news! Your ride has been marked as taken.",
-        link="#inbox",
+        link="/inbox",
         link_label="View in Inbox",
     )
     return JSONResponse({"ok": True})
@@ -9295,8 +9343,8 @@ async def api_ride_alert_clients(request: Request, ride_id: str):
                 "driver_arrived",
                 f"🚗 Driver Arrived — {driver_name}",
                 f"Your driver has arrived at {ride_origin}. Check your ride to {ride_destination}.",
-                link="#rides",
-                link_label="View Rides",
+                link="/inbox",
+                link_label="View Ride",
             )
             with _socket_user_lock:
                 psid = _user_to_sid.get(passenger_id)
