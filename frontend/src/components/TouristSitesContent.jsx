@@ -321,11 +321,13 @@ function AttractionCard({ attraction, userLat, userLng }) {
 // ─── Main content component ───────────────────────────────────────────────────
 
 export default function TouristSitesContent({ initialLat = null, initialLng = null }) {
-  const [attractions, setAttractions]   = useState([])
+  // Show fallback attractions immediately so there's always content visible on first load.
+  // Real data replaces the fallback once the user's location is determined.
+  const [attractions, setAttractions]   = useState(FALLBACK_ATTRACTIONS)
   const [loading,     setLoading]       = useState(false)
   const [category,    setCategory]      = useState('all')
   const [searchQuery, setSearchQuery]   = useState('')
-  const [usingFallback, setUsingFallback] = useState(false)
+  const [usingFallback, setUsingFallback] = useState(true)
 
   const [userLat, setUserLat] = useState(initialLat)
   const [userLng, setUserLng] = useState(initialLng)
