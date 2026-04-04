@@ -1,27 +1,35 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../App'
 import RideShare from '../components/RideShare'
 import DMInbox from '../components/DMInbox'
 import ThemeSelector from '../components/ThemeSelector'
 import UserAuth from '../components/UserAuth'
 import UserProfile from '../components/UserProfile'
+import TravelCompanion from '../components/TravelCompanion'
+import RaiseRequest from '../components/RaiseRequest'
 import { getUserProfile, getNotifications } from '../api'
 import socket from '../socket'
 
 export default function RidesPage() {
   const { admin } = useAuth()
+  const location  = useLocation()
+  const navigate  = useNavigate()
   const [appUser, setAppUser]         = useState(null)
   const [userLoading, setUserLoading] = useState(true)
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [rides, setRides]             = useState([])
+  // Active right-panel tab: 'rides' | 'requests' | 'companions'
+  const [rightTab, setRightTab]       = useState('rides')
   // Inbox dropdown state
   const [inboxOpen, setInboxOpen]     = useState(false)
   const [unreadChat, setUnreadChat]   = useState(0)
   const inboxRef                      = useRef(null)
   // State for opening chat from the map with a pre-filled default message
   const [mapChatRequest, setMapChatRequest] = useState(null)
+  // Deep-link chat open from notification links (?chat=<ride_id>)
+  const [pendingChatRideId, setPendingChatRideId] = useState(null)
   const profileRef = useRef(null)
 
   // Load platform user session
@@ -31,6 +39,18 @@ export default function RidesPage() {
       .catch(() => setAppUser(false))
       .finally(() => setUserLoading(false))
   }, [])
+
+  // Handle ?chat=<ride_id> deep-link from notification clicks
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const chatRideId = params.get('chat')
+    if (chatRideId) {
+      setPendingChatRideId(chatRideId)
+      setRightTab('rides')
+      // Remove query param without full reload
+      navigate(location.pathname, { replace: true })
+    }
+  }, [location.search]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll unread message count
   useEffect(() => {
@@ -63,6 +83,12 @@ export default function RidesPage() {
   }, [])
 
   const openRides = rides.filter(r => r.status === 'open')
+
+  const RIGHT_TABS = [
+    { id: 'rides',      label: '🗺️ Rides' },
+    { id: 'requests',   label: '🙋 Requests' },
+    { id: 'companions', label: '🌍 Companions' },
+  ]
 
   return (
     <div style={{ height: '100vh', background: 'var(--bg-page)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -228,7 +254,7 @@ export default function RidesPage() {
             </div>
           </aside>
 
-          {/* ── Right: All Rides (expanded) ── */}
+          {/* ── Right: Tabbed panel ── */}
           <aside className="rides-right-sidebar" style={{
             flexGrow: 1,
             overflowY: 'auto',
@@ -277,20 +303,56 @@ export default function RidesPage() {
               )}
             </div>
 
-            <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid var(--border-color)', flexShrink: 0, paddingRight: 180 }}>
-              <div style={{ color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 700 }}>🗺️ All Rides</div>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', marginTop: 2 }}>
-                {openRides.length} open · fares shown per person for shared rides
+            {/* Tab bar */}
+            <div style={{ padding: '10px 14px 0', borderBottom: '1px solid var(--border-color)', flexShrink: 0, paddingRight: 180 }}>
+              <div className="flex items-center gap-1 mb-0">
+                {RIGHT_TABS.map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setRightTab(tab.id)}
+                    className={`text-xs px-3 py-1.5 rounded-t-lg font-medium transition-colors border-b-2 ${
+                      rightTab === tab.id
+                        ? 'border-blue-500 text-blue-300 bg-blue-900/20'
+                        : 'border-transparent text-gray-400 hover:text-gray-200 hover:bg-gray-800/40'
+                    }`}
+                  >
+                    {tab.label}
+                    {tab.id === 'rides' && openRides.length > 0 && (
+                      <span className="ml-1.5 text-[10px] bg-blue-700/60 text-blue-200 rounded-full px-1.5 py-0.5">{openRides.length}</span>
+                    )}
+                  </button>
+                ))}
               </div>
             </div>
+
             <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
-              <RideShare
-                user={appUser}
-                onRidesChange={setRides}
-                requestedRide={mapChatRequest}
-                onRequestedRideHandled={() => setMapChatRequest(null)}
-                showSections={{ list: true, dashboard: false, driverBroadcast: false, form: false }}
-              />
+              {rightTab === 'rides' && (
+                <RideShare
+                  user={appUser}
+                  onRidesChange={setRides}
+                  requestedRide={mapChatRequest}
+                  onRequestedRideHandled={() => setMapChatRequest(null)}
+                  showSections={{ list: true, dashboard: false, driverBroadcast: false, form: false }}
+                  openChatRideId={pendingChatRideId}
+                  onChatOpened={() => setPendingChatRideId(null)}
+                />
+              )}
+              {rightTab === 'requests' && (
+                <RaiseRequest
+                  user={appUser}
+                  onConvCreated={(convId) => {
+                    setInboxOpen(true)
+                  }}
+                />
+              )}
+              {rightTab === 'companions' && (
+                <TravelCompanion
+                  user={appUser}
+                  onOpenDM={(convId) => {
+                    setInboxOpen(true)
+                  }}
+                />
+              )}
             </div>
           </aside>
 
