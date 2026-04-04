@@ -32,7 +32,10 @@ export default function LoginPage() {
   }, [navigate])
 
   const switchTab = (t) => {
-    setError(''); setSuccess(''); setPass(''); setTab(t)
+    setError('')
+    setSuccess('')
+    setPass('')
+    setTab(t)
   }
 
   const handleSignIn = async (e) => {

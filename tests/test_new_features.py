@@ -5227,7 +5227,8 @@ class TestEmailVerification:
 
     def test_verify_email_valid_token_marks_user_verified(self):
         """Simulate the verification flow directly via the token store."""
-        import json, time
+        import json
+        import time
         from api.app import (
             api_verify_email, _email_verify_tokens, _email_verify_lock,
             _get_app_user, _get_db, _db_lock, USE_POSTGRES,

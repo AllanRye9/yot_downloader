@@ -4,9 +4,8 @@
 
 /**
  * Returns the correct dashboard path for a given user object.
- * Admin users (if returned from the platform user auth) are redirected
- * to the admin dashboard; drivers go to the driver dashboard; everyone
- * else goes to the user dashboard.
+ * Drivers go to the driver dashboard; everyone else goes to the user
+ * dashboard. Falls back to /login when no user is provided.
  *
  * @param {object|null} user - User object with at least a `role` field.
  * @returns {string} The dashboard path.

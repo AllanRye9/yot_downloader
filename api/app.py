@@ -428,6 +428,28 @@ _SMTP_PORT     = int(os.environ.get("SMTP_PORT", "587"))
 _SMTP_USER     = os.environ.get("SMTP_USER", "")
 _SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 _SMTP_FROM     = os.environ.get("SMTP_FROM", "") or _SMTP_USER
+# Public-facing base URL used to build absolute links in emails.
+# Falls back to an empty string (relative links) when not configured.
+_BASE_URL      = os.environ.get("BASE_URL", "").rstrip("/")
+
+
+def _is_valid_email(email: str) -> bool:
+    """Return True when *email* looks like a valid email address.
+
+    Uses a simple structural check (local@domain.tld) that avoids
+    catastrophic-backtracking (ReDoS) risks while still rejecting
+    obviously invalid addresses.
+    """
+    if not email or len(email) > 254:
+        return False
+    at = email.find("@")
+    if at <= 0 or at == len(email) - 1:
+        return False
+    local, domain = email[:at], email[at + 1:]
+    if " " in email or "@" in domain:
+        return False
+    dot = domain.rfind(".")
+    return dot > 0 and dot < len(domain) - 1
 
 
 def _send_email(to_addr: str, subject: str, body_text: str) -> bool:
@@ -7542,7 +7564,7 @@ async def api_user_register(body: _UserRegisterRequest):
         return JSONResponse({"error": "Name, email and password are required."}, status_code=400)
     if len(password) < 6:
         return JSONResponse({"error": "Password must be at least 6 characters."}, status_code=400)
-    if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+    if not _is_valid_email(email):
         return JSONResponse({"error": "Invalid email address."}, status_code=400)
 
     # Derive username from provided value or from email prefix
@@ -7604,7 +7626,7 @@ async def api_user_register(body: _UserRegisterRequest):
             email,
             "Verify your YotWeek account",
             f"Welcome to YotWeek, {name}!\n\nPlease verify your email address by clicking the link below:\n\n"
-            f"/api/auth/verify_email?token={verify_token}\n\n"
+            f"{_BASE_URL}/api/auth/verify_email?token={verify_token}\n\n"
             f"This link expires in 24 hours.\n\nIf you did not register, please ignore this email.",
         )
 
@@ -7702,7 +7724,7 @@ async def api_forgot_password(body: _ForgotPasswordRequest):
     The token is also returned in the response for development/testing convenience.
     """
     email = body.email.strip().lower()
-    if not email or not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+    if not _is_valid_email(email):
         return JSONResponse({"error": "Invalid email address."}, status_code=400)
 
     user = _get_app_user_by_email(email)
@@ -7720,7 +7742,7 @@ async def api_forgot_password(body: _ForgotPasswordRequest):
         "Reset your YotWeek password",
         f"Hi {user['name']},\n\nYou requested a password reset.\n\n"
         f"Click the link below to set a new password (valid for 1 hour):\n\n"
-        f"/reset-password?token={token}\n\n"
+        f"{_BASE_URL}/reset-password?token={token}\n\n"
         f"If you did not request this, please ignore this email.",
     )
 
@@ -8511,7 +8533,7 @@ async def api_magic_link_request(body: _MagicLinkRequest):
     The endpoint returns the token in the response for demo / testing purposes.
     """
     email = body.email.strip().lower()
-    if not email or not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+    if not _is_valid_email(email):
         return JSONResponse({"error": "Invalid email address."}, status_code=400)
 
     user = _get_app_user_by_email(email)
@@ -8886,7 +8908,7 @@ async def api_agent_apply(request: Request, body: _AgentApplyRequest):
 
     if not full_name:
         return JSONResponse({"error": "Full name is required."}, status_code=400)
-    if not email or not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+    if not _is_valid_email(email):
         return JSONResponse({"error": "A valid email address is required."}, status_code=400)
     if not license_number:
         return JSONResponse({"error": "License or identification number is required."}, status_code=400)

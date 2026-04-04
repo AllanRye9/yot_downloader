@@ -61,8 +61,14 @@ export default function UserAuth({ onSuccess, onClose, defaultTab = 'signin' }) 
   }, [onClose])
 
   const reset = () => {
-    setError(''); setSuccess(''); setName(''); setEmail(''); setPass(''); setPhone('')
-    setEmailTouched(false); setPassTouched(false)
+    setError('')
+    setSuccess('')
+    setName('')
+    setEmail('')
+    setPass('')
+    setPhone('')
+    setEmailTouched(false)
+    setPassTouched(false)
   }
 
   const switchTab = (t) => { reset(); setTab(t) }
