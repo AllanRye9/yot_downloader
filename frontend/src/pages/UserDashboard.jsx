@@ -277,14 +277,14 @@ export default function UserDashboard() {
   }, [refreshFiles])
 
   const handleSelectTab = useCallback((id) => {
+    if (id === 'inbox') {
+      navigate('/inbox')
+      return
+    }
     setTab(id)
     // Load data for specific tabs when first opened
     if (id === 'history') {
       getRideHistory().then(d => setRideHistory(d.rides || [])).catch(() => {})
-    }
-    if (id === 'inbox') {
-      setUnreadChat(0)
-      getRideChatInbox().then(d => setChatInbox(d.conversations || [])).catch(() => {})
     }
     if (id === 'notifications') {
       setUnreadNotifs(0)
@@ -299,7 +299,7 @@ export default function UserDashboard() {
     setTimeout(() => {
       tabPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 100)
-  }, [])
+  }, [navigate])
 
   const handleLogout = async () => {
     try { await userLogout() } catch {}
@@ -348,7 +348,7 @@ export default function UserDashboard() {
 
           {/* Notification + Inbox quick-access buttons in navbar */}
           <button
-            onClick={() => handleSelectTab('inbox')}
+            onClick={() => navigate('/inbox')}
             className="relative text-gray-400 hover:text-white transition-colors"
             title="Chat Inbox"
             aria-label="Chat inbox"
