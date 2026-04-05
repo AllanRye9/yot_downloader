@@ -13,11 +13,9 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { useAuth } from '../App'
 import NavBar from '../components/NavBar'
 import UnifiedMap from '../components/UnifiedMap'
 import UserAuth from '../components/UserAuth'
-import UserProfile from '../components/UserProfile'
 import { getUserProfile, getUnifiedMapNearby, getAllDriverLocations, listProperties } from '../api'
 import socket from '../socket'
 
@@ -191,12 +189,8 @@ function DetailPanel({ item, mode, onClose, onContact }) {
 const DEFAULT_LOCATION = { lat: 51.505, lng: -0.09 }  // London fallback
 
 export default function UnifiedMapPage() {
-  const { admin } = useAuth()
   const [appUser, setAppUser] = useState(null)
-  const [userLoading, setUserLoading] = useState(true)
   const [showAuthModal, setShowAuthModal] = useState(false)
-  const [profileOpen, setProfileOpen] = useState(false)
-  const profileRef = useRef(null)
 
   const [mode, setMode] = useState('drivers')   // 'drivers' | 'properties'
   const [allItems, setAllItems] = useState([])  // all fetched items (with distance_km)
@@ -210,14 +204,7 @@ export default function UnifiedMapPage() {
 
   // Load platform user
   useEffect(() => {
-    getUserProfile().then(u => setAppUser(u)).catch(() => setAppUser(false)).finally(() => setUserLoading(false))
-  }, [])
-
-  // Close profile dropdown on outside click
-  useEffect(() => {
-    const h = e => { if (profileRef.current && !profileRef.current.contains(e.target)) setProfileOpen(false) }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
+    getUserProfile().then(u => setAppUser(u)).catch(() => setAppUser(false))
   }, [])
 
   // Obtain user geolocation on mount

@@ -9,8 +9,7 @@
  */
 
 import { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { useAuth } from '../App'
+import { Link } from 'react-router-dom'
 import NavBar from '../components/NavBar'
 import UserAuth from '../components/UserAuth'
 import TouristSitesContent from '../components/TouristSitesContent'
@@ -19,11 +18,7 @@ import { getUserProfile } from '../api'
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function TouristSitesPage() {
-  const { admin } = useAuth()
-  const navigate  = useNavigate()
-
   const [appUser,       setAppUser]       = useState(null)
-  const [userLoading,   setUserLoading]   = useState(true)
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [userLat, setUserLat] = useState(null)
   const [userLng, setUserLng] = useState(null)
@@ -36,7 +31,6 @@ export default function TouristSitesPage() {
         if (u?.lat != null) { setUserLat(u.lat); setUserLng(u.lng) }
       })
       .catch(() => setAppUser(false))
-      .finally(() => setUserLoading(false))
   }, [])
 
   return (
