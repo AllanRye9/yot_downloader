@@ -1,30 +1,28 @@
-# yotweek — All-in-One Free Platform
+# yotweek — Ride Share Platform
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/e5663d6c-8ee6-4439-a3db-d08c407dfadf" alt="yotweek logo" width="180"/>
 </p>
 
 <p align="center">
-  yotweek is your all-in-one free platform for ride sharing, tourist site discovery, video downloads, CV building, and document conversion — all in one place, no subscription required.
+  yotweek is a free ride-sharing platform with a live driver map, real-time bi-directional messaging inbox, and ride confirmation — no subscription required.
 </p>
 
 ---
 
 ## Overview
 
-yotweek combines everyday productivity tools with local travel discovery. Drivers post rides with auto-calculated fares; passengers find and book in seconds. Explore tourist attractions near your location on the Tourist Sites page — filtered by category and powered by live OpenStreetMap data. Download videos from 1,000+ sites, build a professional CV with ATS scoring, or convert documents between formats — everything is free and requires only a free account.
+yotweek makes ride sharing simple. Drivers post rides with auto-calculated fares; passengers find available drivers on a live map, book in seconds, and communicate through a real-time encrypted inbox. The journey confirmation system lets passengers confirm their booking directly inside the chat, notifying drivers instantly.
 
 ---
 
 ## Core Features
 
-- **🚗 Ride Share** — Drivers post airport or city rides; fares are calculated automatically from origin and destination coordinates. Passengers see animated ride cards, sort by fare or departure time, and book via real-time chat. Verified drivers can broadcast their empty-car location to nearby passengers.
-- **🗺️ Tourist Sites** — Location-aware discovery of tourist attractions, museums, parks, and historic landmarks near the user. Fetches live data from OpenStreetMap's Overpass API, displayed in a clean card grid with category filters.
-- **💬 Animated Inbox** — A persistent animated inbox button at the top of every page shows unread message counts. Clicking it reveals direct messages, ride chat threads, and real estate conversations in a single unified view.
-- **⬇ Video Downloader** — Download audio and video from YouTube, Instagram, TikTok, and 1,000+ other sites via yt-dlp. Supports playlists, audio-only extraction, and format selection.
-- **📄 CV Builder** — Generate a professional PDF CV with built-in ATS (Applicant Tracking System) scoring and keyword analysis.
-- **🔄 Document Converter** — Convert between PDF, Word, Excel, PowerPoint, and image formats.
-- **🔔 Real-Time Notifications** — WebSocket-powered notifications for new messages, ride updates, and driver arrival alerts, delivered as animated toasts without page reloads.
+- **🚗 Ride Share** — Drivers post airport or city rides; fares are calculated automatically from origin and destination coordinates. Passengers see animated ride cards, sort by fare or departure time, and book via real-time chat.
+- **📍 Live Driver Map** — Interactive map showing active drivers within your radius, updated every 15 seconds. Click a driver card to see their details, vehicle, and distance from you.
+- **💬 Real-Time Messaging Inbox** — Bi-directional direct messages and ride chat threads in a single unified view. End-to-end encrypted with image, audio recording, file, and location sharing.
+- **✅ Journey Confirmation** — Passengers confirm their journey directly inside the ride chat (name + contact), notifying drivers instantly. Drivers can view all confirmed passengers and send proximity alerts.
+- **🔔 Real-Time Notifications** — WebSocket-powered notifications for new messages, ride updates, and driver arrival alerts, delivered without page reloads.
 - **📱 Mobile-First Layout** — Responsive design that stacks gracefully on phones and tablets. Available as a Flutter app for iOS and Android.
 
 ---
@@ -37,9 +35,8 @@ yotweek combines everyday productivity tools with local travel discovery. Driver
 | Backend | Python + FastAPI + Socket.IO |
 | Database | PostgreSQL (production) / SQLite (development) |
 | Real-time | WebSocket via Socket.IO |
-| Maps | Leaflet + OpenStreetMap / Overpass API |
+| Maps | Leaflet + OpenStreetMap |
 | Mobile | Flutter (iOS & Android) |
-| Downloader | yt-dlp + ffmpeg |
 
 ---
 
@@ -76,9 +73,7 @@ flutter_app/lib/
 | Requirement | Version |
 |-------------|---------|
 | Python | 3.11+ |
-| Flutter | ≥ 3.19.0 |
-| [yt-dlp](https://github.com/yt-dlp/yt-dlp) | latest |
-| ffmpeg *(optional)* | for video merging |
+| Flutter | >= 3.19.0 |
 
 ### Server Setup
 
@@ -103,7 +98,7 @@ pip install -r requirements.txt
 
 # 5. Start the server
 python api/app.py
-# → http://127.0.0.1:5000
+# -> http://127.0.0.1:5000
 ```
 
 ### Flutter Mobile App
@@ -112,25 +107,12 @@ python api/app.py
 cd flutter_app
 flutter pub get
 flutter run
-# Configure the backend URL via Settings (⚙) in the app
+# Configure the backend URL via Settings in the app
 ```
 
 ---
 
 ## API Reference
-
-### Downloader
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/` | Serves the main UI |
-| `POST` | `/start_download` | Start a download; returns `{"download_id": "..."}` |
-| `GET` | `/status/<id>` | Progress for a specific download |
-| `GET` | `/files` | List all downloaded files |
-| `GET` | `/downloads/<filename>` | Stream a file to the browser |
-| `DELETE` | `/delete/<filename>` | Delete a downloaded file |
-| `POST` | `/cancel/<id>` | Cancel an in-progress download |
-| `GET` | `/health` | Health check |
 
 ### Ride Share
 
@@ -140,6 +122,9 @@ flutter run
 | `GET` | `/api/rides/estimate_fare` | Geocode-based fare estimate (`?start=&destination=&seats=`) |
 | `POST` | `/api/rides/post` | Post a ride (driver only; fare auto-calculated from coordinates) |
 | `GET` | `/api/rides/list` | List all rides (includes `fare`, `per_seat_cost`, `ride_type`) |
+| `POST` | `/api/rides/{id}/confirm_journey` | Passenger confirms journey (name + contact) |
+| `GET` | `/api/rides/{id}/confirmed_users` | Driver: list confirmed passengers |
+| `POST` | `/api/rides/{id}/proximity_notify` | Driver: send proximity alert to passengers |
 | `POST` | `/api/driver/location` | Broadcast driver location (verified drivers only) |
 | `GET` | `/api/driver/locations` | All active verified driver locations |
 
@@ -147,9 +132,11 @@ flutter run
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/dm/conversations` | List DM conversations (supports `?search=`) |
-| `GET` | `/api/dm/contacts` | Previously communicated users |
-| `POST` | `/api/dm/send` | Send a direct message |
+| `GET` | `/api/dm/conversations` | List DM conversations with last message preview (supports `?search=`) |
+| `POST` | `/api/dm/conversations` | Start a new DM conversation |
+| `GET` | `/api/dm/conversations/{id}/messages` | Fetch conversation history |
+| `POST` | `/api/dm/messages` | Send a direct message |
+| `GET` | `/api/users/{id}/profile` | Get a user's public profile (name, username, avatar) |
 | `GET` | `/api/notifications` | Fetch notifications (with `unread` count) |
 | `PUT` | `/api/notifications/read_all` | Mark all notifications read |
 
@@ -157,14 +144,17 @@ flutter run
 
 | Direction | Event | Description |
 |-----------|-------|-------------|
-| Server → Client | `progress` | yt-dlp download progress |
-| Server → Client | `new_ride` | New ride posted (real-time) |
-| Server → Client | `ride_chat_message` | New chat message |
-| Server → Client | `driver_nearby` | Driver location broadcast |
-| Server → Client | `driver_arrived` | Driver arrival alert to passengers |
-| Server → Client | `dm_notification` | New direct message received |
-| Client → Server | `join_ride_chat` | Join a ride's chat room |
-| Client → Server | `identify` | Register socket with user ID |
+| Server to Client | `new_ride` | New ride posted (real-time) |
+| Server to Client | `ride_chat_message` | New chat message in a ride room |
+| Server to Client | `driver_nearby` | Driver location broadcast |
+| Server to Client | `driver_arrived` | Driver arrival alert to passengers |
+| Server to Client | `dm_message` | New direct message received |
+| Server to Client | `dm_typing` | Other user is typing |
+| Server to Client | `dm_read` | Message read receipt |
+| Client to Server | `dm_join` | Join a DM conversation room |
+| Client to Server | `dm_message` | Send a DM |
+| Client to Server | `join_ride_chat` | Join a ride's chat room |
+| Client to Server | `ride_chat_message` | Send a ride chat message |
 
 ---
 
@@ -172,8 +162,7 @@ flutter run
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SECRET_KEY` | random | Flask/FastAPI session secret — set in production |
-| `DOWNLOAD_FOLDER` | `downloads` | Directory for saved files |
+| `SECRET_KEY` | random | FastAPI session secret — set in production |
 | `ALLOWED_ORIGINS` | `*` | CORS origins — restrict in production |
 | `PORT` | `5000` | Server port |
 | `FARE_PER_KM` | `1.0` | Base fare rate (USD) per kilometre |
@@ -192,34 +181,16 @@ docker run -p 5000:5000 yotweek
 
 ---
 
-## Troubleshooting
-
-### ❌ Bot detection / "This video cannot be downloaded right now"
-
-YouTube may challenge automated requests. The app automatically retries with alternative player clients (`web_embedded`, `tv`, `android_vr`). If retries fail, upload a `cookies.txt` file via **Admin → Cookies**.
-
-See the [yt-dlp cookies FAQ](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp) for export instructions.
-
-### ❌ HTTP 403 Forbidden
-
-The downloader retries with cookieless CDN clients before reporting failure. Supplying a `cookies.txt` file resolves most persistent 403 errors.
-
-### ❌ Tourist Sites not loading
-
-Tourist site discovery uses the public Overpass API. If you see no results, allow location access in your browser and try zooming out the search radius. If the Overpass API is temporarily unavailable, a fallback list of popular global landmarks is shown.
-
----
-
 ## Platform Sections
 
 | Section | Route | Description |
 |---------|-------|-------------|
-| Home | `/` | Overview, quick tools, ride share embed |
-| Dashboard | `/dashboard` | Personal hub: downloads, rides, inbox, history |
+| Home | `/` | Overview and quick access to rides and map |
 | Ride Share | `/rides` | Post rides (drivers) and find available rides (passengers) |
-| Tourist Sites | `/tourist-sites` | Location-based tourist attraction discovery |
+| Live Map | `/map` | Live driver map with radius search and driver cards |
+| Inbox | `/inbox` | Direct messages and ride chat threads with bi-directional real-time messaging |
+| Dashboard | `/user/dashboard` or `/driver/dashboard` | Personal hub: rides, history, inbox |
 | Profile | `/profile` | Account settings, avatar, location, driver status |
-| Admin | `/admin/dashboard` | Platform analytics (admin only) |
 
 ---
 

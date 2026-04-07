@@ -18,12 +18,10 @@ import { getDashboardPath } from '../routing'
 import socket from '../socket'
 
 const NAV_LINKS = [
-  { to: '/',              label: '🏠 Home'          },
-  { to: '/rides',         label: '🚗 Rides'         },
-  { to: '/tourist-sites', label: '🗺️ Tourist Sites' },
-  { to: '/map',           label: '📍 Map'           },
-  { to: '/inbox',         label: '💬 Inbox'         },
-  { to: '/companions',    label: '🌍 Companions'    },
+  { to: '/',       label: '🏠 Home'   },
+  { to: '/rides',  label: '🚗 Rides'  },
+  { to: '/map',    label: '📍 Map'    },
+  { to: '/inbox',  label: '💬 Inbox'  },
 ]
 
 export default function NavBar({ user, onLogout, onLogin, title, backPath }) {

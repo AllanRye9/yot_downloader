@@ -3061,6 +3061,24 @@ async def api_get_user_public_key(request: Request, user_id: str):
     return JSONResponse({"user_id": user_id, "public_key": pk})
 
 
+@fastapi_app.get("/api/users/{user_id}/profile")
+async def api_get_user_profile(request: Request, user_id: str):
+    """Return the public profile for a given user (name, username, avatar_url). Requires auth."""
+    caller = request.session.get("app_user_id")
+    if not caller:
+        return JSONResponse({"error": "Login required."}, status_code=401)
+    user = _get_app_user(user_id)
+    if user is None:
+        return JSONResponse({"error": "User not found."}, status_code=404)
+    return JSONResponse({
+        "user_id":    user["user_id"],
+        "name":       user["name"],
+        "username":   user.get("username") or user["name"],
+        "avatar_url": user.get("avatar_url") or "",
+        "role":       user.get("role") or "passenger",
+    })
+
+
 # ── Agent registration ─────────────────────────────────────────────────────────
 
 @fastapi_app.get("/api/rides/history")

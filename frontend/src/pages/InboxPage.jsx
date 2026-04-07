@@ -128,7 +128,7 @@ export default function InboxPage() {
     <div style={{ background: 'var(--bg-page)', minHeight: '100vh' }} className="flex flex-col">
       <NavBar user={appUser || (appUser === null ? null : false)} title="Inbox" />
 
-      <div className="flex-1 flex max-w-4xl mx-auto w-full p-4 gap-4 min-h-0" style={{ maxHeight: 'calc(100vh - 56px)' }}>
+      <div className="flex-1 flex max-w-4xl mx-auto w-full px-4 py-4 gap-4 min-h-0" style={{ maxHeight: 'calc(100vh - 56px)' }}>
 
         {/* ── Sidebar ── */}
         <div className={`flex-shrink-0 flex flex-col gap-3 ${!showSidebar ? 'hidden md:flex' : 'flex'} w-full md:w-60`}>

@@ -15,6 +15,7 @@ import InboxPage from './pages/InboxPage'
 import RideChatPage from './pages/RideChatPage'
 import RequestsPage from './pages/RequestsPage'
 import NotificationsPage from './pages/NotificationsPage'
+import UnifiedMapPage from './pages/others/UnifiedMapPage'
 import { createContext, useContext } from 'react'
 
 // ─── Theme Context ────────────────────────────────────────────────────────
@@ -107,13 +108,14 @@ export default function App() {
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/inbox" element={<InboxPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
+          {/* Map — live driver locations */}
+          <Route path="/map" element={<UnifiedMapPage />} />
           {/* Legacy redirects */}
           <Route path="/tourist-sites" element={<Navigate to="/" replace />} />
           <Route path="/properties" element={<Navigate to="/" replace />} />
           <Route path="/properties/:propertyId" element={<Navigate to="/" replace />} />
           <Route path="/agents" element={<Navigate to="/" replace />} />
           <Route path="/property-inbox" element={<Navigate to="/" replace />} />
-          <Route path="/map" element={<Navigate to="/rides" replace />} />
           <Route path="/companions" element={<Navigate to="/rides" replace />} />
           <Route path="/admin/login" element={<Navigate to="/" replace />} />
           <Route path="/admin/register" element={<Navigate to="/" replace />} />
