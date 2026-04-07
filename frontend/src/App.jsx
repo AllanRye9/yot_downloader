@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { deleteSession } from './api'
 import { SESSION_ID } from './session'
+import { getAdminAuthStatus } from './api'
 import Home from './pages/Home'
 import RidesPage from './pages/RidesPage'
 import UserDashboard from './pages/UserDashboard'
@@ -17,6 +18,29 @@ import NotificationsPage from './pages/NotificationsPage'
 import { createContext, useContext } from 'react'
 
 // ─── Theme Context ────────────────────────────────────────────────────────
+
+// ─── Auth Context ─────────────────────────────────────────────────────────
+const AuthCtx = createContext(null)
+export const useAuth = () => useContext(AuthCtx)
+
+function AuthProvider({ children }) {
+  const [admin, setAdmin] = useState(null)
+
+  const checkAuth = () => {
+    getAdminAuthStatus()
+      .then(data => setAdmin(data.authenticated ? data : null))
+      .catch(() => setAdmin(null))
+  }
+
+  useEffect(() => { checkAuth() }, [])
+
+  return (
+    <AuthCtx.Provider value={{ admin, setAdmin, checkAuth }}>
+      {children}
+    </AuthCtx.Provider>
+  )
+}
+
 export const THEMES = [
   { id: 'dark',   label: '🌑 Dark',   className: 'theme-dark'   },
   { id: 'light',  label: '☀️ Light',  className: 'theme-light'  },
@@ -62,6 +86,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <ThemeProvider>
+        <AuthProvider>
         <Routes>
           <Route path="/" element={<Home />} />
           {/* Auth pages */}
@@ -97,6 +122,7 @@ export default function App() {
           {/* Catch-all → Home */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>
   )

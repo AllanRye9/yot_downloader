@@ -314,6 +314,7 @@ export default function Home() {
   const [connected, setConnected] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+  const tab = 'rides'
 
   // Platform user state (separate from admin)
   const [appUser, setAppUser]     = useState(null)  // null=unknown, false=not logged in, object=logged in
