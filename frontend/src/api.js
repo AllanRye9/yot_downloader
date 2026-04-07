@@ -163,7 +163,7 @@ export const estimateFare = (start, destination, seats = 1) =>
   request('GET', `/api/fare_estimate?start=${encodeURIComponent(start)}&destination=${encodeURIComponent(destination)}&seats=${seats}`)
 
 export const listRides = (status = null) =>
-  request('GET', `/api/rides${status ? `?status=${encodeURIComponent(status)}` : ''}`)
+  request('GET', `/api/rides/list${status ? `?status=${encodeURIComponent(status)}` : ''}`)
 
 export const getRide = (rideId) =>
   request('GET', `/api/rides/${encodeURIComponent(rideId)}`)
@@ -237,6 +237,9 @@ export const storePublicKey = (public_key) =>
 
 export const getUserPublicKey = (userId) =>
   request('GET', `/api/users/${encodeURIComponent(userId)}/public_key`)
+
+export const getUserPublicProfile = (userId) =>
+  request('GET', `/api/users/${encodeURIComponent(userId)}/profile`)
 
 // ── Users ─────────────────────────────────────────────────────────────────────
 

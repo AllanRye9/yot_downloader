@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import socket from '../socket'
-import { dmMarkRead, getUserPublicKey } from '../api'
+import { dmMarkRead, getUserPublicKey, getUserPublicProfile } from '../api'
 import { getSharedSecret, encryptMessage, decryptMessage, isEncryptedPayload } from '../crypto'
 
 /**
@@ -134,7 +134,18 @@ export default function DMChat({ conv, currentUser, onClose, onBack }) {
 
   const convId    = conv?.conv_id
   const myId      = currentUser?.user_id
-  const otherUser = conv?.other_user
+  // otherUser starts from the conv prop but is refreshed from the backend below
+  const [resolvedUser, setResolvedUser] = useState(conv?.other_user || null)
+  const otherUser = resolvedUser || conv?.other_user
+
+  // ── Query backend for the latest user profile of the chat target ─────────
+  useEffect(() => {
+    const uid = conv?.other_user?.user_id
+    if (!uid) return
+    getUserPublicProfile(uid)
+      .then(profile => setResolvedUser(profile))
+      .catch(() => setResolvedUser(conv?.other_user || null))
+  }, [conv?.other_user?.user_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Derive E2E shared secret ─────────────────────────────────────────────
   useEffect(() => {
@@ -496,6 +507,9 @@ export default function DMChat({ conv, currentUser, onClose, onBack }) {
           <div>
             <p className="text-sm font-semibold text-white">{otherUser?.name || 'User'}</p>
             <p className="text-xs text-gray-500 flex items-center gap-1">
+              {otherUser?.username && otherUser.username !== otherUser?.name && (
+                <span className="text-gray-400">@{otherUser.username}</span>
+              )}
               {sharedKeyRef.current && <span title="End-to-end encrypted">🔒</span>}
               {joined ? (isTypingOther ? 'typing…' : (sharedKeyRef.current ? 'Encrypted' : 'Active')) : 'Connecting…'}
             </p>

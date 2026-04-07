@@ -10,11 +10,11 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import NavBar from '../components/NavBar'
-import RideShareMap from '../components/RideShareMap'
-import UserAuth from '../components/UserAuth'
-import { getUserProfile, getAllDriverLocations } from '../api'
-import socket from '../socket'
+import NavBar from '../../components/NavBar'
+import RideShareMap from '../../components/RideShareMap'
+import UserAuth from '../../components/UserAuth'
+import { getUserProfile, getAllDriverLocations } from '../../api'
+import socket from '../../socket'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
