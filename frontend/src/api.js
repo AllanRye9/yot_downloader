@@ -1,46 +1,7 @@
 /**
- * Centralized API client for YOT Downloader.
+ * Centralized API client for YotWeek ride-sharing platform.
  * All requests go to the same origin (served by FastAPI).
  */
-
-/**
- * Cross-browser (including Safari / iOS Safari) blob download helper.
- *
- * Safari quirks addressed:
- *  - Desktop Safari requires the <a> element to be appended to the DOM before
- *    .click() has any effect.
- *  - iOS Safari ignores the `download` attribute on blob: URLs entirely; we
- *    fall back to window.open() so the file opens in a new tab where the user
- *    can long-press → "Download Linked File".
- *
- * @param {Blob} blob        - The file blob to download.
- * @param {string} filename  - Suggested filename for the download.
- */
-export function triggerBlobDownload(blob, filename) {
-  const url = URL.createObjectURL(blob)
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream
-  if (isIOS) {
-    // iOS Safari doesn't honour <a download> for blob: URLs.
-    // Open in a new tab so the user can save manually.
-    window.open(url, '_blank', 'noopener')
-    // Keep the object URL alive for 10 s so the tab has time to load.
-    setTimeout(() => URL.revokeObjectURL(url), 10_000)
-  } else {
-    // All other browsers (including desktop Safari which needs the element in
-    // the DOM before the click fires).
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    a.style.display = 'none'
-    document.body.appendChild(a)
-    a.click()
-    // Small delay before removal so the browser has time to start the download.
-    setTimeout(() => {
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-    }, 150)
-  }
-}
 
 const BASE = ''  // same origin
 
@@ -79,53 +40,7 @@ function formBody(obj) {
 // ── Core ──────────────────────────────────────────────────────────────────────
 
 export const getHealth = () => request('GET', '/health')
-export const getStats  = () => request('GET', '/stats')
-
-// ── Video ─────────────────────────────────────────────────────────────────────
-
-export const getVideoInfo = (url) =>
-  request('POST', '/video_info', formBody({ url }), false)
-
-export const startDownload = (url, format = 'best', ext = 'mp4', sessionId = '') =>
-  request('POST', '/start_download', formBody({ url, format, ext, session_id: sessionId }), false)
-
-export const getStatus = (id) => request('GET', `/status/${id}`)
-
-// ── Files ─────────────────────────────────────────────────────────────────────
-
-export const listFiles    = (sessionId = '') => request('GET', `/files${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''}`)
-export const deleteFile   = (name) => request('DELETE', `/delete/${encodeURIComponent(name)}`)
-export const downloadUrl  = (name) => `${BASE}/downloads/${encodeURIComponent(name)}`
-export const streamUrl    = (name) => `${BASE}/stream/${encodeURIComponent(name)}`
-
-// ── Session ───────────────────────────────────────────────────────────────────
-
-export const deleteSession = (sessionId) => request('DELETE', `/session/${encodeURIComponent(sessionId)}`)
-
-// ── Downloads ─────────────────────────────────────────────────────────────────
-
-export const cancelDownload  = (id)  => request('POST', `/cancel/${id}`)
-export const cancelAll        = ()   => request('POST', '/cancel_all')
-export const getActiveDownloads = () => request('GET', '/active_downloads')
-
-// ── Bulk download ─────────────────────────────────────────────────────────────
-
-export const downloadZip = (filenames) => {
-  const fd = new FormData()
-  fd.append('filenames', JSON.stringify(filenames))
-  return request('POST', '/download_zip', fd, false)
-}
-
-// ── Reviews ───────────────────────────────────────────────────────────────────
-
-export const getReviews       = () => request('GET', '/reviews')
-export const canSubmitReview  = () => request('GET', '/reviews/can_submit')
-export const submitReview     = (rating, comment, name) =>
-  request('POST', '/reviews', { rating, comment, name })
-
-export const getAdminReviews    = () => request('GET', '/api/admin/reviews')
-export const deleteAdminReview  = (reviewId) =>
-  request('DELETE', `/api/admin/reviews/${encodeURIComponent(reviewId)}`)
+export const getPlatformStats = () => request('GET', '/api/platform_stats')
 
 // ── Admin Auth ────────────────────────────────────────────────────────────────
 
@@ -137,157 +52,13 @@ export const adminRegister      = (username, password, confirmPassword) =>
   request('POST', '/admin/api/register', { username, password, confirm_password: confirmPassword })
 export const checkAdminExists   = () => request('GET', '/admin/has_admin')
 
-// ── Admin Data ────────────────────────────────────────────────────────────────
-
-export const getAdminDownloads  = () => request('GET', '/admin/downloads')
-export const getAdminVisitors   = () => request('GET', '/admin/visitors')
-export const getAdminAnalytics  = () => request('GET', '/admin/analytics')
-
-export const adminCancelDownload   = (id) => request('POST', `/admin/cancel_download/${id}`)
-export const adminDeleteRecord     = (id) => request('DELETE', `/admin/delete_record/${id}`)
-export const adminClearVisitors    = ()   => request('DELETE', '/admin/clear_visitors')
-export const adminClearAllDownloads = ()  => request('DELETE', '/admin/clear_all_downloads')
-export const adminClearAllData      = ()  => request('DELETE', '/admin/clear_all_data')
-
 // ── Admin DB ──────────────────────────────────────────────────────────────────
 
 export const adminDbDownloadUrl = () => `${BASE}/admin/db/download`
 export const adminDbUpload      = (file) => {
   const fd = new FormData()
-  fd.append('file', file)
+  fd.append('db_file', file)
   return request('POST', '/admin/db/upload', fd, false)
-}
-
-// ── CV Generator ─────────────────────────────────────────────────────────────
-
-/**
- * Generate a PDF CV.
- * @param {Object} fields - CV fields (name, email, phone, location, link, summary,
- *   experience, education, skills, projects, publications)
- * @param {File|null} logoFile - Optional logo image file
- * @param {string} theme - Theme name ('classic', 'modern', 'minimal', 'executive',
- *   'creative', 'tech', 'elegant', 'vibrant')
- * @returns {Promise<Response>} Raw response (blob) — caller should call res.blob()
- */
-export const generateCV = (fields, logoFile = null, theme = 'classic', layout = 'chronological') => {
-  const fd = new FormData()
-  Object.entries(fields).forEach(([k, v]) => {
-    if (v !== undefined && v !== null) fd.append(k, v)
-  })
-  if (logoFile) fd.append('logo', logoFile, logoFile.name)
-  fd.append('theme', theme)
-  fd.append('layout', layout)
-  return request('POST', '/api/cv/generate', fd, false)
-}
-
-/**
- * Generate a plain-text CV (.txt) for download.
- * @param {Object} fields  - CV fields
- * @param {string} layout  - 'chronological' or 'functional'
- * @returns {Promise<Response>} Raw response (text blob)
- */
-export const generateCVTxt = (fields, layout = 'chronological') => {
-  const fd = new FormData()
-  Object.entries(fields).forEach(([k, v]) => {
-    if (v !== undefined && v !== null) fd.append(k, v)
-  })
-  fd.append('layout', layout)
-  return request('POST', '/api/cv/generate_txt', fd, false)
-}
-
-// ── AI Assistant ──────────────────────────────────────────────────────────────
-
-/**
- * Get AI-powered improvement suggestions for a CV field.
- * @param {string} field - Field name: 'summary', 'experience', 'education', 'skills', etc.
- * @param {string} text  - Current field text to analyse
- * @param {string} [name]      - Candidate name (optional context)
- * @param {string} [jobTitle]  - Job title (optional context)
- * @returns {Promise<{suggestions: string[], sample_verbs: string[], enhanced_text: string, source: string}>}
- */
-export const aiCvSuggest = (field, text, name = '', jobTitle = '', options = {}) =>
-  request('POST', '/api/ai/cv_suggest', {
-    field, text, name, job_title: jobTitle,
-    inline_modify: options.inline_modify ?? false,
-    summary:      options.summary ?? '',
-    experience:   options.experience ?? '',
-    skills:       options.skills ?? '',
-    education:    options.education ?? '',
-    projects:     options.projects ?? '',
-    publications: options.publications ?? '',
-  })
-
-/**
- * Polish a block of text for clarity and professionalism using AI.
- * @param {string} text    - Text to enhance
- * @param {string} context - Usage context (default: 'professional CV')
- * @returns {Promise<{original: string, enhanced: string, source: string}>}
- */
-export const aiEnhanceText = (text, context = 'professional CV') =>
-  request('POST', '/api/ai/enhance_text', { text, context })
-
-/**
- * Get the current AI backend status.
- * @returns {Promise<{groq_available: boolean, hf_available: boolean, offline_available: boolean, active_backend: string, model: string}>}
- */
-export const getAiStatus = () => request('GET', '/api/ai/status')
-
-// ── CV Extraction ─────────────────────────────────────────────────────────────
-
-/**
- * Extract CV fields from an uploaded PDF or DOCX file.
- * @param {File} file - The CV file to extract from
- * @returns {Promise<{fields: Object}>}
- */
-export const extractCV = (file) => {
-  const fd = new FormData()
-  fd.append('file', file, file.name)
-  return request('POST', '/api/cv/extract', fd, false)
-}
-
-// ── Document Conversion ───────────────────────────────────────────────────────
-
-/**
- * Convert a document/image to a different format.
- * @param {File} file - The source file
- * @param {string} target - Target format ('word', 'excel', 'jpeg', 'png', 'pdf')
- * @returns {Promise<Response>} Raw response (blob) — caller should call res.blob()
- */
-export const convertDoc = (file, target) => {
-  const fd = new FormData()
-  fd.append('file', file, file.name)
-  fd.append('target', target)
-  return request('POST', '/api/doc/convert', fd, false)
-}
-
-
-// ── Admin Cookies ─────────────────────────────────────────────────────────────
-
-export const getCookieStatus    = () => request('GET', '/admin/cookies/status')
-export const uploadCookies      = (file) => {
-  const fd = new FormData()
-  fd.append('file', file)
-  return request('POST', '/admin/cookies/upload', fd, false)
-}
-export const deleteCookies      = () => request('DELETE', '/admin/cookies')
-
-// ── ATS CV Scanning ───────────────────────────────────────────────────────────
-
-/**
- * Scan a CV against a job description and return an ATS score.
- * @param {string} cvText - Plain text of the CV
- * @param {string} jobDescription - Plain text of the job description
- * @param {File|null} file - Optional PDF/DOCX file (replaces cvText if provided)
- * @returns {Promise<{score, matched, missing, tips, keywords_total}>}
- */
-export const scanATS = (cvText, jobDescription, file = null) => {
-  if (file) {
-    const fd = new FormData()
-    fd.append('file', file, file.name)
-    fd.append('job_description', jobDescription)
-    return request('POST', '/api/cv/ats_scan', fd, false)
-  }
-  return request('POST', '/api/cv/ats_scan', { cv_text: cvText, job_description: jobDescription })
 }
 
 // ── User Auth ─────────────────────────────────────────────────────────────────
@@ -303,28 +74,39 @@ export const userLogout = () => request('POST', '/api/auth/logout', {})
 export const getUserProfile = () => request('GET', '/api/auth/me')
 
 export const updateUserLocation = (lat, lng, location_name = '') =>
-  request('PUT', '/api/auth/profile', { lat, lng, location_name })
+  request('POST', '/api/auth/location', { lat, lng, location_name })
 
 export const updateProfileDetails = (name, bio, phone = '', home_city = '', preferred_language = '') =>
-  request('PUT', '/api/auth/profile/details', { name, bio, phone, home_city, preferred_language })
+  request('PUT', '/api/auth/profile/details', { name, bio, phone, location_name: home_city, preferred_language })
 
 export const changePassword = (current_password, new_password) =>
-  request('PUT', '/api/auth/change_password', { current_password, new_password })
+  request('POST', '/api/auth/change_password', { current_password, new_password })
 
 export const uploadAvatar = (file) => {
   const fd = new FormData()
   fd.append('file', file, file.name)
-  return request('POST', '/api/auth/profile/avatar', fd, false)
+  return request('POST', '/api/auth/avatar', fd, false)
 }
 
 export const deleteAvatar = () =>
-  request('DELETE', '/api/auth/profile/avatar')
+  request('DELETE', '/api/auth/avatar')
 
 export const forgotPassword = (email) =>
   request('POST', '/api/auth/forgot_password', { email })
 
 export const resetPassword = (token, new_password) =>
   request('POST', '/api/auth/reset_password', { token, new_password })
+
+export const requestMagicLink = (email) =>
+  request('POST', '/api/auth/magic_link', { email })
+
+export const verifyMagicLink = (token) =>
+  request('GET', `/api/auth/magic_link?token=${encodeURIComponent(token)}`)
+
+export const verifyEmail = (token) =>
+  request('GET', `/api/auth/verify_email?token=${encodeURIComponent(token)}`)
+
+// ── Notifications ─────────────────────────────────────────────────────────────
 
 export const getNotifications = () => request('GET', '/api/notifications')
 
@@ -337,14 +119,10 @@ export const markAllNotificationsRead = () =>
 export const clearAllNotifications = () =>
   request('DELETE', '/api/notifications/clear_all')
 
-export const requestMagicLink = (email) =>
-  request('POST', '/api/auth/magic_link', { email })
+// ── Driver ────────────────────────────────────────────────────────────────────
 
-export const verifyMagicLink = (token) =>
-  request('POST', '/api/auth/magic_link/verify', { token })
-
-export const driverApply = (vehicle_make, vehicle_model, vehicle_year, vehicle_color, license_plate, subscription_type = 'monthly') =>
-  request('POST', '/api/auth/driver_apply', { vehicle_make, vehicle_model, vehicle_year, vehicle_color, license_plate, subscription_type })
+export const driverApply = (vehicle_make, vehicle_model, vehicle_year, vehicle_color, license_plate, plate_number = '') =>
+  request('POST', '/api/auth/driver_apply', { vehicle_make, vehicle_model, vehicle_year, vehicle_color, license_plate, plate_number })
 
 export const getDriverApplication = () => request('GET', '/api/auth/driver_application')
 
@@ -353,43 +131,48 @@ export const getAdminDriverApplications = () => request('GET', '/api/admin/drive
 export const approveDriverApplication = (appId, approved) =>
   request('POST', `/api/admin/driver_applications/${encodeURIComponent(appId)}/approve`, { approved })
 
-export const getRideHistory = () => request('GET', '/api/rides/history')
-
 export const getDriverDashboard = () => request('GET', '/api/driver/dashboard')
 
-export const getRideChatMessages = (rideId) =>
-  request('GET', `/api/rides/${encodeURIComponent(rideId)}/chat`)
+export const updateDriverLocation = (lat, lng, empty = true, seats = 0) =>
+  request('POST', '/api/driver/location', { lat, lng, empty, seats })
 
-export const getRideChatInbox = () => request('GET', '/api/rides/chat/inbox')
+export const getNearbyDrivers = (lat, lng, radius_km = 10) =>
+  request('GET', `/api/driver/nearby?lat=${lat}&lng=${lng}&radius_km=${radius_km}`)
 
-// ── Ride Sharing ──────────────────────────────────────────────────────────────
+export const getAllDriverLocations = () => request('GET', '/api/driver/locations')
 
-export const postRide = (origin, destination, departure, seats, notes = '', origin_lat = null, origin_lng = null, dest_lat = null, dest_lng = null, fare = null, ride_type = 'airport', vehicle_color = '', vehicle_type = '', plate_number = '') =>
-  request('POST', '/api/rides/post', { origin, destination, departure, seats, notes, origin_lat, origin_lng, dest_lat, dest_lng, fare, ride_type, vehicle_color, vehicle_type, plate_number })
+// ── Ride History ──────────────────────────────────────────────────────────────
+
+export const getRideHistory = () => request('GET', '/api/rides/history')
+
+// ── Ride Booking ──────────────────────────────────────────────────────────────
+
+export const postRide = (origin, destination, departure, seats, notes = '', origin_lat = null, origin_lng = null, dest_lat = null, dest_lng = null, fare = null, ride_type = '', vehicle_color = '', vehicle_type = '', plate_number = '') =>
+  request('POST', '/api/rides', { origin, destination, departure, seats, notes, origin_lat, origin_lng, dest_lat, dest_lng, fare, ride_type, vehicle_color, vehicle_type, plate_number })
 
 export const calculateFare = (origin_lat, origin_lng, dest_lat, dest_lng) =>
-  request('GET', `/api/rides/calculate_fare?origin_lat=${origin_lat}&origin_lng=${origin_lng}&dest_lat=${dest_lat}&dest_lng=${dest_lng}`)
+  request('GET', `/api/rides/fare?origin_lat=${origin_lat}&origin_lng=${origin_lng}&dest_lat=${dest_lat}&dest_lng=${dest_lng}`)
 
 export const calculateSharedFare = (total_fare, total_seats, booked_seats) =>
   request('GET', `/api/rides/shared_fare?total_fare=${total_fare}&total_seats=${total_seats}&booked_seats=${booked_seats}`)
 
 export const geocodeAddress = (address) =>
-  request('GET', `/api/rides/geocode?address=${encodeURIComponent(address)}`)
+  request('GET', `/api/geocode?address=${encodeURIComponent(address)}`)
 
 export const estimateFare = (start, destination, seats = 1) =>
-  request('GET', `/api/rides/estimate_fare?start=${encodeURIComponent(start)}&destination=${encodeURIComponent(destination)}&seats=${seats}`)
+  request('GET', `/api/fare_estimate?start=${encodeURIComponent(start)}&destination=${encodeURIComponent(destination)}&seats=${seats}`)
 
 export const listRides = (status = null) =>
-  request('GET', `/api/rides/list${status ? `?status=${encodeURIComponent(status)}` : ''}`)
+  request('GET', `/api/rides${status ? `?status=${encodeURIComponent(status)}` : ''}`)
 
 export const getRide = (rideId) =>
   request('GET', `/api/rides/${encodeURIComponent(rideId)}`)
 
 export const cancelRide = (rideId) => request('DELETE', `/api/rides/${encodeURIComponent(rideId)}`)
 
-export const takeRide = (rideId) => request('POST', `/api/rides/${encodeURIComponent(rideId)}/take`, {})
+export const takeRide = (rideId) => request('POST', `/api/rides/${encodeURIComponent(rideId)}/take`)
 
-export const alertRideClients = (rideId) => request('POST', `/api/rides/${encodeURIComponent(rideId)}/alert_clients`, {})
+export const alertRideClients = (rideId) => request('POST', `/api/rides/${encodeURIComponent(rideId)}/alert`)
 
 export const confirmJourney = (rideId, real_name, contact) =>
   request('POST', `/api/rides/${encodeURIComponent(rideId)}/confirm_journey`, { real_name, contact })
@@ -402,129 +185,47 @@ export const proximityNotify = (rideId, distance_km, unit = 'km') =>
 
 export const getAdminRides = () => request('GET', '/api/admin/rides')
 
-// ── Ride Requests (Supply & Demand) ──────────────────────────────────────────
+// ── Ride Requests ─────────────────────────────────────────────────────────────
 
-export const createRideRequest = (origin, destination, desired_date, passengers = 1, price_min = null, price_max = null) =>
-  request('POST', '/api/ride_requests', { origin, destination, desired_date, passengers, price_min, price_max })
+export const createRideRequest = (origin, destination, desired_date, passengers = 1, notes = '') =>
+  request('POST', '/api/ride_requests', { origin, destination, desired_date, passengers, notes })
 
 export const listRideRequests = (status = 'open') =>
-  request('GET', `/api/ride_requests${status !== 'open' ? `?status=${encodeURIComponent(status)}` : ''}`)
+  request('GET', `/api/ride_requests?status=${encodeURIComponent(status)}`)
 
-// Backward-compatible alias for pages/components still using the old name.
 export const getRideRequests = (status = 'open') => listRideRequests(status)
 
 export const acceptRideRequest = (requestId) =>
-  request('POST', `/api/ride_requests/${encodeURIComponent(requestId)}/accept`, {})
+  request('POST', `/api/ride_requests/${encodeURIComponent(requestId)}/accept`)
 
 export const cancelRideRequest = (requestId) =>
-  request('DELETE', `/api/ride_requests/${encodeURIComponent(requestId)}`)
+  request('POST', `/api/ride_requests/${encodeURIComponent(requestId)}/cancel`)
 
 // ── Travel Companions ─────────────────────────────────────────────────────────
 
-export const createTravelCompanion = (origin_country, destination_country, travel_date, origin_city = '', destination_city = '', notes = '') =>
-  request('POST', '/api/travel_companions', { origin_country, destination_country, travel_date, origin_city, destination_city, notes })
+export const createTravelCompanion = (origin_country, destination_country, travel_date, preferences = '') =>
+  request('POST', '/api/travel_companions', { origin_country, destination_country, travel_date, preferences })
 
 export const listTravelCompanions = (origin_country = null, destination_country = null, travel_date = null) => {
-  const params = new URLSearchParams()
-  if (origin_country) params.set('origin_country', origin_country)
-  if (destination_country) params.set('destination_country', destination_country)
-  if (travel_date) params.set('travel_date', travel_date)
-  const qs = params.toString()
-  return request('GET', `/api/travel_companions${qs ? `?${qs}` : ''}`)
+  const qs = new URLSearchParams()
+  if (origin_country)      qs.set('origin_country',      origin_country)
+  if (destination_country) qs.set('destination_country', destination_country)
+  if (travel_date)         qs.set('travel_date',         travel_date)
+  const query = qs.toString()
+  return request('GET', `/api/travel_companions${query ? '?' + query : ''}`)
 }
 
 export const deleteTravelCompanion = (companionId) =>
   request('DELETE', `/api/travel_companions/${encodeURIComponent(companionId)}`)
 
-// ── Driver Geolocation ────────────────────────────────────────────────────────
+// ── Ride Chat ─────────────────────────────────────────────────────────────────
 
-export const updateDriverLocation = (lat, lng, empty = true, seats = 0) =>
-  request('POST', '/api/driver/location', { lat, lng, empty, seats })
+export const getRideChatMessages = (rideId) =>
+  request('GET', `/api/rides/${encodeURIComponent(rideId)}/chat`)
 
-export const getNearbyDrivers = (lat, lng, radius_km = 10) =>
-  request('GET', `/api/driver/nearby?lat=${lat}&lng=${lng}&radius_km=${radius_km}`)
-
-export const getAllDriverLocations = () => request('GET', '/api/driver/locations')
-
-// ── Direct Messaging ──────────────────────────────────────────────────────────
-
-export const dmListConversations = (search = null) =>
-  request('GET', `/api/dm/conversations${search ? `?search=${encodeURIComponent(search)}` : ''}`)
-
-export const dmGetContacts = () => request('GET', '/api/dm/contacts')
-
-export const dmStartConversation = (other_user_id) =>
-  request('POST', '/api/dm/conversations', { other_user_id })
-
-export const dmGetMessages = (convId) =>
-  request('GET', `/api/dm/conversations/${encodeURIComponent(convId)}/messages`)
-
-export const dmSendMessage = (conv_id, content, reply_to_id = null) =>
-  request('POST', '/api/dm/send', { conv_id, content, reply_to_id })
-
-export const dmMarkRead = (convId) =>
-  request('POST', `/api/dm/read/${encodeURIComponent(convId)}`, {})
-
-export const dmDeleteConversation = (convId) =>
-  request('DELETE', `/api/dm/conversations/${encodeURIComponent(convId)}`)
-
-export const listUsers = () => request('GET', '/api/users/list')
-
-export const searchUsers = (q) =>
-  request('GET', `/api/users/search?q=${encodeURIComponent(q)}`)
-
-// ── Properties ────────────────────────────────────────────────────────────────
-
-export const listProperties = (params = {}) => {
-  const qs = new URLSearchParams()
-  if (params.status)        qs.set('status',        params.status)
-  if (params.property_type) qs.set('property_type', params.property_type)
-  if (params.min_lat != null) qs.set('min_lat', params.min_lat)
-  if (params.max_lat != null) qs.set('max_lat', params.max_lat)
-  if (params.min_lng != null) qs.set('min_lng', params.min_lng)
-  if (params.max_lng != null) qs.set('max_lng', params.max_lng)
-  const query = qs.toString()
-  return request('GET', `/api/properties${query ? '?' + query : ''}`)
-}
-
-export const getProperty = (propertyId) =>
-  request('GET', `/api/properties/${encodeURIComponent(propertyId)}`)
-
-export const getPropertyMapPreview = (propertyId) =>
-  request('GET', `/api/properties/${encodeURIComponent(propertyId)}/map_preview`)
-
-export const createProperty = (data) => request('POST', '/api/properties', data)
-
-export const updateProperty = (propertyId, data) =>
-  request('PUT', `/api/properties/${encodeURIComponent(propertyId)}`, data)
-
-export const deleteProperty = (propertyId) =>
-  request('DELETE', `/api/properties/${encodeURIComponent(propertyId)}`)
-
-export const getNearbyAgents = (propertyId, limit = 4, offset = 0, radius_km = 8) =>
-  request('GET', `/api/properties/${encodeURIComponent(propertyId)}/nearby_agents?limit=${limit}&offset=${offset}&radius_km=${radius_km}`)
-
-// ── Property Conversations (Inbox) ────────────────────────────────────────────
-
-export const listPropertyConversations = () =>
-  request('GET', '/api/property_conversations')
-
-export const startPropertyConversation = (property_id, agent_id) =>
-  request('POST', '/api/property_conversations', { property_id, agent_id })
-
-export const getPropertyMessages = (convId) =>
-  request('GET', `/api/property_conversations/${encodeURIComponent(convId)}/messages`)
-
-export const sendPropertyMessage = (conv_id, content) =>
-  request('POST', '/api/property_messages', { conv_id, content })
-
-export const markPropertyConversationRead = (convId) =>
-  request('POST', `/api/property_conversations/${encodeURIComponent(convId)}/read`, {})
+export const getRideChatInbox = () => request('GET', '/api/rides/chat/inbox')
 
 // ── Unified Map ───────────────────────────────────────────────────────────────
-
-export const listAgents = (status = null) =>
-  request('GET', `/api/agents${status ? `?status=${encodeURIComponent(status)}` : ''}`)
 
 export const getUnifiedMapNearby = (lat, lng, radius_km = 25, mode = 'drivers') =>
   request('GET', `/api/unified_map/nearby?lat=${lat}&lng=${lng}&radius_km=${radius_km}&mode=${encodeURIComponent(mode)}`)
@@ -537,26 +238,12 @@ export const storePublicKey = (public_key) =>
 export const getUserPublicKey = (userId) =>
   request('GET', `/api/users/${encodeURIComponent(userId)}/public_key`)
 
-// ── Agent Applications ────────────────────────────────────────────────────────
+// ── Users ─────────────────────────────────────────────────────────────────────
 
-export const submitAgentApplication = (data) =>
-  request('POST', '/api/agent_applications', data)
+export const listUsers = () => request('GET', '/api/users/list')
 
-export const getAgentApplicationStatus = () =>
-  request('GET', '/api/agent_applications/status')
-
-export const getAdminAgentApplications = () =>
-  request('GET', '/api/admin/agent_applications')
-
-export const adminApproveAgentApplication = (appId, approved) =>
-  request('POST', `/api/admin/agent_applications/${encodeURIComponent(appId)}/approve`, { approved })
-
-// ── Admin — Properties ────────────────────────────────────────────────────────
-
-export const getAdminProperties = () => request('GET', '/api/admin/properties')
-
-export const adminDeleteProperty = (propertyId) =>
-  request('DELETE', `/api/admin/properties/${encodeURIComponent(propertyId)}`)
+export const searchUsers = (q) =>
+  request('GET', `/api/users/search?q=${encodeURIComponent(q)}`)
 
 // ── Admin — Users ─────────────────────────────────────────────────────────────
 
@@ -576,16 +263,27 @@ export const adminCancelBroadcast = (broadcastId) =>
 
 export const getReceipts = () => request('GET', '/api/receipts')
 
-export const downloadReceiptPdf = async (receiptId) => {
-  const res = await request('GET', `/api/receipts/${encodeURIComponent(receiptId)}/pdf`, null, false)
-  if (!res.ok) {
-    let msg = `Server error (${res.status})`
-    try { const j = await res.json(); if (j.error) msg = j.error } catch {}
-    throw new Error(msg)
-  }
-  const blob = await res.blob()
-  triggerBlobDownload(blob, `receipt-${receiptId}.pdf`)
-}
+// ── Direct Messaging ──────────────────────────────────────────────────────────
+
+export const dmListConversations = (search = null) =>
+  request('GET', `/api/dm/conversations${search ? '?search=' + encodeURIComponent(search) : ''}`)
+
+export const dmGetContacts = () => request('GET', '/api/dm/contacts')
+
+export const dmStartConversation = (other_user_id) =>
+  request('POST', '/api/dm/conversations', { other_user_id })
+
+export const dmGetMessages = (convId) =>
+  request('GET', `/api/dm/conversations/${encodeURIComponent(convId)}/messages`)
+
+export const dmSendMessage = (conv_id, content, reply_to_id = null) =>
+  request('POST', '/api/dm/messages', { conv_id, content, reply_to_id })
+
+export const dmMarkRead = (convId) =>
+  request('POST', `/api/dm/conversations/${encodeURIComponent(convId)}/read`, {})
+
+export const dmDeleteConversation = (convId) =>
+  request('DELETE', `/api/dm/conversations/${encodeURIComponent(convId)}`)
 
 // ── Aliased DM helpers (used by InboxPage) ────────────────────────────────────
 
@@ -602,3 +300,37 @@ export const sendDmMessage = (userId, content) =>
 
 export const markNotificationsRead = () =>
   request('POST', '/api/notifications/read_all', {})
+
+const BASE = ''  // same origin
+
+async function request(method, path, body = null, isJSON = true) {
+  const opts = {
+    method,
+    credentials: 'include',
+    headers: {},
+  }
+  if (body !== null) {
+    if (isJSON) {
+      opts.headers['Content-Type'] = 'application/json'
+      opts.body = JSON.stringify(body)
+    } else {
+      // FormData — let browser set Content-Type with boundary
+      opts.body = body
+    }
+  }
+  const res = await fetch(BASE + path, opts)
+  const ct = res.headers.get('content-type') || ''
+  if (ct.includes('application/json')) {
+    const data = await res.json()
+    if (!res.ok) throw Object.assign(new Error(data.error || data.detail || 'Request failed'), { status: res.status, data })
+    return data
+  }
+  if (!res.ok) throw Object.assign(new Error('Request failed'), { status: res.status })
+  return res
+}
+
+function formBody(obj) {
+  const fd = new FormData()
+  Object.entries(obj).forEach(([k, v]) => { if (v !== undefined && v !== null) fd.append(k, v) })
+  return fd
+}
