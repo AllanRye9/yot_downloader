@@ -3854,48 +3854,69 @@ async def api_ride_alert_clients(request: Request, ride_id: str):
             ride_origin = row[1]
             ride_destination = row[2]
 
-            # Collect unique passengers (users who sent messages in this ride chat, excluding the driver)
+            # Collect unique passengers who confirmed their journey for this ride
             driver_name = user["name"]
             if USE_POSTGRES:
                 cur.execute(
                     """
-                    SELECT DISTINCT sender_name
-                    FROM ride_chat_messages
-                    WHERE ride_id=%s AND sender_name != %s AND sender_role != 'driver'
+                    SELECT DISTINCT rjc.user_id, au.name
+                    FROM ride_journey_confirmations rjc
+                    JOIN app_users au ON au.user_id = rjc.user_id
+                    WHERE rjc.ride_id = %s AND rjc.user_id != %s
                     LIMIT 100
                     """,
-                    (ride_id, driver_name),
+                    (ride_id, user_id),
                 )
-                passenger_names = [r[0] for r in cur.fetchall()]
-                # Map sender names to user_ids
-                if passenger_names:
+                passenger_rows = cur.fetchall()
+                # Fall back to chat participants if no confirmed passengers exist
+                if not passenger_rows:
                     cur.execute(
-                        "SELECT user_id, name FROM app_users WHERE name = ANY(%s)",
-                        (passenger_names,),
+                        """
+                        SELECT DISTINCT sender_name
+                        FROM ride_chat_messages
+                        WHERE ride_id=%s AND sender_name != %s AND sender_role != 'driver'
+                        LIMIT 100
+                        """,
+                        (ride_id, driver_name),
                     )
-                    passenger_rows = cur.fetchall()
-                else:
-                    passenger_rows = []
+                    passenger_names = [r[0] for r in cur.fetchall()]
+                    if passenger_names:
+                        cur.execute(
+                            "SELECT user_id, name FROM app_users WHERE name = ANY(%s)",
+                            (passenger_names,),
+                        )
+                        passenger_rows = cur.fetchall()
             else:
                 cur2 = conn.execute(
                     """
-                    SELECT DISTINCT sender_name
-                    FROM ride_chat_messages
-                    WHERE ride_id=? AND sender_name != ? AND sender_role != 'driver'
+                    SELECT DISTINCT rjc.user_id, au.name
+                    FROM ride_journey_confirmations rjc
+                    JOIN app_users au ON au.user_id = rjc.user_id
+                    WHERE rjc.ride_id = ? AND rjc.user_id != ?
                     LIMIT 100
                     """,
-                    (ride_id, driver_name),
+                    (ride_id, user_id),
                 )
-                passenger_names = [r[0] for r in cur2.fetchall()]
-                if passenger_names:
-                    placeholders = ",".join("?" * len(passenger_names))
+                passenger_rows = cur2.fetchall()
+                # Fall back to chat participants if no confirmed passengers exist
+                if not passenger_rows:
                     cur3 = conn.execute(
-                        f"SELECT user_id, name FROM app_users WHERE name IN ({placeholders})",
-                        passenger_names,
+                        """
+                        SELECT DISTINCT sender_name
+                        FROM ride_chat_messages
+                        WHERE ride_id=? AND sender_name != ? AND sender_role != 'driver'
+                        LIMIT 100
+                        """,
+                        (ride_id, driver_name),
                     )
-                    passenger_rows = cur3.fetchall()
-                else:
-                    passenger_rows = []
+                    passenger_names = [r[0] for r in cur3.fetchall()]
+                    if passenger_names:
+                        placeholders = ",".join("?" * len(passenger_names))
+                        cur4 = conn.execute(
+                            f"SELECT user_id, name FROM app_users WHERE name IN ({placeholders})",
+                            passenger_names,
+                        )
+                        passenger_rows = cur4.fetchall()
         finally:
             conn.close()
 

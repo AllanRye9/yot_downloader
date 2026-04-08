@@ -48,9 +48,6 @@ export const THEMES = [
   { id: 'dark',   label: '🌑 Dark',   className: 'theme-dark'   },
   { id: 'light',  label: '☀️ Light',  className: 'theme-light'  },
   { id: 'ocean',  label: '🌊 Ocean',  className: 'theme-ocean'  },
-  { id: 'forest', label: '🌿 Forest', className: 'theme-forest' },
-  { id: 'sunset', label: '🌅 Sunset', className: 'theme-sunset' },
-  { id: 'purple', label: '💜 Purple', className: 'theme-purple' },
 ]
 const DEFAULT_THEME_ID = THEMES[0].id
 const ThemeCtx = createContext(null)
