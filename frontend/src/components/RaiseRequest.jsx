@@ -108,7 +108,8 @@ export default function RaiseRequest({ user, onConvCreated }) {
     }
   }
 
-  const inputCls = 'rounded-lg bg-gray-800 border border-gray-600 text-gray-100 text-xs px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-amber-500 w-full'
+  const inputCls = 'rounded-xl text-sm px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-amber-500 w-full'
+  const inputStyle = { background: 'var(--bg-surface, #1f2937)', color: 'var(--text-primary, #f3f4f6)', border: '1px solid var(--border-color, #374151)' }
 
   return (
     <div className="space-y-4">
@@ -143,49 +144,76 @@ export default function RaiseRequest({ user, onConvCreated }) {
 
       {/* Post form (passengers only) */}
       {showForm && !isDriver && (
-        <form onSubmit={handlePost} className="rounded-xl border border-amber-700/40 bg-amber-900/10 p-4 space-y-3">
-          <p className="text-xs font-semibold text-amber-300">🙋 Raise a Ride Request</p>
-          <div className="grid grid-cols-2 gap-2">
+        <form onSubmit={handlePost} className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border-color)', boxShadow: '0 4px 24px rgba(0,0,0,0.15)' }}>
+          {/* Form header */}
+          <div className="px-4 py-3 flex items-center gap-2" style={{ background: 'linear-gradient(135deg, #f59e0b20, #d9770620)', borderBottom: '1px solid var(--border-color)' }}>
+            <span className="text-amber-400">🙋</span>
             <div>
-              <label className="text-xs text-gray-400 block mb-1">Pickup Location *</label>
-              <input type="text" placeholder="e.g. Manchester Airport" value={formOrigin}
-                onChange={e => setFormOrigin(e.target.value)} required className={inputCls} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Destination *</label>
-              <input type="text" placeholder="e.g. Liverpool City Centre" value={formDest}
-                onChange={e => setFormDest(e.target.value)} required className={inputCls} />
+              <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Request a Ride</p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Drivers will see your request</p>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Desired Date/Time *</label>
-              <input type="datetime-local" value={formDate} onChange={e => setFormDate(e.target.value)}
-                required className={inputCls} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Passengers</label>
-              <input type="number" min={1} max={20} value={formPassengers}
-                onChange={e => setFormPassengers(Number(e.target.value))} className={inputCls} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 block mb-1">Price Range (optional)</label>
-              <div className="flex gap-1">
-                <input type="number" min={0} placeholder="Min" value={formPriceMin}
-                  onChange={e => setFormPriceMin(e.target.value)}
-                  className="w-1/2 rounded-lg bg-gray-800 border border-gray-600 text-gray-100 text-xs px-2 py-1.5 focus:outline-none" />
-                <input type="number" min={0} placeholder="Max" value={formPriceMax}
-                  onChange={e => setFormPriceMax(e.target.value)}
-                  className="w-1/2 rounded-lg bg-gray-800 border border-gray-600 text-gray-100 text-xs px-2 py-1.5 focus:outline-none" />
+          <div className="p-4 space-y-3" style={{ background: 'var(--bg-card)' }}>
+            {/* Route */}
+            <div className="space-y-2">
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-green-400 text-xs pointer-events-none">📍</span>
+                <input type="text" placeholder="Pickup — e.g. Manchester Airport" value={formOrigin}
+                  onChange={e => setFormOrigin(e.target.value)} required
+                  className={inputCls} style={{ ...inputStyle, paddingLeft: '2rem' }} />
+              </div>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-400 text-xs pointer-events-none">🏁</span>
+                <input type="text" placeholder="Destination — e.g. Liverpool Centre" value={formDest}
+                  onChange={e => setFormDest(e.target.value)} required
+                  className={inputCls} style={{ ...inputStyle, paddingLeft: '2rem' }} />
               </div>
             </div>
+            {/* Date + Passengers */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>📅 Date &amp; Time *</label>
+                <input type="datetime-local" value={formDate} onChange={e => setFormDate(e.target.value)}
+                  required className={inputCls} style={inputStyle} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>👥 Passengers</label>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setFormPassengers(p => Math.max(1, p - 1))}
+                    className="w-8 h-8 rounded-lg font-bold flex items-center justify-center"
+                    style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}>−</button>
+                  <span className="flex-1 text-center font-bold text-sm" style={{ color: 'var(--text-primary)' }}>{formPassengers}</span>
+                  <button type="button" onClick={() => setFormPassengers(p => Math.min(20, p + 1))}
+                    className="w-8 h-8 rounded-lg font-bold flex items-center justify-center"
+                    style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}>+</button>
+                </div>
+              </div>
+            </div>
+            {/* Price range */}
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>💰 Price Range (optional)</label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold" style={{ color: 'var(--text-muted)' }}>$</span>
+                  <input type="number" min={0} placeholder="Min" value={formPriceMin}
+                    onChange={e => setFormPriceMin(e.target.value)}
+                    className={inputCls} style={{ ...inputStyle, paddingLeft: '1.5rem' }} />
+                </div>
+                <div className="relative flex-1">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold" style={{ color: 'var(--text-muted)' }}>$</span>
+                  <input type="number" min={0} placeholder="Max" value={formPriceMax}
+                    onChange={e => setFormPriceMax(e.target.value)}
+                    className={inputCls} style={{ ...inputStyle, paddingLeft: '1.5rem' }} />
+                </div>
+              </div>
+            </div>
+            {postError && <p className="text-red-400 text-xs">{postError}</p>}
+            {postOk    && <p className="text-green-400 text-xs">{postOk}</p>}
+            <button type="submit" disabled={posting}
+              className="w-full py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors bg-amber-500 hover:bg-amber-400 text-black">
+              {posting ? '⏳ Posting…' : '🙋 Raise Ride Request'}
+            </button>
           </div>
-          {postError && <p className="text-red-400 text-xs">{postError}</p>}
-          {postOk    && <p className="text-green-400 text-xs">{postOk}</p>}
-          <button type="submit" disabled={posting}
-            className="w-full py-2 rounded-lg bg-amber-700 hover:bg-amber-600 text-white text-sm font-semibold disabled:opacity-50 transition-colors">
-            {posting ? 'Posting…' : '🙋 Raise Ride Request'}
-          </button>
         </form>
       )}
 
@@ -205,33 +233,37 @@ export default function RaiseRequest({ user, onConvCreated }) {
       <div className="space-y-2">
         {requests.map(req => (
           <div key={req.request_id}
-            className="rounded-xl border border-gray-700 bg-gray-800/60 hover:border-gray-600 p-3 space-y-1.5 transition-all">
+            className="rounded-xl p-3 space-y-1.5 transition-all hover:opacity-90"
+            style={{ border: '1px solid var(--border-color)', background: 'var(--bg-surface)' }}>
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold text-white text-sm">📍 {req.origin}</span>
-                  <span className="text-gray-500 text-xs">→</span>
-                  <span className="font-semibold text-amber-300 text-sm">{req.destination}</span>
-                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-700/60 text-gray-300 border border-gray-600/50">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>📍 {req.origin}</span>
+                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>→</span>
+                  <span className="font-semibold text-sm text-amber-400">{req.destination}</span>
+                </div>
+                <div className="flex gap-1.5 mt-1 flex-wrap">
+                  <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--bg-card)', color: 'var(--text-muted)', border: '1px solid var(--border-color)' }}>
                     🕐 {new Date(req.desired_date).toLocaleString()}
                   </span>
-                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-900/40 text-amber-300 border border-amber-700/40">
+                  <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)' }}>
                     👥 {req.passengers} pax
                   </span>
                   {(req.price_min != null || req.price_max != null) && (
-                    <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-900/40 text-green-300 border border-green-700/40">
+                    <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(16,185,129,0.12)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.3)' }}>
                       💰 {req.price_min != null ? `$${req.price_min}` : ''}{req.price_min != null && req.price_max != null ? '–' : ''}{req.price_max != null ? `$${req.price_max}` : ''}
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-gray-400 mt-0.5">👤 {req.passenger_name}</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>👤 {req.passenger_name}</p>
               </div>
               <div className="flex flex-col gap-1 shrink-0">
                 {isDriver && (
                   <button
                     onClick={() => handleAccept(req.request_id)}
                     disabled={accepting[req.request_id]}
-                    className="text-xs px-2.5 py-1 rounded-lg bg-green-800/60 hover:bg-green-700/60 border border-green-700/50 text-green-300 font-semibold transition-colors disabled:opacity-50">
+                    className="text-xs px-2.5 py-1.5 rounded-lg font-semibold transition-colors disabled:opacity-50"
+                    style={{ background: 'rgba(16,185,129,0.15)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.3)' }}>
                     {accepting[req.request_id] ? '…' : '✅ Accept'}
                   </button>
                 )}

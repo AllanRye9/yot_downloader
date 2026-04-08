@@ -2609,6 +2609,8 @@ async def api_ride_chat_inbox(request: Request):
     """Return latest chat message per ride that involves the current user's rides.
 
     Returns conversations grouped by ride_id, ordered by most-recent message.
+    Only shows rides where the user has RECEIVED messages (not just sent them),
+    or rides that the user posted as a driver.
     """
     user_id = request.session.get("app_user_id")
     if not user_id:
@@ -2625,28 +2627,36 @@ async def api_ride_chat_inbox(request: Request):
         try:
             if USE_POSTGRES:
                 cur = conn.cursor()
-                # Rides posted by the user
+                # Rides posted by the user (driver's own rides)
                 cur.execute(
                     "SELECT ride_id, origin, destination FROM rides WHERE user_id=%s",
                     (user_id,),
                 )
                 poster_rides = {r[0]: {"origin": r[1], "destination": r[2]} for r in cur.fetchall()}
-                # Latest message per ride that the user is involved in
+                poster_ride_ids = list(poster_rides.keys())
+                # Latest message per ride where:
+                # 1. User is the ride poster (driver sees all messages on their ride), OR
+                # 2. User sent a message AND there are messages from other senders in that ride
+                #    (user only sees ride chat in inbox if they received a response)
                 cur.execute(
                     """
                     SELECT DISTINCT ON (ride_id) msg_id, ride_id, sender_name, sender_role,
                            text, media_type, ts
                     FROM ride_chat_messages
-                    WHERE ride_id = ANY(
-                        SELECT ride_id FROM rides WHERE user_id = %s
-                    ) OR sender_name = %s
+                    WHERE ride_id = ANY(%s)
+                       OR (
+                           sender_name != %s
+                           AND ride_id IN (
+                               SELECT DISTINCT ride_id FROM ride_chat_messages WHERE sender_name = %s
+                           )
+                       )
                     ORDER BY ride_id, ts DESC
                     """,
-                    (user_id, sender_name),
+                    (poster_ride_ids or [''], sender_name, sender_name),
                 )
                 rows = cur.fetchall()
             else:
-                # Rides posted by the user
+                # Rides posted by the user (driver's own rides)
                 cur = conn.execute(
                     "SELECT ride_id, origin, destination FROM rides WHERE user_id=?",
                     (user_id,),
@@ -2657,13 +2667,18 @@ async def api_ride_chat_inbox(request: Request):
                     SELECT msg_id, ride_id, sender_name, sender_role, text, media_type, ts
                     FROM ride_chat_messages
                     WHERE ride_id IN (SELECT ride_id FROM rides WHERE user_id=?)
-                       OR sender_name=?
+                       OR (
+                           sender_name != ?
+                           AND ride_id IN (
+                               SELECT DISTINCT ride_id FROM ride_chat_messages WHERE sender_name=?
+                           )
+                       )
                     GROUP BY ride_id
                     HAVING ts = MAX(ts)
                     ORDER BY ts DESC
                     LIMIT 50
                     """,
-                    (user_id, sender_name),
+                    (user_id, sender_name, sender_name),
                 )
                 rows = cur.fetchall()
         finally:

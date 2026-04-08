@@ -78,7 +78,15 @@ export default function InboxPage() {
   const loadDmConvs = () => {
     setDmLoad(true)
     getDmConversations()
-      .then(d => setDmConvs(d.conversations || d || []))
+      .then(d => {
+        const convs = d.conversations || d || []
+        // Filter out self-conversations (where the other user is the current user)
+        const myId = appUser?.user_id
+        const filtered = myId
+          ? convs.filter(c => c.other_user?.user_id !== myId)
+          : convs
+        setDmConvs(filtered)
+      })
       .catch(() => setDmConvs([]))
       .finally(() => setDmLoad(false))
   }

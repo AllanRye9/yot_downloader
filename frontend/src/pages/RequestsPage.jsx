@@ -125,8 +125,12 @@ export default function RequestsPage() {
   const [messaging,  setMessaging]  = useState(null)
   const [sortBy,     setSortBy]     = useState('date')
   const [search,     setSearch]     = useState('')
+  const [formStep,   setFormStep]   = useState(1)
 
-  const [form, setForm] = useState({ origin: '', destination: '', desired_date: '', passengers: 1, price_max: '' })
+  const [form, setForm] = useState({
+    origin: '', destination: '', desired_date: '', desired_time: '',
+    passengers: 1, price_max: '', notes: '', luggage: 'none', ride_type: 'shared',
+  })
 
   const loadRequests = useCallback(async () => {
     try {
@@ -153,15 +157,20 @@ export default function RequestsPage() {
     setError('')
     setCreating(true)
     try {
+      // Combine date + time into ISO string if both provided
+      const dateTime = form.desired_time
+        ? `${form.desired_date}T${form.desired_time}:00`
+        : form.desired_date
       await createRideRequest(
         form.origin.trim(),
         form.destination.trim(),
-        form.desired_date,
+        dateTime,
         parseInt(form.passengers, 10) || 1,
         null,
         form.price_max ? parseFloat(form.price_max) : null,
       )
-      setForm({ origin: '', destination: '', desired_date: '', passengers: 1, price_max: '' })
+      setForm({ origin: '', destination: '', desired_date: '', desired_time: '', passengers: 1, price_max: '', notes: '', luggage: 'none', ride_type: 'shared' })
+      setFormStep(1)
       setShowForm(false)
       await loadRequests()
     } catch (err) {
@@ -227,7 +236,6 @@ export default function RequestsPage() {
     return 0
   })
 
-  const input = 'w-full rounded-lg px-3 py-2 text-sm outline-none'
   const inputSty = { background: 'var(--bg-input, var(--bg-surface))', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }
 
   if (loading) return (
@@ -244,38 +252,188 @@ export default function RequestsPage() {
 
         {/* Action bar */}
         <div className="flex items-center justify-between">
-          <h1 className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>Ride Requests</h1>
+          <div>
+            <h1 className="font-bold text-lg" style={{ color: 'var(--text-primary)' }}>🙋 Ride Requests</h1>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Find or post rides — matched with drivers in real time</p>
+          </div>
           <button
-            onClick={() => setShowForm(f => !f)}
-            className="text-xs bg-amber-500 hover:bg-amber-400 text-black px-3 py-1.5 rounded-lg font-semibold transition-colors"
+            onClick={() => { setShowForm(f => !f); setFormStep(1); setError('') }}
+            className="flex items-center gap-2 text-sm bg-amber-500 hover:bg-amber-400 text-black px-4 py-2 rounded-xl font-semibold transition-all shadow-md hover:shadow-amber-500/30"
           >
-            {showForm ? '✕ Close' : '+ New Request'}
+            {showForm ? '✕ Close' : '＋ New Request'}
           </button>
         </div>
 
-        {/* ── Create form ── */}
+        {/* ── Advanced Create form ── */}
         {showForm && (
-          <div className="rounded-xl p-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
-            <h2 className="font-semibold text-sm mb-3" style={{ color: 'var(--text-secondary)' }}>New Ride Request</h2>
-            <form onSubmit={handleCreate} className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input type="text" placeholder="From (origin)" value={form.origin} onChange={e => setForm(f => ({ ...f, origin: e.target.value }))} required className={input} style={inputSty} />
-                <input type="text" placeholder="To (destination)" value={form.destination} onChange={e => setForm(f => ({ ...f, destination: e.target.value }))} required className={input} style={inputSty} />
+          <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
+            {/* Form header with gradient */}
+            <div className="px-5 py-4" style={{ background: 'linear-gradient(135deg, #f59e0b22 0%, #d9770622 100%)', borderBottom: '1px solid var(--border-color)' }}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="font-bold text-base flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                    <span className="w-8 h-8 rounded-full bg-amber-500 text-black flex items-center justify-center text-sm font-bold">🙋</span>
+                    Request a Ride
+                  </h2>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Drivers will see your request and contact you</p>
+                </div>
+                {/* Step indicator */}
+                <div className="flex items-center gap-1.5">
+                  {[1, 2].map(s => (
+                    <button key={s} onClick={() => s < formStep && setFormStep(s)}
+                      className={`w-7 h-7 rounded-full text-xs font-bold transition-all ${formStep === s ? 'bg-amber-500 text-black scale-110' : formStep > s ? 'bg-green-500 text-white' : 'text-white/40'}`}
+                      style={formStep <= s && formStep !== s ? { background: 'var(--bg-surface)', border: '1px solid var(--border-color)' } : {}}>
+                      {formStep > s ? '✓' : s}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <input type="date" value={form.desired_date} onChange={e => setForm(f => ({ ...f, desired_date: e.target.value }))} required className={input} style={inputSty} />
-                <input type="number" placeholder="Passengers" min="1" value={form.passengers} onChange={e => setForm(f => ({ ...f, passengers: e.target.value }))} className={input} style={inputSty} />
-                <input type="number" placeholder="Max price" min="0" step="0.01" value={form.price_max} onChange={e => setForm(f => ({ ...f, price_max: e.target.value }))} className={input} style={inputSty} />
-              </div>
-              {error && <p className="text-red-400 text-xs">{error}</p>}
-              <div className="flex gap-2">
-                <button type="submit" disabled={creating} className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs rounded-lg font-semibold disabled:opacity-50">
-                  {creating ? '…' : 'Post Request'}
-                </button>
-                <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-xs rounded-lg font-medium hover:opacity-80" style={{ background: 'var(--bg-surface)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>
-                  Cancel
-                </button>
-              </div>
+            </div>
+
+            <form onSubmit={handleCreate} className="p-5 space-y-4">
+              {formStep === 1 && (
+                <>
+                  <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-muted)' }}>Step 1 — Route & Schedule</p>
+
+                  {/* Route row */}
+                  <div className="relative">
+                    <div className="space-y-2">
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-green-400 text-sm pointer-events-none">📍</span>
+                        <input
+                          type="text" placeholder="Pickup location  e.g. Manchester Airport"
+                          value={form.origin} onChange={e => setForm(f => ({ ...f, origin: e.target.value }))}
+                          required className="w-full rounded-xl pl-9 pr-3 py-2.5 text-sm outline-none"
+                          style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }} />
+                      </div>
+                      {/* Arrow connector */}
+                      <div className="flex items-center gap-2 pl-3">
+                        <div className="w-0.5 h-4 rounded" style={{ background: 'var(--border-color)' }} />
+                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>↓</span>
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-400 text-sm pointer-events-none">🏁</span>
+                        <input
+                          type="text" placeholder="Destination  e.g. Liverpool City Centre"
+                          value={form.destination} onChange={e => setForm(f => ({ ...f, destination: e.target.value }))}
+                          required className="w-full rounded-xl pl-9 pr-3 py-2.5 text-sm outline-none"
+                          style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Date + Time */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>📅 Date *</label>
+                      <input type="date" value={form.desired_date} onChange={e => setForm(f => ({ ...f, desired_date: e.target.value }))}
+                        required className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                        style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>🕐 Time (optional)</label>
+                      <input type="time" value={form.desired_time} onChange={e => setForm(f => ({ ...f, desired_time: e.target.value }))}
+                        className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                        style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }} />
+                    </div>
+                  </div>
+
+                  <button type="button"
+                    onClick={() => {
+                      if (!form.origin.trim() || !form.destination.trim() || !form.desired_date) {
+                        setError('Please fill in pickup, destination, and date.')
+                        return
+                      }
+                      setError('')
+                      setFormStep(2)
+                    }}
+                    className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all bg-amber-500 hover:bg-amber-400 text-black">
+                    Continue → Passengers &amp; Budget
+                  </button>
+                </>
+              )}
+
+              {formStep === 2 && (
+                <>
+                  <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-muted)' }}>Step 2 — Passengers &amp; Preferences</p>
+
+                  {/* Route summary */}
+                  <div className="rounded-xl p-3 flex items-center gap-3" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
+                    <span className="text-green-400 text-sm">📍</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{form.origin}</p>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>→ {form.destination}</p>
+                    </div>
+                    <div className="text-xs shrink-0" style={{ color: 'var(--text-muted)' }}>
+                      {form.desired_date}{form.desired_time ? ` ${form.desired_time}` : ''}
+                    </div>
+                  </div>
+
+                  {/* Passengers + Ride type */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>👥 Passengers</label>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => setForm(f => ({ ...f, passengers: Math.max(1, (f.passengers || 1) - 1) }))}
+                          className="w-8 h-8 rounded-lg font-bold text-sm flex items-center justify-center hover:opacity-80"
+                          style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}>−</button>
+                        <span className="flex-1 text-center text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{form.passengers}</span>
+                        <button type="button" onClick={() => setForm(f => ({ ...f, passengers: Math.min(20, (f.passengers || 1) + 1) }))}
+                          className="w-8 h-8 rounded-lg font-bold text-sm flex items-center justify-center hover:opacity-80"
+                          style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}>+</button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>🚗 Ride Type</label>
+                      <select value={form.ride_type} onChange={e => setForm(f => ({ ...f, ride_type: e.target.value }))}
+                        className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                        style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}>
+                        <option value="shared">Shared ride</option>
+                        <option value="private">Private / solo</option>
+                        <option value="express">Express</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Budget + Luggage */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>💰 Max Budget ($)</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold" style={{ color: 'var(--text-muted)' }}>$</span>
+                        <input type="number" placeholder="0.00" min="0" step="0.50" value={form.price_max}
+                          onChange={e => setForm(f => ({ ...f, price_max: e.target.value }))}
+                          className="w-full rounded-xl pl-7 pr-3 py-2.5 text-sm outline-none"
+                          style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>🧳 Luggage</label>
+                      <select value={form.luggage} onChange={e => setForm(f => ({ ...f, luggage: e.target.value }))}
+                        className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                        style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}>
+                        <option value="none">None</option>
+                        <option value="light">Light (carry-on)</option>
+                        <option value="medium">Medium (1–2 bags)</option>
+                        <option value="heavy">Heavy (3+ bags)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {error && <p className="text-red-400 text-xs">{error}</p>}
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setFormStep(1)}
+                      className="px-4 py-2.5 rounded-xl text-sm font-medium hover:opacity-80"
+                      style={{ background: 'var(--bg-surface)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>
+                      ← Back
+                    </button>
+                    <button type="submit" disabled={creating}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all bg-amber-500 hover:bg-amber-400 text-black disabled:opacity-50">
+                      {creating ? '⏳ Posting…' : '🙋 Post Request'}
+                    </button>
+                  </div>
+                </>
+              )}
             </form>
           </div>
         )}
