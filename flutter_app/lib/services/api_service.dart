@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
 import '../models/video_info.dart';
 import '../models/download_status.dart';
@@ -30,6 +31,67 @@ class ApiService {
 
   String get _base => AppConfig.baseUrl;
 
+  // ── Cookie / session management ──────────────────────────────────────────
+
+  final Map<String, String> _cookies = {};
+
+  /// Load persisted session cookies from storage.
+  Future<void> loadCookies() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString('session_cookies');
+    if (stored != null) {
+      try {
+        final map = json.decode(stored) as Map<String, dynamic>;
+        _cookies.clear();
+        map.forEach((k, v) => _cookies[k] = v.toString());
+      } catch (_) {}
+    }
+  }
+
+  /// Persist cookies to storage.
+  Future<void> _saveCookies() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('session_cookies', json.encode(_cookies));
+  }
+
+  /// Clear all session cookies (logout).
+  Future<void> clearCookies() async {
+    _cookies.clear();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('session_cookies');
+  }
+
+  bool get hasSession => _cookies.containsKey('session');
+
+  Map<String, String> get _cookieHeaders {
+    if (_cookies.isEmpty) return {};
+    return {'Cookie': _cookies.entries.map((e) => '${e.key}=${e.value}').join('; ')};
+  }
+
+  void _updateCookies(http.Response res) {
+    final raw = res.headers['set-cookie'];
+    if (raw == null) return;
+    bool changed = false;
+    // Each cookie entry starts with name=value, followed by "; " separated
+    // attributes (Path, Domain, Expires, etc.).  Multiple Set-Cookie headers
+    // are concatenated by the http package with ", " but "Expires" values also
+    // contain commas.  We split only on sequences that look like the start of a
+    // new cookie (alphanumeric name followed by "=").
+    final entries = raw.split(RegExp(r',\s*(?=[A-Za-z][A-Za-z0-9_\-]*=)'));
+    for (final entry in entries) {
+      final nameVal = entry.split(';').first.trim();
+      final eq = nameVal.indexOf('=');
+      if (eq <= 0) continue;
+      final key = nameVal.substring(0, eq).trim();
+      final val = nameVal.substring(eq + 1).trim();
+      if (_cookies[key] != val) {
+        _cookies[key] = val;
+        changed = true;
+      }
+    }
+    if (changed) _saveCookies();
+  }
+
   // ── helpers ────────────────────────────────────────────────────────────────
 
   Uri _uri(String path, [Map<String, String>? query]) {
@@ -46,6 +108,7 @@ class ApiService {
   }
 
   Future<dynamic> _parseResponse(http.Response res) async {
+    _updateCookies(res);
     final ct = res.headers['content-type'] ?? '';
     if (ct.contains('application/json')) {
       final body = json.decode(res.body) as Map<String, dynamic>;
@@ -68,10 +131,27 @@ class ApiService {
     return (await _parseResponse(res)) as Map<String, dynamic>;
   }
 
+  /// Authenticated GET that includes the session cookie.
+  Future<Map<String, dynamic>> _getAuth(String path, [Map<String, String>? query]) async {
+    final res = await http.get(_uri(path, query), headers: _cookieHeaders);
+    return (await _parseResponse(res)) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> _postJson(String path, Map<String, dynamic> body) async {
     final res = await http.post(
       _uri(path),
       headers: {'Content-Type': 'application/json'},
+      body: json.encode(body),
+    );
+    return (await _parseResponse(res)) as Map<String, dynamic>;
+  }
+
+  /// Authenticated POST JSON that includes the session cookie.
+  Future<Map<String, dynamic>> _postJsonAuth(String path, Map<String, dynamic> body) async {
+    final headers = {..._cookieHeaders, 'Content-Type': 'application/json'};
+    final res = await http.post(
+      _uri(path),
+      headers: headers,
       body: json.encode(body),
     );
     return (await _parseResponse(res)) as Map<String, dynamic>;
@@ -446,5 +526,139 @@ class ApiService {
     final res = await http.get(_uri('/api/properties', params));
     final data = (await _parseResponse(res)) as Map<String, dynamic>;
     return List<Map<String, dynamic>>.from(data['properties'] as List? ?? []);
+  }
+
+  // ── Auth ──────────────────────────────────────────────────────────────────
+
+  /// Login with email and password.  Stores the session cookie on success.
+  Future<Map<String, dynamic>> login({
+    required String email,
+    required String password,
+    bool rememberMe = true,
+  }) async {
+    return _postJson('/api/auth/login', {
+      'email': email,
+      'password': password,
+      'remember_me': rememberMe,
+    });
+  }
+
+  /// Logout the current user and clear stored cookies.
+  Future<void> logout() async {
+    try {
+      await _postJsonAuth('/api/auth/logout', {});
+    } finally {
+      await clearCookies();
+    }
+  }
+
+  /// Return the currently authenticated user's profile, or null if not logged in.
+  Future<Map<String, dynamic>?> getCurrentUser() async {
+    try {
+      return await _getAuth('/api/auth/me');
+    } on ApiException catch (e) {
+      if (e.statusCode == 401 || e.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
+  // ── Ride Chat ─────────────────────────────────────────────────────────────
+
+  /// Fetch the ride chat inbox for the current user.
+  Future<List<Map<String, dynamic>>> getRideChatInbox() async {
+    final data = await _getAuth('/api/rides/chat/inbox');
+    final list = data['conversations'] ?? data['inbox'] ?? data;
+    if (list is List) {
+      return list.whereType<Map<String, dynamic>>().toList();
+    }
+    return [];
+  }
+
+  /// Fetch messages for a specific ride's chat.
+  Future<List<Map<String, dynamic>>> getRideChatMessages(String rideId) async {
+    final data = await _getAuth('/api/rides/${Uri.encodeComponent(rideId)}/chat');
+    final list = data['messages'];
+    if (list is List) {
+      return list.whereType<Map<String, dynamic>>().toList();
+    }
+    return [];
+  }
+
+  /// Confirm journey participation for a ride.
+  Future<void> confirmJourney(String rideId, String realName, String contact) async {
+    await _postJsonAuth(
+      '/api/rides/${Uri.encodeComponent(rideId)}/confirm_journey',
+      {'real_name': realName, 'contact': contact},
+    );
+  }
+
+  // ── Direct Messages ───────────────────────────────────────────────────────
+
+  /// List DM conversations, optionally filtering by [search] (username).
+  Future<List<Map<String, dynamic>>> getDmConversations({String? search}) async {
+    final query = <String, String>{};
+    if (search != null && search.isNotEmpty) query['search'] = search;
+    final data = await _getAuth('/api/dm/conversations', query.isNotEmpty ? query : null);
+    final list = data['conversations'] ?? data;
+    if (list is List) {
+      return list.whereType<Map<String, dynamic>>().toList();
+    }
+    return [];
+  }
+
+  /// Fetch messages for a DM conversation.
+  Future<List<Map<String, dynamic>>> getDmMessages(String convId) async {
+    final data =
+        await _getAuth('/api/dm/conversations/${Uri.encodeComponent(convId)}/messages');
+    final list = data['messages'];
+    if (list is List) {
+      return list.whereType<Map<String, dynamic>>().toList();
+    }
+    return [];
+  }
+
+  /// Send a DM message.
+  Future<Map<String, dynamic>> sendDmMessage({
+    required String convId,
+    required String content,
+    String? replyToId,
+  }) async {
+    return _postJsonAuth('/api/dm/messages', {
+      'conv_id': convId,
+      'content': content,
+      if (replyToId != null) 'reply_to_id': replyToId,
+    });
+  }
+
+  /// Start or retrieve a DM conversation with another user.
+  Future<Map<String, dynamic>> startDmConversation(String otherUserId) async {
+    return _postJsonAuth('/api/dm/conversations', {'other_user_id': otherUserId});
+  }
+
+  /// Mark a DM conversation as read.
+  Future<void> markDmRead(String convId) async {
+    try {
+      await _postJsonAuth(
+          '/api/dm/conversations/${Uri.encodeComponent(convId)}/read', {});
+    } catch (_) {}
+  }
+
+  /// Fetch users that the current user has previously chatted with (DM contacts).
+  Future<List<Map<String, dynamic>>> getDmContacts() async {
+    try {
+      final data = await _getAuth('/api/dm/contacts');
+      final list = data['contacts'] ?? data;
+      if (list is List) {
+        return list.whereType<Map<String, dynamic>>().toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  /// Returns the full URL for a user's avatar given a relative or absolute path.
+  String avatarUrl(String? path) {
+    if (path == null || path.isEmpty) return '';
+    if (path.startsWith('http')) return path;
+    return '$_base$path';
   }
 }
