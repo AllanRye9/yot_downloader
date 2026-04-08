@@ -68,51 +68,6 @@ html.theme-ocean {
   --accent-text:   #ffffff;
 }
 
-html.theme-forest {
-  --bg-page:       #0d1f0f;
-  --bg-nav:        rgba(13,31,15,.95);
-  --bg-surface:    #142914;
-  --bg-card:       #142914;
-  --bg-input:      #1a3a1a;
-  --border-color:  #1f4a1f;
-  --text-primary:  #d4edda;
-  --text-secondary:#74c083;
-  --text-muted:    #3d6b45;
-  --accent:        #22c55e; /* green-500 */
-  --accent-hover:  #4ade80;
-  --accent-text:   #ffffff;
-}
-
-html.theme-sunset {
-  --bg-page:       #1a0d0a;
-  --bg-nav:        rgba(26,13,10,.95);
-  --bg-surface:    #2d1409;
-  --bg-card:       #2d1409;
-  --bg-input:      #3d1e10;
-  --border-color:  #5a2e14;
-  --text-primary:  #fde8d8;
-  --text-secondary:#f4a460;
-  --text-muted:    #a0522d;
-  --accent:        #f97316; /* orange-500 */
-  --accent-hover:  #fb923c;
-  --accent-text:   #ffffff;
-}
-
-html.theme-purple {
-  --bg-page:       #0d0a1a;
-  --bg-nav:        rgba(13,10,26,.95);
-  --bg-surface:    #160d2d;
-  --bg-card:       #160d2d;
-  --bg-input:      #21143d;
-  --border-color:  #341d5c;
-  --text-primary:  #ede8ff;
-  --text-secondary:#a78bfa;
-  --text-muted:    #6d47b8;
-  --accent:        #8b5cf6; /* violet-500 */
-  --accent-hover:  #a78bfa;
-  --accent-text:   #ffffff;
-}
-
 /* ── Apply theme variables to base elements ──────────────────────────────── */
 html {
   background-color: var(--bg-page);
