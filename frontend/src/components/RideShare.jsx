@@ -145,7 +145,7 @@ function FareCalculator({ ride }) {
   )
 }
 
-export default function RideShare({ user, onRidesChange, requestedRide, onRequestedRideHandled, showSections, openChatRideId, onChatOpened }) {
+export default function RideShare({ user, onRidesChange, requestedRide, onRequestedRideHandled, showSections, openChatRideId, onChatOpened, driverOnlyRides = false }) {
   const sections = { ...DEFAULT_SECTIONS, ...(showSections || {}) }
   const isDriver = user?.role === 'driver'
   const PAGE_SIZE = 12
@@ -258,7 +258,10 @@ export default function RideShare({ user, onRidesChange, requestedRide, onReques
   // Filtered + sorted ride list
   const filteredRides = useMemo(() => {
     const q = locationFilter.trim().toLowerCase()
-    let list = rides
+    // When driverOnlyRides is set, restrict list to the driver's own rides only
+    let list = driverOnlyRides && user?.user_id
+      ? rides.filter(r => r.user_id === user.user_id)
+      : rides
 
     // Location text filter
     if (q) {
@@ -295,7 +298,7 @@ export default function RideShare({ user, onRidesChange, requestedRide, onReques
     }
 
     return list
-  }, [rides, locationFilter, rideTypeFilter, sortBy, userLat, userLng])
+  }, [rides, locationFilter, rideTypeFilter, sortBy, userLat, userLng, driverOnlyRides, user?.user_id])
 
   // Paginated slice
   const totalPages = Math.max(1, Math.ceil(filteredRides.length / PAGE_SIZE))

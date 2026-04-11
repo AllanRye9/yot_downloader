@@ -1,11 +1,24 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { getUserProfile, userLogout, getDriverDashboard } from '../api'
+import { getUserProfile, userLogout, getDriverDashboard, getRideChatInbox } from '../api'
 import NavBar from '../components/NavBar'
 import RideShare from '../components/RideShare'
 import RideChat from '../components/RideChat'
-import DMInbox from '../components/DMInbox'
+import RideShareMap from '../components/RideShareMap'
 import { getDashboardPath } from '../routing'
+
+function fmtTs(ts) {
+  if (!ts) return ''
+  try {
+    const d = typeof ts === 'number' && ts < 1e10 ? new Date(ts * 1000) : new Date(ts)
+    const now  = new Date()
+    const diff = now - d
+    if (diff < 60000)    return 'now'
+    if (diff < 3600000)  return Math.floor(diff / 60000)   + 'm'
+    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h'
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  } catch { return '' }
+}
 
 export default function DriverDashboard() {
   const navigate = useNavigate()
@@ -16,11 +29,14 @@ export default function DriverDashboard() {
   const [tab, setTab]               = useState('overview')
   const [selectedRide, setSelectedRide] = useState(null)
 
+  // Ride-chat inbox for drivers
+  const [rideInbox, setRideInbox]   = useState([])
+  const [inboxLoading, setInboxLoading] = useState(false)
+
   useEffect(() => {
     getUserProfile()
       .then(u => {
         if (u.role !== 'driver') {
-          // Wrong role — redirect to the correct dashboard
           navigate(getDashboardPath(u), { replace: true })
           return
         }
@@ -34,6 +50,18 @@ export default function DriverDashboard() {
       })
       .finally(() => setLoading(false))
   }, [navigate])
+
+  const loadRideInbox = () => {
+    setInboxLoading(true)
+    getRideChatInbox()
+      .then(d => setRideInbox(d.conversations || d.inbox || []))
+      .catch(() => setRideInbox([]))
+      .finally(() => setInboxLoading(false))
+  }
+
+  useEffect(() => {
+    if (tab === 'inbox') loadRideInbox()
+  }, [tab])
 
   const handleLogout = async () => {
     await userLogout()
@@ -52,6 +80,12 @@ export default function DriverDashboard() {
 
   const stats = dashData?.stats || {}
 
+  // Categorise recent rides by status
+  const allRecentRides = dashData?.posted_rides || []
+  const openRides      = allRecentRides.filter(r => r.status === 'open')
+  const cancelledRides = allRecentRides.filter(r => r.status === 'cancelled')
+  const otherRides     = allRecentRides.filter(r => r.status !== 'open' && r.status !== 'cancelled')
+
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg-page)', color: 'var(--text-primary)' }}>
       {/* Shared NavBar */}
@@ -60,7 +94,13 @@ export default function DriverDashboard() {
       {/* Tab bar */}
       <nav className="border-b flex px-4 gap-1 overflow-x-auto"
            style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)' }}>
-        {[['overview', '📊 Overview'], ['rides', '🚘 My Rides'], ['inbox', '📬 Inbox'], ['chat', '💬 Ride Chat']].map(([id, label]) => (
+        {[
+          ['overview', '📊 Overview'],
+          ['rides',    '🚘 My Rides'],
+          ['inbox',    '📬 Inbox'],
+          ['chat',     '💬 Ride Chat'],
+          ['map',      '🗺️ Map'],
+        ].map(([id, label]) => (
           <button
             key={id}
             onClick={() => setTab(id)}
@@ -95,31 +135,79 @@ export default function DriverDashboard() {
               ))}
             </div>
 
-            {/* Recent posted rides */}
-            {dashData?.posted_rides?.length > 0 && (
-              <div className="rounded-xl p-4"
+            {/* Recent rides — categorised by status */}
+            {allRecentRides.length > 0 && (
+              <div className="rounded-xl p-4 space-y-4"
                    style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
-                <h2 className="font-semibold text-sm mb-3" style={{ color: 'var(--text-secondary)' }}>Recent Rides</h2>
-                <div className="space-y-2">
-                  {dashData.posted_rides.slice(0, 5).map(ride => (
-                    <div
-                      key={ride.ride_id}
-                      className="flex items-center justify-between rounded-lg px-3 py-2 cursor-pointer transition-colors hover:opacity-80"
-                      style={{ background: 'var(--bg-surface)' }}
-                      onClick={() => { setSelectedRide(ride); setTab('chat') }}
-                    >
-                      <div>
-                        <p className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{ride.origin} → {ride.destination}</p>
-                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{ride.departure} · {ride.seats} seats</p>
-                      </div>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        ride.status === 'open' ? 'bg-green-900/50 text-green-400' : 'bg-gray-700 text-gray-400'
-                      }`}>
-                        {ride.status}
-                      </span>
+                <h2 className="font-semibold text-sm" style={{ color: 'var(--text-secondary)' }}>Recent Rides</h2>
+
+                {/* Open rides */}
+                {openRides.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold mb-1.5 text-green-400">🟢 Open</p>
+                    <div className="space-y-2">
+                      {openRides.slice(0, 5).map(ride => (
+                        <div
+                          key={ride.ride_id}
+                          className="flex items-center justify-between rounded-lg px-3 py-2 cursor-pointer transition-colors hover:opacity-80 border border-green-800/40"
+                          style={{ background: 'var(--bg-surface)' }}
+                          onClick={() => { setSelectedRide(ride); setTab('chat') }}
+                        >
+                          <div>
+                            <p className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{ride.origin} → {ride.destination}</p>
+                            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{ride.departure} · {ride.seats} seats</p>
+                          </div>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-green-900/50 text-green-400">open</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                )}
+
+                {/* Cancelled rides */}
+                {cancelledRides.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold mb-1.5 text-red-400">🔴 Cancelled</p>
+                    <div className="space-y-2">
+                      {cancelledRides.slice(0, 5).map(ride => (
+                        <div
+                          key={ride.ride_id}
+                          className="flex items-center justify-between rounded-lg px-3 py-2 border border-red-800/40 opacity-70"
+                          style={{ background: 'var(--bg-surface)' }}
+                        >
+                          <div>
+                            <p className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{ride.origin} → {ride.destination}</p>
+                            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{ride.departure} · {ride.seats} seats</p>
+                          </div>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-red-900/50 text-red-400">cancelled</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Other statuses (taken etc.) */}
+                {otherRides.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Other</p>
+                    <div className="space-y-2">
+                      {otherRides.slice(0, 5).map(ride => (
+                        <div
+                          key={ride.ride_id}
+                          className="flex items-center justify-between rounded-lg px-3 py-2 cursor-pointer transition-colors hover:opacity-80"
+                          style={{ background: 'var(--bg-surface)' }}
+                          onClick={() => { setSelectedRide(ride); setTab('chat') }}
+                        >
+                          <div>
+                            <p className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{ride.origin} → {ride.destination}</p>
+                            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{ride.departure} · {ride.seats} seats</p>
+                          </div>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-400">{ride.status}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -134,7 +222,7 @@ export default function DriverDashboard() {
                   + Post New Ride
                 </button>
                 <button
-                  onClick={() => setTab('chat')}
+                  onClick={() => setTab('inbox')}
                   className="px-3 py-1.5 text-xs rounded-lg transition-colors hover:opacity-80"
                   style={{ background: 'var(--bg-surface)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}
                 >
@@ -145,14 +233,59 @@ export default function DriverDashboard() {
           </div>
         )}
 
-        {/* My Rides (post + list) */}
+        {/* My Rides (driver's own rides only) */}
         {tab === 'rides' && (
-          <RideShare user={driver} onOpenChat={(ride) => { setSelectedRide(ride); setTab('chat') }} />
+          <RideShare
+            user={driver}
+            driverOnlyRides
+            onOpenChat={(ride) => { setSelectedRide(ride); setTab('chat') }}
+          />
         )}
 
-        {/* DM Inbox */}
+        {/* Ride Chat Inbox (driver-only: shows passenger conversations per ride) */}
         {tab === 'inbox' && (
-          <DMInbox currentUser={driver} />
+          <div className="rounded-xl p-4 space-y-3"
+               style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-sm" style={{ color: 'var(--text-secondary)' }}>📬 Ride Chat Inbox</h2>
+              <button onClick={loadRideInbox} className="text-xs hover:opacity-70 transition-opacity" style={{ color: 'var(--text-muted)' }}>
+                ↻ Refresh
+              </button>
+            </div>
+            {inboxLoading ? (
+              <div className="flex justify-center py-6"><div className="spinner w-6 h-6" /></div>
+            ) : rideInbox.length === 0 ? (
+              <p className="text-xs text-center py-6" style={{ color: 'var(--text-muted)' }}>No ride conversations yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {rideInbox.map((item, i) => (
+                  <button
+                    key={item.ride_id || i}
+                    onClick={() => { setSelectedRide(item); setTab('chat') }}
+                    className="w-full text-left flex items-center justify-between rounded-lg px-3 py-2.5 transition-colors hover:opacity-80"
+                    style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                        {item.ride_info?.origin || item.origin || '?'} → {item.ride_info?.destination || item.destination || '?'}
+                      </p>
+                      <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                        {item.text || item.last_message || 'No messages yet'}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end shrink-0 ml-2 gap-1">
+                      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{fmtTs(item.ts || item.timestamp)}</span>
+                      {item.unread_count > 0 && (
+                        <span className="w-4 h-4 rounded-full bg-amber-500 text-black text-xs flex items-center justify-center font-bold">
+                          {item.unread_count}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Ride Chat */}
@@ -174,13 +307,30 @@ export default function DriverDashboard() {
                    style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
                 Select a ride to view its chat thread.
                 <button
-                  onClick={() => setTab('rides')}
+                  onClick={() => setTab('inbox')}
                   className="block mx-auto mt-3 text-xs text-amber-500 hover:text-amber-400"
                 >
-                  Go to My Rides →
+                  Go to Inbox →
                 </button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Map — shows driver's rides and their pickup locations */}
+        {tab === 'map' && (
+          <div className="rounded-xl overflow-hidden"
+               style={{ border: '1px solid var(--border-color)' }}>
+            <div className="px-4 py-2 border-b text-xs font-semibold"
+                 style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
+              🗺️ Pickup Map — your active ride locations
+            </div>
+            <RideShareMap
+              rides={(dashData?.posted_rides || []).filter(r => r.status === 'open')}
+              autoLoadDrivers={false}
+              mapHeight={420}
+              onOpenChat={(ride) => { setSelectedRide(ride); setTab('chat') }}
+            />
           </div>
         )}
       </main>
