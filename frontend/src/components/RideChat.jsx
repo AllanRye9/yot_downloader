@@ -383,6 +383,18 @@ export default function RideChat({ ride, user, onClose }) {
     )
   }
 
+  const handleConfirmPickup = () => {
+    const pickupText = `✅ Driver confirmed pick-up. I'm on my way to collect you!`
+    socket.emit('ride_chat_message', {
+      ride_id:     rideId,
+      text:        pickupText,
+      name:        myName,
+      sender_name: myName,
+      sender_id:   myId,
+      role:        'driver',
+    })
+  }
+
   const fmtTime = (ts) => {
     if (!ts) return ''
     const d = typeof ts === 'number' && ts < 1e10 ? new Date(ts * 1000) : new Date(ts)
@@ -458,6 +470,11 @@ export default function RideChat({ ride, user, onClose }) {
             🗺️ Share My Location
           </button>
           {locShareMsg && <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{locShareMsg}</span>}
+
+          <button onClick={handleConfirmPickup}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors bg-amber-600 hover:bg-amber-500 text-white">
+            ✅ Confirm Pick-Up
+          </button>
         </div>
       )}
 
