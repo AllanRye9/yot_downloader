@@ -2,8 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import RideShare from '../components/RideShare'
 import RideChat from '../components/RideChat'
-import ThemeSelector from '../components/ThemeSelector'
-import UserProfile from '../components/UserProfile'
+import NavBar from '../components/NavBar'
 import DMInbox from '../components/DMInbox'
 import RideShareMap from '../components/RideShareMap'
 import {
@@ -56,6 +55,34 @@ function DashboardAIAssistant() {
   const [loading, setLoading] = useState(false)
   const bottomRef = useRef(null)
 
+  // Drag state
+  const panelRef    = useRef(null)
+  const dragging    = useRef(false)
+  const dragOffset  = useRef({ x: 0, y: 0 })
+  const [position, setPosition] = useState(null) // null = default (fixed bottom-right)
+
+  useEffect(() => {
+    const onMove = (e) => {
+      if (!dragging.current) return
+      setPosition({ x: e.clientX - dragOffset.current.x, y: e.clientY - dragOffset.current.y })
+    }
+    const onUp = () => { dragging.current = false }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    return () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+  }, [])
+
+  const handleDragStart = (e) => {
+    if (e.button !== 0) return
+    dragging.current = true
+    const rect = panelRef.current.getBoundingClientRect()
+    dragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    e.preventDefault()
+  }
+
   useEffect(() => {
     if (open) setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
   }, [msgs, open])
@@ -81,33 +108,68 @@ function DashboardAIAssistant() {
     '📋 Check my booking',
     '💳 Payment policy',
     '❓ How to book a ride',
+    '🚗 Available rides today',
+    '📍 How does seat booking work?',
   ]
 
+  const posStyle = position
+    ? { position: 'fixed', left: position.x, top: position.y }
+    : { position: 'fixed', right: 20, bottom: 20 }
+
   return (
-    <div className="rounded-xl border overflow-hidden" style={{ background: 'var(--bg-card, #1f2937)', borderColor: 'var(--border-color, #374151)' }}>
-      <button onClick={() => setOpen(v => !v)}
-              className="w-full flex items-center gap-3 px-4 py-3 hover:opacity-90 transition-opacity">
-        <div className="relative shrink-0">
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-lg">🤖</div>
-          <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-400 border-2" style={{ borderColor: 'var(--bg-card, #1f2937)' }} />
-        </div>
-        <div className="flex-1 text-left">
-          <p className="text-sm font-bold text-white">YotBot AI Assistant</p>
-          <p className="text-xs text-gray-400">Ask about rides, bookings, policies &amp; more</p>
-        </div>
-        <span className="text-xs px-2 py-0.5 rounded-full font-medium mr-1 bg-green-900/40 text-green-400">Online</span>
-        <span className="text-xs text-gray-500">{open ? '▲' : '▼'}</span>
-      </button>
+    <div
+      ref={panelRef}
+      style={{
+        ...posStyle,
+        zIndex: 200,
+        width: open ? 320 : 56,
+        maxHeight: open ? 480 : 56,
+        borderRadius: open ? 16 : 28,
+        overflow: 'hidden',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
+        background: '#111827',
+        border: '1px solid #374151',
+        transition: 'width 0.2s, max-height 0.2s, border-radius 0.2s',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      {/* Header / toggle (drag handle) */}
+      <div
+        onMouseDown={handleDragStart}
+        style={{ cursor: 'grab', userSelect: 'none', flexShrink: 0 }}
+      >
+        <button
+          onClick={() => setOpen(v => !v)}
+          className="w-full flex items-center gap-3 px-3 py-3 hover:opacity-90 transition-opacity"
+          style={{ pointerEvents: 'auto' }}
+          title={open ? 'Collapse YotBot' : 'Open YotBot AI Assistant'}
+        >
+          <div className="relative shrink-0">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-base">🤖</div>
+            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-400 border-2 border-gray-900" />
+          </div>
+          {open && (
+            <>
+              <div className="flex-1 text-left overflow-hidden">
+                <p className="text-sm font-bold text-white truncate">YotBot AI</p>
+                <p className="text-xs text-gray-400 truncate">Rides · Bookings · Policies</p>
+              </div>
+              <span className="text-xs text-gray-500 shrink-0">{open ? '▼' : '▲'}</span>
+            </>
+          )}
+        </button>
+      </div>
 
       {open && (
         <>
-          <div className="h-64 overflow-y-auto px-4 py-3 space-y-3 bg-gray-900/50 border-t border-b border-gray-700">
+          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3" style={{ background: 'rgba(17,24,39,0.9)', minHeight: 0 }}>
             {msgs.map((m, i) => (
               <div key={i} className={`flex gap-2 items-end ${m.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                 {m.role === 'bot' && (
-                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-xs shrink-0">🤖</div>
+                  <div className="w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-xs shrink-0">🤖</div>
                 )}
-                <div className={`max-w-[85%] px-3 py-2 rounded-2xl text-sm leading-relaxed ${
+                <div className={`max-w-[85%] px-3 py-2 rounded-2xl text-xs leading-relaxed ${
                   m.role === 'user' ? 'rounded-br-sm bg-amber-500 text-black' : 'rounded-bl-sm bg-gray-800 text-gray-100'
                 }`}>
                   {m.text}
@@ -116,8 +178,8 @@ function DashboardAIAssistant() {
             ))}
             {loading && (
               <div className="flex gap-2 items-end">
-                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-xs shrink-0">🤖</div>
-                <div className="px-3 py-2 rounded-2xl rounded-bl-sm bg-gray-800 text-gray-400 text-sm">
+                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-xs shrink-0">🤖</div>
+                <div className="px-3 py-2 rounded-2xl rounded-bl-sm bg-gray-800 text-gray-400 text-xs">
                   <span className="inline-flex gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }} />
                     <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -129,23 +191,23 @@ function DashboardAIAssistant() {
             <div ref={bottomRef} />
           </div>
           {msgs.length <= 1 && !loading && (
-            <div className="px-4 py-2 flex gap-2 overflow-x-auto border-b border-gray-700">
+            <div className="px-3 py-2 flex gap-1.5 overflow-x-auto border-t border-gray-700 scrollbar-none">
               {SUGGESTIONS.map((s, i) => (
                 <button key={i} onClick={() => send(s)}
-                        className="shrink-0 text-xs px-3 py-1.5 rounded-full bg-gray-800 text-gray-300 border border-gray-700 hover:opacity-80 whitespace-nowrap">
+                        className="shrink-0 text-xs px-2.5 py-1 rounded-full bg-gray-800 text-gray-300 border border-gray-700 hover:opacity-80 whitespace-nowrap">
                   {s}
                 </button>
               ))}
             </div>
           )}
-          <div className="flex gap-2 p-3">
+          <div className="flex gap-2 p-2.5 border-t border-gray-700 shrink-0">
             <input value={input} onChange={e => setInput(e.target.value)}
                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-                   placeholder="Ask YotBot anything…"
+                   placeholder="Ask YotBot…"
                    maxLength={300}
-                   className="flex-1 rounded-xl px-3 py-2 text-sm outline-none bg-gray-800 text-white border border-gray-700" />
+                   className="flex-1 rounded-xl px-3 py-1.5 text-xs outline-none bg-gray-800 text-white border border-gray-700" />
             <button onClick={() => send()} disabled={!input.trim() || loading}
-                    className="w-10 h-10 rounded-xl flex items-center justify-center text-sm bg-amber-500 hover:bg-amber-400 text-black disabled:opacity-40 shrink-0">
+                    className="w-8 h-8 rounded-xl flex items-center justify-center text-xs bg-amber-500 hover:bg-amber-400 text-black disabled:opacity-40 shrink-0">
               ➤
             </button>
           </div>
@@ -268,8 +330,7 @@ function OverviewPanel({ user, dashStats, onSelectTab, onNavigate }) {
           </div>
         </div>
       )}
-      {/* AI Assistant widget on dashboard */}
-      <DashboardAIAssistant />
+      {/* AI Assistant floating widget is rendered at the dashboard root level */}
     </div>
   )
 }
@@ -532,8 +593,6 @@ export default function UserDashboard() {
   const [userLoading, setUserLoading] = useState(true)
   const [tab,         setTab]         = useState('overview')
   const [dashStats,   setDashStats]   = useState(null)
-  const [connected,   setConnected]   = useState(false)
-  const [menuOpen,    setMenuOpen]    = useState(false)
   const [unreadNotifs, setUnreadNotifs] = useState(0)
   const [unreadChat,  setUnreadChat]  = useState(0)
   const [notifications, setNotifications] = useState([])
@@ -547,7 +606,6 @@ export default function UserDashboard() {
   const [driverForm,  setDriverForm]  = useState({ vehicle_make:'', vehicle_model:'', vehicle_year:'', vehicle_color:'', license_plate:'' })
   const [driverApplying, setDriverApplying] = useState(false)
   const [driverApplyMsg, setDriverApplyMsg] = useState('')
-  const profileRef     = useRef(null)
   const tabPanelRef    = useRef(null)
 
   // Load current user; redirect to login if not logged in, or driver dashboard if role=driver
@@ -573,22 +631,13 @@ export default function UserDashboard() {
       .finally(() => setUserLoading(false))
   }, [navigate])
 
-  // Socket connection indicator
+  // Socket connection indicator + real-time unread chat count
   useEffect(() => {
-    const onConnect    = () => setConnected(true)
-    const onDisconnect = () => setConnected(false)
-    // Real-time chat notification from ride poster
     const onChatNotif = () => setUnreadChat(c => c + 1)
-    // Real-time DM notification
-    const onDmNotif = () => setUnreadChat(c => c + 1)
-    socket.on('connect',                onConnect)
-    socket.on('disconnect',             onDisconnect)
+    const onDmNotif   = () => setUnreadChat(c => c + 1)
     socket.on('ride_chat_notification', onChatNotif)
     socket.on('dm_notification',        onDmNotif)
-    setConnected(socket.connected)
     return () => {
-      socket.off('connect',                onConnect)
-      socket.off('disconnect',             onDisconnect)
       socket.off('ride_chat_notification', onChatNotif)
       socket.off('dm_notification',        onDmNotif)
     }
@@ -604,16 +653,6 @@ export default function UserDashboard() {
     fetchUnread()
     const id = setInterval(fetchUnread, 30_000)
     return () => clearInterval(id)
-  }, [])
-
-  // Close profile dropdown when clicking outside (unused now, kept for safety)
-  useEffect(() => {
-    const handler = (e) => {
-      if (profileRef.current && !profileRef.current.contains(e.target))
-        void e // no-op
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
   }, [])
 
   const fetchMapDrivers = useCallback(() => {
@@ -690,106 +729,8 @@ export default function UserDashboard() {
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">
 
-      {/* ── Navbar ── */}
-      <nav className="sticky top-0 z-50 bg-gray-950/95 backdrop-blur border-b border-gray-800">
-        <div className="max-w-7xl mx-auto px-4 flex items-center h-14 gap-4">
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 text-xl font-bold text-white shrink-0">
-            <img src="/yotweek.png" alt="" width={22} height={22} style={{ borderRadius: 4 }} aria-hidden="true" />
-            <span className="gradient-text hidden sm:inline">yotweek</span>
-            <span className="gradient-text sm:hidden">YOT</span>
-          </Link>
-
-          {/* Dashboard label */}
-          <span className="hidden sm:inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-blue-900/50 border border-blue-700/60 text-blue-300">
-            Dashboard
-          </span>
-
-          <div className="flex-1" />
-
-          {/* Connection dot */}
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400' : 'bg-red-500'}`} />
-            <span className="text-gray-500 hidden sm:inline">{connected ? 'Live' : 'Offline'}</span>
-          </div>
-
-          <ThemeSelector />
-
-          {/* Notification + Inbox quick-access buttons in navbar */}
-          <button
-            onClick={() => navigate('/inbox')}
-            className="relative text-gray-400 hover:text-white transition-colors"
-            title="Chat Inbox"
-            aria-label="Chat inbox"
-          >
-            <span className="text-lg">💬</span>
-            {unreadChat > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 rounded-full bg-green-500 border border-gray-950 flex items-center justify-center text-white text-[9px] font-bold px-0.5 pointer-events-none notif-badge-green">
-                {unreadChat > 9 ? '9+' : unreadChat}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => handleSelectTab('notifications')}
-            className="relative text-gray-400 hover:text-white transition-colors"
-            title="Notifications"
-            aria-label="Notifications"
-          >
-            <span className="text-lg">🔔</span>
-            {unreadNotifs > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 rounded-full bg-green-500 border border-gray-950 flex items-center justify-center text-white text-[9px] font-bold px-0.5 pointer-events-none notif-badge-green">
-                {unreadNotifs > 9 ? '9+' : unreadNotifs}
-              </span>
-            )}
-          </button>
-
-          {/* Profile button */}
-          <div className="relative" ref={profileRef}>
-            <button
-              onClick={() => navigate('/profile')}
-              className="nav-profile-btn w-8 h-8 rounded-full bg-blue-700 hover:bg-blue-600 flex items-center justify-center text-base transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 overflow-hidden"
-              aria-label="Profile"
-              title={appUser.name}
-            >
-              {appUser.avatar_url ? (
-                <img src={appUser.avatar_url} alt="" className="w-full h-full object-cover" />
-              ) : (
-                <span>{appUser.role === 'driver' ? '🚗' : '🧍'}</span>
-              )}
-            </button>
-          </div>
-
-          {/* Logout button */}
-          <button
-            onClick={handleLogout}
-            className="hidden sm:inline-flex text-xs px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-400 hover:text-white transition-colors items-center gap-1"
-          >
-            Sign out
-          </button>
-
-          {/* Mobile menu toggle */}
-          <button
-            className="btn-ghost btn-sm sm:hidden"
-            onClick={() => setMenuOpen(m => !m)}
-            aria-label="Menu"
-          >
-            {menuOpen ? '✕' : '☰'}
-          </button>
-        </div>
-
-        {/* Mobile dropdown */}
-        {menuOpen && (
-          <div className="sm:hidden border-t border-gray-800 bg-gray-900 px-4 py-3 space-y-2">
-            <button
-              onClick={() => { setMenuOpen(false); handleLogout() }}
-              className="block w-full text-left text-sm text-gray-400 hover:text-white py-1"
-            >
-              Sign out
-            </button>
-          </div>
-        )}
-      </nav>
+      {/* ── Shared NavBar ── */}
+      <NavBar user={appUser} onLogout={handleLogout} />
 
       {/* ── Sidebar + Content layout ── */}
       <div className="flex-1 max-w-7xl mx-auto w-full px-4 pt-6 pb-20 sm:pb-8 flex gap-6">
@@ -1023,17 +964,6 @@ export default function UserDashboard() {
                     })}
                   </div>
                 )}
-              </div>
-            )}
-
-            {tab === 'profile' && (
-              <div className="card">
-                <UserProfile
-                  user={appUser}
-                  onLogout={handleLogout}
-                  onLocationUpdate={(loc) => setAppUser(u => ({ ...u, ...loc }))}
-                  onUserUpdate={(u) => u && setAppUser(prev => ({ ...prev, ...u }))}
-                />
               </div>
             )}
 
@@ -1286,6 +1216,9 @@ export default function UserDashboard() {
           <Link to="/" className="hover:text-gray-400 transition-colors">Home</Link>
         </p>
       </footer>
+
+      {/* ── Floating draggable AI assistant ── */}
+      <DashboardAIAssistant />
     </div>
   )
 }

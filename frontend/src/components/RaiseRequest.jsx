@@ -301,7 +301,7 @@ export default function RaiseRequest({ user, onConvCreated }) {
                       🕐 {new Date(req.desired_date).toLocaleString()}
                     </span>
                     <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)' }}>
-                      👥 {req.passengers} pax
+                      👥 {req.passengers} {req.passengers === 1 ? 'passenger' : 'passengers'}
                     </span>
                     {(req.price_min != null || req.price_max != null) && (
                       <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(16,185,129,0.12)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.3)' }}>
