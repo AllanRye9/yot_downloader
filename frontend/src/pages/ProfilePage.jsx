@@ -88,12 +88,12 @@ function IdentityBanner({ user, onAvatarChange }) {
     : null
 
   return (
-    <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 16, padding: '32px 32px', marginBottom: 20, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 28, flexWrap: 'wrap' }}>
+    <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 16, padding: '20px 24px', marginBottom: 20, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
       {/* Avatar */}
       <div
         onClick={() => inputRef.current?.click()}
         title="Click to change avatar"
-        style={{ position: 'relative', width: 120, height: 120, borderRadius: '50%', overflow: 'hidden', border: '4px solid var(--accent)', cursor: 'pointer', flexShrink: 0, boxShadow: '0 4px 24px rgba(0,0,0,0.3)' }}
+        style={{ position: 'relative', width: 88, height: 88, borderRadius: '50%', overflow: 'hidden', border: '3px solid var(--accent)', cursor: 'pointer', flexShrink: 0, boxShadow: '0 2px 12px rgba(0,0,0,0.25)' }}
       >
         {displayUrl
           ? <img src={displayUrl} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -119,33 +119,33 @@ function IdentityBanner({ user, onAvatarChange }) {
         )}
 
         {/* Camera icon overlay */}
-        <div style={{ position: 'absolute', bottom: 4, right: 4, width: 32, height: 32, borderRadius: '50%', background: 'var(--accent)', border: '2px solid var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15 }}>
+        <div style={{ position: 'absolute', bottom: 2, right: 2, width: 26, height: 26, borderRadius: '50%', background: 'var(--accent)', border: '2px solid var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>
           📷
         </div>
       </div>
       <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFile} />
 
       {/* Name + role + bio */}
-      <div style={{ flex: 1, minWidth: 200 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 800, fontSize: '1.75rem', color: 'var(--text-primary)' }}>{user.name}</span>
+      <div style={{ flex: 1, minWidth: 180 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 700, fontSize: '1.35rem', color: 'var(--text-primary)' }}>{user.name}</span>
           {user.role === 'driver' && (
-            <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: 9999, background: 'rgba(16,185,129,0.15)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.35)' }}>✅ Verified Driver</span>
+            <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: 9999, background: 'rgba(16,185,129,0.15)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.35)' }}>✅ Verified Driver</span>
           )}
           {user.role && user.role !== 'driver' && (
-            <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: 9999, background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.35)' }}>
+            <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: 9999, background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.35)' }}>
               {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
             </span>
           )}
         </div>
         {user.email && (
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: 2 }}>{user.email}</p>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 1 }}>{user.email}</p>
         )}
         {memberSince && (
-          <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: 2 }}>Member since {memberSince}</p>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 1 }}>Member since {memberSince}</p>
         )}
         {user.bio && (
-          <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', marginTop: 8, lineHeight: 1.55 }}>{user.bio}</p>
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: 6, lineHeight: 1.5 }}>{user.bio}</p>
         )}
       </div>
 

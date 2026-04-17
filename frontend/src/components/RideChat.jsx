@@ -510,7 +510,12 @@ export default function RideChat({ ride, user, onClose }) {
               🎉 Journey Confirmed!
             </div>
           )}
-          {!showConfirm ? (
+          {currentSeats === 0 ? (
+            <div className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-red-300"
+                 style={{ background: 'rgba(127,29,29,0.4)', border: '1px solid rgba(248,113,113,0.3)' }}>
+              🚫 Fully Booked — No seats available
+            </div>
+          ) : !showConfirm ? (
             <button
               onClick={handleOpenConfirm}
               className="w-full relative inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white overflow-hidden shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-amber-500/40 active:scale-[0.98]"
