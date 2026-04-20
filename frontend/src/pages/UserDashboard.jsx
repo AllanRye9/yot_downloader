@@ -1007,6 +1007,9 @@ export default function UserDashboard() {
     }
     if (id === 'map') {
       fetchMapDrivers()
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(() => {}, () => {})
+      }
     }
     if (id === 'notifications') {
       setUnreadNotifs(0)
