@@ -128,6 +128,7 @@ export default function RequestsPage() {
   const [loading,    setLoading]    = useState(true)
   const [creating,   setCreating]   = useState(false)
   const [showForm,   setShowForm]   = useState(false)
+  const [reqTab,     setReqTab]     = useState('browse')
   const [error,      setError]      = useState('')
   const [accepting,  setAccepting]  = useState(null)
   const [messaging,  setMessaging]  = useState(null)
@@ -310,22 +311,26 @@ export default function RequestsPage() {
 
       <main className="flex-1 max-w-3xl mx-auto w-full p-4 space-y-4">
 
-        {/* Action bar */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="font-bold text-lg" style={{ color: 'var(--text-primary)' }}>🙋 Ride Requests</h1>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Find or post rides — matched with drivers in real time</p>
-          </div>
+        {/* Sub-tab bar */}
+        <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border-color)' }}>
           <button
-            onClick={() => { setShowForm(f => !f); setFormStep(1); setError('') }}
-            className="flex items-center gap-2 text-sm bg-amber-500 hover:bg-amber-400 text-black px-4 py-2 rounded-xl font-semibold transition-all shadow-md hover:shadow-amber-500/30"
+            onClick={() => setReqTab('browse')}
+            className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${reqTab === 'browse' ? 'bg-amber-500 text-black' : ''}`}
+            style={reqTab !== 'browse' ? { background: 'var(--bg-surface)', color: 'var(--text-secondary)' } : {}}
           >
-            {showForm ? '✕ Close' : '＋ New Request'}
+            🔍 Browse Requests
+          </button>
+          <button
+            onClick={() => setReqTab('post')}
+            className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${reqTab === 'post' ? 'bg-amber-500 text-black' : ''}`}
+            style={reqTab !== 'post' ? { background: 'var(--bg-surface)', color: 'var(--text-secondary)' } : {}}
+          >
+            ＋ Post Request
           </button>
         </div>
 
         {/* ── Advanced Create form ── */}
-        {showForm && (
+        {reqTab === 'post' && (
           <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}>
             {/* Form header with gradient */}
             <div className="px-5 py-4" style={{ background: 'linear-gradient(135deg, #f59e0b22 0%, #d9770622 100%)', borderBottom: '1px solid var(--border-color)' }}>
@@ -498,8 +503,10 @@ export default function RequestsPage() {
           </div>
         )}
 
-        {error && !showForm && <p className="text-red-400 text-xs px-1">{error}</p>}
+        {error && reqTab === 'browse' && <p className="text-red-400 text-xs px-1">{error}</p>}
 
+        {reqTab === 'browse' && (
+        <>
         {/* ── Filter + Sort Bar ── */}
         <div className="flex flex-wrap gap-2 items-center p-3 rounded-xl sticky top-14 z-10" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
           {/* Sort buttons */}
@@ -574,6 +581,8 @@ export default function RequestsPage() {
               />
             ))}
           </div>
+        )}
+        </>
         )}
       </main>
     </div>

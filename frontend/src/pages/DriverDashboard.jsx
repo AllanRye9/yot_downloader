@@ -189,7 +189,12 @@ export default function DriverDashboard() {
         ].map(([id, label]) => (
           <button
             key={id}
-            onClick={() => setTab(id)}
+            onClick={() => {
+              setTab(id)
+              if (id === 'map' && navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(() => {}, () => {})
+              }
+            }}
             className={`px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors border-b-2 ${
               tab === id
                 ? 'border-amber-500 text-amber-400'
@@ -464,10 +469,14 @@ export default function DriverDashboard() {
             {inboxLoading ? (
               <div className="flex justify-center py-6"><div className="spinner w-6 h-6" /></div>
             ) : rideInbox.length === 0 ? (
-              <p className="text-xs text-center py-6" style={{ color: 'var(--text-muted)' }}>No ride conversations yet.</p>
+              <div className="empty-state">
+                <div className="empty-state-icon">📭</div>
+                <p className="empty-state-title">No ride conversations yet</p>
+                <p className="empty-state-hint">When passengers message about your rides, they'll appear here.</p>
+              </div>
             ) : (
               <div className="space-y-2">
-                {rideInbox.map((item, i) => (
+                {rideInbox.slice(0, 6).map((item, i) => (
                   <button
                     key={item.ride_id || i}
                     onClick={() => { setSelectedRide(item); setTab('chat') }}
@@ -492,6 +501,15 @@ export default function DriverDashboard() {
                     </div>
                   </button>
                 ))}
+                {rideInbox.length > 6 && (
+                  <button
+                    onClick={() => navigate('/inbox')}
+                    className="w-full py-2 text-xs font-semibold rounded-lg transition-colors hover:opacity-80 mt-1"
+                    style={{ background: 'var(--bg-surface)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}
+                  >
+                    📬 View full inbox ({rideInbox.length} conversations) →
+                  </button>
+                )}
               </div>
             )}
           </div>

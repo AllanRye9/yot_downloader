@@ -18,6 +18,7 @@ import NotificationsPage from './pages/NotificationsPage'
 import UnifiedMapPage from './pages/others/UnifiedMapPage'
 import AdminDashboard from './pages/others/AdminDashboard'
 import AdminLogin from './pages/others/AdminLogin'
+import AIPage from './pages/AIPage'
 import { createContext, useContext } from 'react'
 
 // ─── Theme Context ────────────────────────────────────────────────────────
@@ -167,6 +168,8 @@ function RoutesWithTransition() {
       <Route path="/property-inbox" element={<Navigate to="/" replace />} />
       <Route path="/companions" element={<Navigate to="/user/dashboard" replace />} />
       <Route path="/admin/dashboard" element={<Navigate to="/const" replace />} />
+      {/* AI Assistant */}
+      <Route path="/ai" element={<PageWrapper><AIPage /></PageWrapper>} />
       {/* Catch-all → Home */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

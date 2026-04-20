@@ -571,6 +571,51 @@ export default function ProfilePage() {
             <>
               <IdentityBanner user={appUser} onAvatarChange={url => handleUpdate({ avatar_url: url })} />
 
+              <hr style={{ borderColor: 'var(--border-color)', margin: '8px 0' }} />
+
+              {/* Vehicle Details (drivers only) */}
+              {appUser.role === 'driver' && (
+                <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 16, padding: '16px 20px', marginBottom: 14 }}>
+                  <h2 style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>🚗 Vehicle Details</h2>
+                  {appUser.vehicle ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
+                      {[
+                        { label: 'Make / Model', value: [appUser.vehicle.make, appUser.vehicle.model].filter(Boolean).join(' ') || '—' },
+                        { label: 'Year', value: appUser.vehicle.year || '—' },
+                        { label: 'License Plate', value: appUser.vehicle.license_plate || '—' },
+                      ].map(item => (
+                        <div key={item.label} style={{ background: 'var(--bg-surface)', borderRadius: 12, padding: '12px 14px', border: '1px solid var(--border-color)' }}>
+                          <p style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{item.label}</p>
+                          <p style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>{item.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>No vehicle details added yet.</p>
+                  )}
+                </section>
+              )}
+
+              {/* Stats Summary row */}
+              <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 16, padding: '14px 20px', marginBottom: 14 }}>
+                <h2 style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>📊 Stats Summary</h2>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                  {[
+                    { icon: '🚗', label: 'Total Rides', value: appUser.total_rides ?? '—' },
+                    { icon: '⭐', label: 'Rating', value: appUser.rating != null ? appUser.rating.toFixed(1) : '—' },
+                    { icon: '📅', label: 'Member Since', value: appUser.created_at ? new Date(appUser.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short' }) : '—' },
+                  ].map(s => (
+                    <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: 10, padding: '8px 14px' }}>
+                      <span style={{ fontSize: '1.1rem' }}>{s.icon}</span>
+                      <div>
+                        <p style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</p>
+                        <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)' }}>{s.value}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
               {/* User ID card */}
               <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 14, padding: '10px 20px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: '1rem' }}>🪪</span>
