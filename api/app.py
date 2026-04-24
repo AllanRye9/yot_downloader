@@ -9030,7 +9030,7 @@ async def api_get_feed(request: Request, destination: str = "", hashtag: str = "
         try:
             if USE_POSTGRES:
                 cur = conn.cursor()
-                base = "SELECT p.* FROM posts p WHERE p.status='active' AND p.post_id NOT IN (SELECT post_id FROM post_user_hides WHERE user_id=%s)"
+                base = "SELECT p.* FROM posts p LEFT JOIN post_user_hides puh ON p.post_id = puh.post_id AND puh.user_id=%s WHERE p.status='active' AND puh.post_id IS NULL"
                 params = [user_id]
                 if destination:
                     base += " AND p.location_name ILIKE %s"
@@ -9046,7 +9046,7 @@ async def api_get_feed(request: Request, destination: str = "", hashtag: str = "
                 cur.execute(base, params)
                 rows = cur.fetchall()
             else:
-                base = "SELECT p.* FROM posts p WHERE p.status='active' AND p.post_id NOT IN (SELECT post_id FROM post_user_hides WHERE user_id=?)"
+                base = "SELECT p.* FROM posts p LEFT JOIN post_user_hides puh ON p.post_id = puh.post_id AND puh.user_id=? WHERE p.status='active' AND puh.post_id IS NULL"
                 params = [user_id]
                 if destination:
                     base += " AND p.location_name LIKE ?"
@@ -9129,7 +9129,7 @@ async def api_delete_post(request: Request, post_id: str):
                         (hide_id, post_id, user_id, now)
                     )
                 except Exception:
-                    pass  # already hidden
+                    conn.rollback()  # already hidden – unique constraint violation
             else:
                 row = conn.execute("SELECT post_id FROM posts WHERE post_id=? AND status='active'", (post_id,)).fetchone()
                 if not row:
@@ -9139,8 +9139,8 @@ async def api_delete_post(request: Request, post_id: str):
                         "INSERT INTO post_user_hides (hide_id,post_id,user_id,created_at) VALUES (?,?,?,?)",
                         (hide_id, post_id, user_id, now)
                     )
-                except Exception:
-                    pass  # already hidden
+                except sqlite3.IntegrityError:
+                    pass  # already hidden – unique constraint violation
             conn.commit()
         finally:
             conn.close()
@@ -9369,8 +9369,13 @@ async def admin_edit_post(request: Request, post_id: str, body: _AdminEditPostRe
         try:
             if USE_POSTGRES:
                 cur = conn.cursor()
+                cur.execute("SELECT post_id FROM posts WHERE post_id=%s", (post_id,))
+                if not cur.fetchone():
+                    return JSONResponse({"error": "Post not found."}, status_code=404)
                 cur.execute("UPDATE posts SET content=%s WHERE post_id=%s", (body.content.strip(), post_id))
             else:
+                if not conn.execute("SELECT post_id FROM posts WHERE post_id=?", (post_id,)).fetchone():
+                    return JSONResponse({"error": "Post not found."}, status_code=404)
                 conn.execute("UPDATE posts SET content=? WHERE post_id=?", (body.content.strip(), post_id))
             conn.commit()
         finally:
