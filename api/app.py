@@ -2337,7 +2337,9 @@ async def api_user_register(body: _UserRegisterRequest):
     if body.date_of_birth:
         try:
             dob = datetime.fromisoformat(body.date_of_birth)
-            age = (datetime.now(timezone.utc) - dob.replace(tzinfo=timezone.utc)).days // 365
+            today = datetime.now(timezone.utc)
+            dob_utc = dob.replace(tzinfo=timezone.utc)
+            age = today.year - dob_utc.year - ((today.month, today.day) < (dob_utc.month, dob_utc.day))
             if age < 18:
                 return JSONResponse({"error": "You must be 18 or older to register."}, status_code=400)
         except ValueError:
@@ -9516,6 +9518,8 @@ async def api_scan_rides(request: Request, lat: float = 0, lng: float = 0, radiu
     user_id = request.session.get("app_user_id")
     if not user_id:
         return JSONResponse({"error": "Not authenticated."}, status_code=401)
+    if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+        return JSONResponse({"error": "Invalid coordinates."}, status_code=400)
     with _db_lock:
         conn = _get_db()
         try:
