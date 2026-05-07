@@ -1888,7 +1888,7 @@ async def sitemap_xml():
     sitemap_path = os.path.join(ROOT_DIR, "sitemap.xml")
     if os.path.exists(sitemap_path):
         return FileResponse(sitemap_path, media_type="application/xml")
-    return JSONResponse({"error": "Sitemap not found"}, status_code=404)
+    return Response("Sitemap not found", media_type="text/plain", status_code=404)
 
 @fastapi_app.get("/yotweek.png")
 async def yotweek_icon():
